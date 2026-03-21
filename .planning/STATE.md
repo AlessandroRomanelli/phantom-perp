@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-03-21T21:48:25.911Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-03-21T21:48:37.296Z"
 progress:
   total_phases: 5
   completed_phases: 0
@@ -47,6 +47,7 @@ Plan: 2 of 3
 
 *Updated after each plan completion*
 | Phase 01 P01 | 2min | 3 tasks | 5 files |
+| Phase 01 P02 | 2min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -60,6 +61,8 @@ Recent decisions affecting current work:
 - [Roadmap]: Phases 2, 3, 4 depend only on Phase 1 (not on each other), enabling flexible ordering
 - [Phase 01]: bar_volumes uses np.diff allowing negative values for rolling-off volume
 - [Phase 01]: INFRA-01 verified by test (not code change) since per-instance architecture already isolates cooldowns
+- [Phase 01]: Used mock patching for structlog logger assertions (structlog bypasses Python logging caplog)
+- [Phase 01]: Config validation runs on raw config before instrument merge; diff logging runs after merge
 
 ### Pending Todos
 
@@ -72,6 +75,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-21
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-03-21T21:48:37.294Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None

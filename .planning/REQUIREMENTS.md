@@ -8,8 +8,8 @@
 ### Infrastructure & Bug Fixes
 
 - [x] **INFRA-01**: Per-instrument cooldown tracking — strategy cooldown state must be keyed by instrument ID, not shared globally
-- [ ] **INFRA-02**: Config schema validation — warn on unknown YAML parameter keys that don't match the strategy's params dataclass fields
-- [ ] **INFRA-03**: Config diff logging at startup — log which per-instrument parameters differ from defaults and by how much
+- [x] **INFRA-02**: Config schema validation — warn on unknown YAML parameter keys that don't match the strategy's params dataclass fields
+- [x] **INFRA-03**: Config diff logging at startup — log which per-instrument parameters differ from defaults and by how much
 - [x] **INFRA-04**: Add `scipy` and `bottleneck` dependencies for statistical computations and fast rolling windows
 - [x] **INFRA-05**: Add `VWAP` and `VOLUME_PROFILE` entries to `SignalSource` enum
 - [x] **INFRA-06**: Add `timestamps` property accessor to FeatureStore (needed for VWAP session reset)
@@ -124,8 +124,8 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | INFRA-01 | Phase 1 | Complete |
-| INFRA-02 | Phase 1 | Pending |
-| INFRA-03 | Phase 1 | Pending |
+| INFRA-02 | Phase 1 | Complete |
+| INFRA-03 | Phase 1 | Complete |
 | INFRA-04 | Phase 1 | Complete |
 | INFRA-05 | Phase 1 | Complete |
 | INFRA-06 | Phase 1 | Complete |
