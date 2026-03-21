@@ -153,6 +153,24 @@ class FeatureStore:
         return np.array(self._orderbook_imbalances, dtype=np.float64)
 
     @property
+    def timestamps(self) -> NDArray[np.float64]:
+        """Sample timestamps as Unix epoch seconds."""
+        return np.array(
+            [t.timestamp() for t in self._timestamps], dtype=np.float64
+        )
+
+    @property
+    def bar_volumes(self) -> NDArray[np.float64]:
+        """Per-bar volume deltas from consecutive 24h volume samples.
+
+        Length is (sample_count - 1). Values can be negative when
+        high-volume periods roll off the 24h window.
+        """
+        if len(self._volumes) < 2:
+            return np.array([], dtype=np.float64)
+        return np.diff(np.array(self._volumes, dtype=np.float64))
+
+    @property
     def latest_close(self) -> float | None:
         """Most recent close price, or None if empty."""
         return self._closes[-1] if self._closes else None
