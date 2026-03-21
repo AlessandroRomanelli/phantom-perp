@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-03-21T21:48:37.296Z"
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-03-21T21:53:24.250Z"
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 
 ## Current Position
 
-Phase: 01 (Foundation and Per-Instrument Tuning) — EXECUTING
-Plan: 2 of 3
+Phase: 01 (Foundation and Per-Instrument Tuning) — COMPLETE
+Plan: 3 of 3
 
 ## Performance Metrics
 
@@ -48,6 +48,7 @@ Plan: 2 of 3
 *Updated after each plan completion*
 | Phase 01 P01 | 2min | 3 tasks | 5 files |
 | Phase 01 P02 | 2min | 2 tasks | 4 files |
+| Phase 01 P03 | 3min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,9 @@ Recent decisions affecting current work:
 - [Phase 01]: INFRA-01 verified by test (not code change) since per-instance architecture already isolates cooldowns
 - [Phase 01]: Used mock patching for structlog logger assertions (structlog bypasses Python logging caplog)
 - [Phase 01]: Config validation runs on raw config before instrument merge; diff logging runs after merge
+- [Phase 01]: Strategy matrix controls per-instrument enablement, separate from per-strategy YAML enabled flag
+- [Phase 01]: Liquidation cascade disabled for QQQ/SPY (crypto-native, D-11); correlation enabled for QQQ/SPY (basis divergence valid)
+- [Phase 01]: All min_conviction values lowered to 0.30-0.40 range for increased signal frequency (D-04)
 
 ### Pending Todos
 
@@ -75,6 +79,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-21T21:48:37.294Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-03-21T21:53:24.248Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None

@@ -17,11 +17,11 @@
 
 ### Per-Instrument Parameter Tuning
 
-- [ ] **TUNE-01**: ETH-PERP strategy config — asset-specific thresholds for all strategies reflecting ETH volatility and 24/7 trading
-- [ ] **TUNE-02**: BTC-PERP strategy config — asset-specific thresholds reflecting BTC's higher liquidity and different volatility profile
-- [ ] **TUNE-03**: SOL-PERP strategy config — asset-specific thresholds reflecting SOL's high volatility and thinner orderbook
-- [ ] **TUNE-04**: QQQ-PERP strategy config — equity perp thresholds active primarily during US market hours
-- [ ] **TUNE-05**: SPY-PERP strategy config — equity perp thresholds active primarily during US market hours
+- [x] **TUNE-01**: ETH-PERP strategy config — asset-specific thresholds for all strategies reflecting ETH volatility and 24/7 trading
+- [x] **TUNE-02**: BTC-PERP strategy config — asset-specific thresholds reflecting BTC's higher liquidity and different volatility profile
+- [x] **TUNE-03**: SOL-PERP strategy config — asset-specific thresholds reflecting SOL's high volatility and thinner orderbook
+- [x] **TUNE-04**: QQQ-PERP strategy config — equity perp thresholds active primarily during US market hours
+- [x] **TUNE-05**: SPY-PERP strategy config — equity perp thresholds active primarily during US market hours
 
 ### Momentum Strategy Improvements
 
@@ -130,11 +130,11 @@
 | INFRA-05 | Phase 1 | Complete |
 | INFRA-06 | Phase 1 | Complete |
 | INFRA-07 | Phase 1 | Complete |
-| TUNE-01 | Phase 1 | Pending |
-| TUNE-02 | Phase 1 | Pending |
-| TUNE-03 | Phase 1 | Pending |
-| TUNE-04 | Phase 1 | Pending |
-| TUNE-05 | Phase 1 | Pending |
+| TUNE-01 | Phase 1 | Complete |
+| TUNE-02 | Phase 1 | Complete |
+| TUNE-03 | Phase 1 | Complete |
+| TUNE-04 | Phase 1 | Complete |
+| TUNE-05 | Phase 1 | Complete |
 | MOM-01 | Phase 2 | Pending |
 | MOM-02 | Phase 2 | Pending |
 | MOM-03 | Phase 2 | Pending |
