@@ -30,11 +30,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Unknown YAML parameter keys produce a warning at startup rather than being silently ignored
   4. FeatureStore exposes a timestamps accessor and computes bar_volume deltas, and the SignalSource enum includes VWAP and VOLUME_PROFILE entries
   5. scipy and bottleneck are available as dependencies for statistical computations
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md — Infrastructure: dependencies, enum entries, FeatureStore extensions, cooldown verification
+- [ ] 01-02-PLAN.md — Config validation and diff logging
+- [ ] 01-03-PLAN.md — Strategy matrix and per-instrument parameter tuning
 
 ### Phase 2: Momentum and Mean Reversion Improvements
 **Goal**: The two highest-frequency existing strategies produce higher-quality signals with fewer false positives and can route high-conviction signals to Portfolio A
@@ -106,7 +107,7 @@ Phases execute in numeric order. Phases 2, 3, and 4 depend only on Phase 1 and c
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation and Per-Instrument Tuning | 0/? | Not started | - |
+| 1. Foundation and Per-Instrument Tuning | 0/3 | Planning complete | - |
 | 2. Momentum and Mean Reversion Improvements | 0/? | Not started | - |
 | 3. Liquidation, Correlation, and Regime Improvements | 0/? | Not started | - |
 | 4. New Strategies | 0/? | Not started | - |
