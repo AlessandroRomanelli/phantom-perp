@@ -1,0 +1,19 @@
+instrument:
+  id: "ETH-PERP"
+
+execution:
+  default_order_type: "limit"
+  paper_mode: true
+  simulated_fill_probability: 0.95
+  simulated_latency_ms: 50
+
+confirmation:
+  default_ttl_seconds: 600
+  auto_approve:
+    enabled: true
+    max_notional_usdc: 50000
+    min_conviction: 0.0
+
+notification:
+  autonomous_trades:
+    mode: "realtime"

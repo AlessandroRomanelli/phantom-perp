@@ -1,0 +1,11 @@
+strategy:
+  name: "correlation"
+  enabled: true
+  weight: 0.10
+
+parameters:
+  basis_lookback: 60
+  basis_zscore_threshold: 2.0
+  oi_divergence_lookback: 20
+  oi_divergence_threshold_pct: 1.5
+  min_conviction: 0.4

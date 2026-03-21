@@ -1,0 +1,11 @@
+strategy:
+  name: "liquidation_cascade"
+  enabled: true
+  weight: 0.10
+
+parameters:
+  oi_lookback: 10
+  oi_drop_threshold_pct: 2.0
+  imbalance_threshold: 0.3
+  vol_spike_mult: 1.5
+  min_conviction: 0.5

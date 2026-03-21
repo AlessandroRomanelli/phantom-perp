@@ -1,0 +1,12 @@
+instrument:
+  id: "ETH-PERP"
+
+execution:
+  default_order_type: "limit"
+  paper_mode: false
+  prefer_maker: true
+
+confirmation:
+  default_ttl_seconds: 300
+  auto_approve:
+    enabled: false

@@ -1,0 +1,12 @@
+strategy:
+  name: "funding_arb"
+  enabled: true
+  weight: 0.20
+
+parameters:
+  zscore_threshold: 2.0
+  min_annualized_rate_pct: 10.0
+  lookback_hours: 168
+  min_conviction: 0.6
+  max_holding_hours: 4
+  settle_before_close_minutes: 10

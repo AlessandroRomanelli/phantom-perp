@@ -1,0 +1,112 @@
+# Production compose — uses pre-built images, no build step required.
+# Usage: docker compose -f docker-compose.prod.yml up -d
+#
+# Pre-load images from tarball first:
+#   docker load < all-agents.tar.gz
+
+services:
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 64mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_DB: phantom_perp
+      POSTGRES_USER: phantom
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-phantom_dev}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    command: >
+      postgres
+        -c shared_buffers=64MB
+        -c work_mem=4MB
+        -c effective_cache_size=128MB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U phantom -d phantom_perp"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  ingestion:
+    image: phantom-perp-ingestion:amd64
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  signals:
+    image: phantom-perp-signals:amd64
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  alpha:
+    image: phantom-perp-alpha:amd64
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  risk:
+    image: phantom-perp-risk:amd64
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  confirmation:
+    image: phantom-perp-confirmation:amd64
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  execution:
+    image: phantom-perp-execution:amd64
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  reconciliation:
+    image: phantom-perp-reconciliation:amd64
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  monitoring:
+    image: phantom-perp-monitoring:amd64
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  pg_data:

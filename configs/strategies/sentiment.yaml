@@ -1,0 +1,14 @@
+strategy:
+  name: "sentiment"
+  enabled: true
+  weight: 0.15
+
+parameters:
+  sources:
+    - "crypto_twitter"
+    - "reddit"
+    - "fear_greed_index"
+  aggregation_window_hours: 4
+  min_conviction: 0.6
+  min_sample_size: 50
+  sentiment_shift_threshold: 0.3

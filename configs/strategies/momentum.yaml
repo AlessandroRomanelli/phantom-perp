@@ -1,0 +1,13 @@
+strategy:
+  name: "momentum"
+  enabled: false
+  weight: 0.0
+
+parameters:
+  fast_ema_period: 12
+  slow_ema_period: 26
+  rsi_period: 14
+  rsi_overbought: 70
+  rsi_oversold: 30
+  atr_period: 14
+  min_conviction: 0.4

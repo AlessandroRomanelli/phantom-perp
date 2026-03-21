@@ -1,0 +1,11 @@
+strategy:
+  name: "orderbook_imbalance"
+  enabled: true
+  weight: 0.15
+
+parameters:
+  imbalance_threshold: 0.3
+  depth_levels: 10
+  min_conviction: 0.6
+  max_holding_minutes: 30
+  min_spread_bps: 2

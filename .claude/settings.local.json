@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/pytest agents/risk/tests/ -v 2>&1)",
+      "Bash(.venv/bin/pytest tests/unit/ agents/ingestion/tests/ agents/signals/tests/ agents/risk/tests/ -v 2>&1)",
+      "Bash(xargs -0 ls -lh)",
+      "Bash(grep -v \"^$\")",
+      "Bash(.venv/bin/pytest agents/alpha/tests/ -v 2>&1)",
+      "Bash(.venv/bin/pytest agents/confirmation/tests/ -v 2>&1)",
+      "Bash(.venv/bin/pytest agents/execution/tests/ -v 2>&1)",
+      "Bash(.venv/bin/pytest tests/unit/ agents/ingestion/tests/ agents/signals/tests/ agents/risk/tests/ agents/alpha/tests/ agents/confirmation/tests/ agents/execution/tests/ -v)",
+      "Bash(.venv/bin/pytest tests/unit/ agents/ingestion/tests/ agents/signals/tests/ agents/risk/tests/ agents/alpha/tests/ agents/confirmation/tests/ agents/execution/tests/ agents/reconciliation/tests/ -v)",
+      "Bash(.venv/bin/pytest agents/monitoring/tests/ -v 2>&1)",
+      "Bash(.venv/bin/pytest tests/unit/ agents/ingestion/tests/ agents/signals/tests/ agents/risk/tests/ agents/alpha/tests/ agents/confirmation/tests/ agents/execution/tests/ agents/reconciliation/tests/ agents/monitoring/tests/ -v 2>&1)",
+      "WebFetch(domain:docs.cdp.coinbase.com)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(.venv/bin/python -m pytest agents/ingestion/tests/ tests/unit/test_coinbase_auth.py -v)",
+      "WebFetch(domain:docs.cloud.coinbase.com)",
+      "Bash(docker compose:*)",
+      "Bash(docker buildx:*)",
+      "mcp__plugin_telegram_telegram__reply"
+    ]
+  }
+}

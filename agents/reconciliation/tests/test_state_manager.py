@@ -1,0 +1,185 @@
+"""Tests for portfolio state management."""
+
+from datetime import UTC, datetime
+from decimal import Decimal
+
+from libs.coinbase.models import PortfolioResponse, PositionResponse
+from libs.common.models.enums import PortfolioTarget, PositionSide
+
+from agents.reconciliation.state_manager import (
+    build_portfolio_snapshot,
+    build_position,
+    build_system_snapshot,
+)
+
+T0 = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
+
+
+def _position_resp(
+    side: str = "LONG",
+    net_size: Decimal = Decimal("2.5"),
+    entry: Decimal = Decimal("2200"),
+    mark: Decimal = Decimal("2250"),
+    unrealized: Decimal = Decimal("125"),
+    liq: Decimal | None = Decimal("1890"),
+    initial_margin: Decimal = Decimal("1100"),
+    maint_margin: Decimal = Decimal("550"),
+) -> PositionResponse:
+    return PositionResponse(
+        instrument_id="ETH-PERP",
+        portfolio_id="test-portfolio-id",
+        side=side,
+        net_size=net_size,
+        average_entry_price=entry,
+        mark_price=mark,
+        unrealized_pnl=unrealized,
+        liquidation_price=liq,
+        initial_margin=initial_margin,
+        maintenance_margin=maint_margin,
+    )
+
+
+def _portfolio_resp(
+    equity: Decimal = Decimal("10000"),
+    used: Decimal = Decimal("3000"),
+    available: Decimal = Decimal("7000"),
+    unrealized: Decimal = Decimal("125"),
+) -> PortfolioResponse:
+    return PortfolioResponse(
+        portfolio_id="test-portfolio-id",
+        name="Test Portfolio",
+        total_equity=equity,
+        available_margin=available,
+        used_margin=used,
+        unrealized_pnl=unrealized,
+    )
+
+
+class TestBuildPosition:
+    def test_long_position(self) -> None:
+        pos = build_position(_position_resp(), PortfolioTarget.A)
+        assert pos.side == PositionSide.LONG
+        assert pos.size == Decimal("2.5")
+        assert pos.entry_price == Decimal("2200")
+        assert pos.mark_price == Decimal("2250")
+        assert pos.unrealized_pnl_usdc == Decimal("125")
+        assert pos.portfolio_target == PortfolioTarget.A
+        assert pos.is_open is True
+
+    def test_short_position(self) -> None:
+        pos = build_position(
+            _position_resp(side="SHORT", net_size=Decimal("-1.0")),
+            PortfolioTarget.B,
+        )
+        assert pos.side == PositionSide.SHORT
+        assert pos.size == Decimal("1.0")
+
+    def test_flat_position(self) -> None:
+        pos = build_position(
+            _position_resp(side="LONG", net_size=Decimal("0")),
+            PortfolioTarget.A,
+        )
+        assert pos.side == PositionSide.FLAT
+        assert pos.is_open is False
+
+    def test_leverage_computed(self) -> None:
+        # notional = 2.5 * 2250 = 5625, initial_margin = 1100
+        # leverage = 5625 / 1100 ≈ 5.11
+        pos = build_position(_position_resp(), PortfolioTarget.A)
+        assert pos.leverage > Decimal("5")
+        assert pos.leverage < Decimal("6")
+
+    def test_liquidation_price_none_becomes_zero(self) -> None:
+        pos = build_position(_position_resp(liq=None), PortfolioTarget.A)
+        assert pos.liquidation_price == Decimal("0")
+
+    def test_margin_ratio(self) -> None:
+        # maint / initial = 550 / 1100 = 0.5
+        pos = build_position(_position_resp(), PortfolioTarget.A)
+        assert pos.margin_ratio == 0.5
+
+
+class TestBuildPortfolioSnapshot:
+    def test_basic_snapshot(self) -> None:
+        snap = build_portfolio_snapshot(
+            _portfolio_resp(),
+            [_position_resp()],
+            PortfolioTarget.A,
+            now=T0,
+        )
+        assert snap.portfolio_target == PortfolioTarget.A
+        assert snap.equity_usdc == Decimal("10000")
+        assert snap.used_margin_usdc == Decimal("3000")
+        assert snap.available_margin_usdc == Decimal("7000")
+        assert len(snap.positions) == 1
+        assert snap.timestamp == T0
+
+    def test_margin_utilization(self) -> None:
+        # used=3000, equity=10000 → 30%
+        snap = build_portfolio_snapshot(
+            _portfolio_resp(),
+            [],
+            PortfolioTarget.A,
+            now=T0,
+        )
+        assert snap.margin_utilization_pct == 30.0
+
+    def test_zero_equity_margin_util(self) -> None:
+        snap = build_portfolio_snapshot(
+            _portfolio_resp(equity=Decimal("0")),
+            [],
+            PortfolioTarget.A,
+            now=T0,
+        )
+        assert snap.margin_utilization_pct == 0.0
+
+    def test_pnl_fields(self) -> None:
+        snap = build_portfolio_snapshot(
+            _portfolio_resp(unrealized=Decimal("200")),
+            [],
+            PortfolioTarget.A,
+            realized_pnl_today_usdc=Decimal("50"),
+            funding_pnl_today_usdc=Decimal("-10"),
+            fees_paid_today_usdc=Decimal("5"),
+            now=T0,
+        )
+        assert snap.unrealized_pnl_usdc == Decimal("200")
+        assert snap.realized_pnl_today_usdc == Decimal("50")
+        assert snap.funding_pnl_today_usdc == Decimal("-10")
+        assert snap.fees_paid_today_usdc == Decimal("5")
+        # net = 50 + 200 + (-10) - 5 = 235
+        assert snap.net_pnl_today_usdc == Decimal("235")
+
+    def test_open_positions_filtered(self) -> None:
+        positions = [
+            _position_resp(net_size=Decimal("1")),
+            _position_resp(net_size=Decimal("0")),
+        ]
+        snap = build_portfolio_snapshot(
+            _portfolio_resp(),
+            positions,
+            PortfolioTarget.A,
+            now=T0,
+        )
+        assert len(snap.positions) == 2
+        assert len(snap.open_positions) == 1
+
+
+class TestBuildSystemSnapshot:
+    def test_combines_portfolios(self) -> None:
+        snap_a = build_portfolio_snapshot(
+            _portfolio_resp(equity=Decimal("5000")),
+            [],
+            PortfolioTarget.A,
+            now=T0,
+        )
+        snap_b = build_portfolio_snapshot(
+            _portfolio_resp(equity=Decimal("15000")),
+            [],
+            PortfolioTarget.B,
+            now=T0,
+        )
+        system = build_system_snapshot(snap_a, snap_b, now=T0)
+        assert system.combined_equity_usdc == Decimal("20000")
+        assert system.portfolio_a.equity_usdc == Decimal("5000")
+        assert system.portfolio_b.equity_usdc == Decimal("15000")

@@ -1,0 +1,123 @@
+instrument:
+  id: "ETH-PERP"
+  base_currency: "ETH"
+  quote_currency: "USDC"
+  tick_size: 0.01
+  min_order_size: 0.01
+
+coinbase:
+  rest_base_url: "https://api.international.coinbase.com/api/v1"
+  ws_market_data_url: "wss://ws-md.international.coinbase.com"
+  ws_user_data_url: "wss://ws.international.coinbase.com"
+  rate_limit_buffer_pct: 20
+
+fees:
+  tier: "VIP1"
+  maker_rate: 0.000125
+  taker_rate: 0.000250
+
+funding:
+  settlement_interval: "hourly"
+  settlement_currency: "USDC"
+  settlements_per_day: 24
+
+portfolio:
+  a:
+    name: "Autonomous"
+    coinbase_portfolio_id: "75b5eaf1-53a6-483a-8ac0-d1da897dff2c"
+    requires_confirmation: false
+  b:
+    name: "User-Confirmed"
+    requires_confirmation: true
+
+  transfers:
+    automatic: false
+    system_initiated: false
+
+  routing:
+    rules:
+      - condition: "time_horizon < 2h"
+        target: "A"
+      - condition: "source in [FUNDING_ARB, ORDERBOOK_IMBALANCE, LIQUIDATION_CASCADE]"
+        target: "A"
+      - condition: "conviction >= 0.85 and time_horizon < 4h"
+        target: "A"
+      - condition: "default"
+        target: "B"
+
+risk:
+  portfolio_a:
+    max_leverage: 5.0
+    max_position_size_eth: 3.0
+    max_position_pct_equity: 40.0
+    max_margin_utilization_pct: 70.0
+    min_liquidation_distance_pct: 8.0
+    max_daily_loss_pct: 10.0
+    max_drawdown_pct: 25.0
+    stop_loss_required: true
+    max_concurrent_positions: 3
+    max_funding_cost_per_day_usdc: 20
+
+  portfolio_b:
+    max_leverage: 3.0
+    max_position_size_eth: 8.0
+    max_position_pct_equity: 25.0
+    max_margin_utilization_pct: 50.0
+    min_liquidation_distance_pct: 15.0
+    max_daily_loss_pct: 5.0
+    max_drawdown_pct: 15.0
+    stop_loss_required: true
+    max_concurrent_positions: 3
+    max_funding_cost_per_day_usdc: 100
+
+  global:
+    stale_data_halt_seconds: 30
+
+execution:
+  default_order_type: "limit"
+  limit_offset_bps: 5
+  order_ttl_seconds: 120
+  max_slippage_bps: 20
+  retry_on_rejection: true
+  max_retries: 2
+  prefer_maker: true
+
+confirmation:
+  default_ttl_seconds: 300
+  stale_price_threshold_pct: 1.0
+  auto_approve:
+    enabled: false
+    max_notional_usdc: 2000
+    min_conviction: 0.9
+    only_reduce: false
+  quiet_hours:
+    enabled: true
+    start: "23:00"
+    end: "07:00"
+    timezone: "Europe/Zurich"
+    behavior: "queue"
+  batching:
+    enabled: true
+    window_seconds: 30
+    max_batch_size: 5
+  daily_budget:
+    enabled: false
+    max_daily_notional_usdc: 20000
+
+notification:
+  autonomous_trades:
+    mode: "realtime"
+    include_stop_loss_triggers: true
+    include_funding_settlements: false
+
+monitoring:
+  funding_alert_threshold_pct: 0.03
+  margin_alert_threshold_pct: 50.0
+  liquidation_distance_alert_pct: 15.0
+  ws_reconnect_max_delay_seconds: 30
+  heartbeat_interval_seconds: 60
+  performance_report:
+    frequency: "daily"
+    include_portfolio_breakdown: true
+    include_funding_attribution: true
+    include_fee_breakdown: true

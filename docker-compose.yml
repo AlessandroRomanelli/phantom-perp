@@ -1,0 +1,119 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: phantom_perp
+      POSTGRES_USER: phantom
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-phantom_dev}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U phantom -d phantom_perp"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  ingestion:
+    build:
+      context: .
+      dockerfile: agents/ingestion/Dockerfile
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  signals:
+    build:
+      context: .
+      dockerfile: agents/signals/Dockerfile
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  alpha:
+    build:
+      context: .
+      dockerfile: agents/alpha/Dockerfile
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  risk:
+    build:
+      context: .
+      dockerfile: agents/risk/Dockerfile
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  confirmation:
+    build:
+      context: .
+      dockerfile: agents/confirmation/Dockerfile
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  execution:
+    build:
+      context: .
+      dockerfile: agents/execution/Dockerfile
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  reconciliation:
+    build:
+      context: .
+      dockerfile: agents/reconciliation/Dockerfile
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  monitoring:
+    build:
+      context: .
+      dockerfile: agents/monitoring/Dockerfile
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  pg_data:

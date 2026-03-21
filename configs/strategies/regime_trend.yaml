@@ -1,0 +1,40 @@
+strategy:
+  name: "regime_trend"
+  enabled: true
+  weight: 0.30
+
+parameters:
+  # Higher-timeframe trend filter
+  trend_ema_period: 50
+  trend_slope_lookback: 5
+  adx_period: 14
+  adx_threshold: 22
+
+  # Volatility expansion filter
+  atr_period: 14
+  atr_avg_period: 30
+  atr_expansion_threshold: 1.1
+
+  # Spot confirmation filter
+  spot_ema_period: 20
+  spot_slope_lookback: 5
+
+  # Entry patterns
+  fast_ema_period: 20
+  breakout_lookback: 20
+  pullback_tolerance_atr: 0.3
+
+  # Risk management (Portfolio B — wider stops, longer hold)
+  stop_loss_atr_mult: 2.5
+  take_profit_atr_mult: 4.0
+
+  # Portfolio A — autonomous, breakout-only, tighter risk
+  portfolio_a_enabled: true
+  portfolio_a_min_conviction: 0.7
+  portfolio_a_breakout_only: true
+  portfolio_a_stop_loss_atr_mult: 1.5
+  portfolio_a_take_profit_atr_mult: 2.5
+
+  # Signal control
+  min_conviction: 0.5
+  cooldown_bars: 8

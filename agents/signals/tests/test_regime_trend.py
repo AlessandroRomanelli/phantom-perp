@@ -1,0 +1,408 @@
+"""Tests for the regime-filtered trend following strategy."""
+
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+
+import numpy as np
+import pytest
+
+from libs.common.constants import INSTRUMENT_ID
+from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.market_snapshot import MarketSnapshot
+
+from agents.signals.feature_store import FeatureStore
+from agents.signals.strategies.regime_trend import RegimeTrendParams, RegimeTrendStrategy
+
+
+def _snap(
+    mark: float,
+    ts: datetime | None = None,
+    index: float | None = None,
+) -> MarketSnapshot:
+    """Minimal snapshot for testing."""
+    if ts is None:
+        ts = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
+    idx = index if index is not None else mark - 0.5
+    return MarketSnapshot(
+        timestamp=ts,
+        instrument=INSTRUMENT_ID,
+        mark_price=Decimal(str(mark)),
+        index_price=Decimal(str(idx)),
+        last_price=Decimal(str(mark)),
+        best_bid=Decimal(str(mark - 0.25)),
+        best_ask=Decimal(str(mark + 0.25)),
+        spread_bps=2.2,
+        volume_24h=Decimal("15000"),
+        open_interest=Decimal("80000"),
+        funding_rate=Decimal("0.0001"),
+        next_funding_time=ts + timedelta(minutes=30),
+        hours_since_last_funding=0.5,
+        orderbook_imbalance=0.0,
+        volatility_1h=0.15,
+        volatility_24h=0.45,
+    )
+
+
+def _build_store(prices: list[float], index_prices: list[float] | None = None) -> FeatureStore:
+    """Build a FeatureStore pre-loaded with price/index samples."""
+    store = FeatureStore(sample_interval=timedelta(seconds=0))
+    base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+    for i, price in enumerate(prices):
+        idx = index_prices[i] if index_prices else price - 0.5
+        snap = _snap(price, ts=base + timedelta(seconds=i), index=idx)
+        store.update(snap)
+    return store
+
+
+def _strong_uptrend(
+    n: int = 120,
+    start: float = 2000.0,
+    step: float = 3.0,
+) -> tuple[list[float], list[float]]:
+    """Generate a strong uptrend with expanding volatility and spot confirmation.
+
+    Returns (perp_prices, index_prices) — spot trends in sync with perp.
+    """
+    rng = np.random.default_rng(42)
+    # Start flat to establish baseline ATR, then trend up strongly
+    flat_n = 60
+    trend_n = n - flat_n
+    flat = [start + rng.normal(0, 1.0) for _ in range(flat_n)]
+    # Trend phase: increasingly volatile to ensure ATR expansion
+    trend = []
+    for i in range(trend_n):
+        noise = rng.normal(0, 2.0 + i * 0.05)
+        trend.append(start + (i + 1) * step + noise)
+    prices = flat + trend
+    # Spot tracks perp closely (confirming)
+    index_prices = [p - 0.5 + rng.normal(0, 0.3) for p in prices]
+    return prices, index_prices
+
+
+def _strong_downtrend(
+    n: int = 120,
+    start: float = 2200.0,
+    step: float = 3.0,
+) -> tuple[list[float], list[float]]:
+    """Generate a strong downtrend with expanding volatility and spot confirmation."""
+    rng = np.random.default_rng(42)
+    flat_n = 60
+    trend_n = n - flat_n
+    flat = [start + rng.normal(0, 1.0) for _ in range(flat_n)]
+    trend = []
+    for i in range(trend_n):
+        noise = rng.normal(0, 2.0 + i * 0.05)
+        trend.append(start - (i + 1) * step + noise)
+    prices = flat + trend
+    index_prices = [p - 0.5 + rng.normal(0, 0.3) for p in prices]
+    return prices, index_prices
+
+
+def _ranging_prices(n: int = 120, center: float = 2200.0) -> tuple[list[float], list[float]]:
+    """Ranging market — no trend, low vol."""
+    rng = np.random.default_rng(42)
+    prices = [center + rng.normal(0, 1.5) for _ in range(n)]
+    index_prices = [p - 0.5 + rng.normal(0, 0.3) for p in prices]
+    return prices, index_prices
+
+
+def _relaxed_params() -> RegimeTrendParams:
+    """Params with relaxed thresholds for testing entry detection."""
+    return RegimeTrendParams(
+        trend_ema_period=20,
+        trend_slope_lookback=3,
+        adx_period=10,
+        adx_threshold=10.0,
+        atr_period=10,
+        atr_avg_period=15,
+        atr_expansion_threshold=0.8,
+        spot_ema_period=10,
+        spot_slope_lookback=3,
+        fast_ema_period=10,
+        breakout_lookback=10,
+        pullback_tolerance_atr=0.5,
+        stop_loss_atr_mult=2.5,
+        take_profit_atr_mult=4.0,
+        min_conviction=0.0,
+        cooldown_bars=0,
+    )
+
+
+class TestRegimeTrendStrategy:
+    def test_properties(self) -> None:
+        strategy = RegimeTrendStrategy()
+        assert strategy.name == "regime_trend"
+        assert strategy.enabled is True
+        assert strategy.min_history > 0
+
+    def test_no_signal_insufficient_data(self) -> None:
+        strategy = RegimeTrendStrategy()
+        store = _build_store([2200.0] * 10)
+        snap = _snap(2200.0)
+        signals = strategy.evaluate(snap, store)
+        assert signals == []
+
+    def test_ranging_market_no_signal(self) -> None:
+        """Ranging market should fail the trend and vol filters."""
+        params = _relaxed_params()
+        params.adx_threshold = 30.0  # Require strong trend
+        params.atr_expansion_threshold = 1.3  # Require vol expansion
+        strategy = RegimeTrendStrategy(params=params)
+        prices, index_prices = _ranging_prices(120)
+
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        signals: list = []
+        base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+        for i in range(len(prices)):
+            s = _snap(prices[i], ts=base + timedelta(seconds=i), index=index_prices[i])
+            store.update(s)
+            result = strategy.evaluate(s, store)
+            signals.extend(result)
+
+        assert len(signals) == 0
+
+    def test_uptrend_generates_long(self) -> None:
+        """Strong uptrend with all filters aligning should produce LONG."""
+        params = _relaxed_params()
+        strategy = RegimeTrendStrategy(params=params)
+        prices, index_prices = _strong_uptrend(120)
+
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        signals: list = []
+        base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+        for i in range(len(prices)):
+            s = _snap(prices[i], ts=base + timedelta(seconds=i), index=index_prices[i])
+            store.update(s)
+            result = strategy.evaluate(s, store)
+            signals.extend(result)
+
+        long_signals = [s for s in signals if s.direction == PositionSide.LONG]
+        assert len(long_signals) >= 1
+
+        sig = long_signals[0]
+        assert sig.source == SignalSource.REGIME_TREND
+        assert sig.instrument == INSTRUMENT_ID
+        assert sig.stop_loss is not None
+        assert sig.take_profit is not None
+        assert sig.entry_price is not None
+        assert sig.stop_loss < sig.entry_price
+        assert sig.take_profit > sig.entry_price
+
+    def test_downtrend_generates_short(self) -> None:
+        """Strong downtrend with all filters aligning should produce SHORT."""
+        params = _relaxed_params()
+        strategy = RegimeTrendStrategy(params=params)
+        prices, index_prices = _strong_downtrend(120)
+
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        signals: list = []
+        base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+        for i in range(len(prices)):
+            s = _snap(prices[i], ts=base + timedelta(seconds=i), index=index_prices[i])
+            store.update(s)
+            result = strategy.evaluate(s, store)
+            signals.extend(result)
+
+        short_signals = [s for s in signals if s.direction == PositionSide.SHORT]
+        assert len(short_signals) >= 1
+
+        sig = short_signals[0]
+        assert sig.stop_loss is not None
+        assert sig.take_profit is not None
+        assert sig.entry_price is not None
+        assert sig.stop_loss > sig.entry_price
+        assert sig.take_profit < sig.entry_price
+
+    def test_spot_divergence_blocks_long(self) -> None:
+        """Perp uptrend with spot trending down should block LONG signals."""
+        params = _relaxed_params()
+        strategy = RegimeTrendStrategy(params=params)
+        prices, _ = _strong_uptrend(120)
+        # Spot trends down while perp trends up — diverges during trend phase
+        rng = np.random.default_rng(99)
+        divergent_index = [2000.0 - i * 0.5 + rng.normal(0, 0.3) for i in range(120)]
+
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        signals: list = []
+        base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+        for i in range(len(prices)):
+            s = _snap(prices[i], ts=base + timedelta(seconds=i), index=divergent_index[i])
+            store.update(s)
+            result = strategy.evaluate(s, store)
+            signals.extend(result)
+
+        # No LONG signals should fire — spot doesn't confirm the uptrend
+        long_signals = [s for s in signals if s.direction == PositionSide.LONG]
+        assert len(long_signals) == 0
+
+    def test_low_vol_blocks_signal(self) -> None:
+        """Uptrend with contracting vol should be filtered out."""
+        params = _relaxed_params()
+        params.atr_expansion_threshold = 1.5  # Require strong expansion
+        strategy = RegimeTrendStrategy(params=params)
+
+        # Mild trend with decreasing volatility
+        rng = np.random.default_rng(42)
+        prices = []
+        for i in range(120):
+            # Noise decreases over time (vol contracts)
+            noise = rng.normal(0, max(0.1, 3.0 - i * 0.025))
+            prices.append(2000.0 + i * 1.0 + noise)
+        index_prices = [p - 0.5 for p in prices]
+
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        signals: list = []
+        base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+        for i in range(len(prices)):
+            s = _snap(prices[i], ts=base + timedelta(seconds=i), index=index_prices[i])
+            store.update(s)
+            result = strategy.evaluate(s, store)
+            signals.extend(result)
+
+        assert len(signals) == 0
+
+    def test_cooldown_prevents_rapid_signals(self) -> None:
+        """Cooldown should throttle signal frequency."""
+        params = _relaxed_params()
+        params.cooldown_bars = 15
+        strategy = RegimeTrendStrategy(params=params)
+        prices, index_prices = _strong_uptrend(120)
+
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        signals: list = []
+        base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+        for i in range(len(prices)):
+            s = _snap(prices[i], ts=base + timedelta(seconds=i), index=index_prices[i])
+            store.update(s)
+            result = strategy.evaluate(s, store)
+            signals.extend(result)
+
+        # With 15-bar cooldown and ~60 trending bars, evaluate() fires at most ~4-6
+        # times, but each can emit up to 2 signals (A + B), so bound is ~12
+        b_signals = [s for s in signals if s.suggested_target == PortfolioTarget.B]
+        assert len(b_signals) <= 8
+
+    def test_signal_metadata(self) -> None:
+        """Emitted signals should carry full filter metadata."""
+        params = _relaxed_params()
+        params.portfolio_a_enabled = False  # Only check B signal metadata
+        strategy = RegimeTrendStrategy(params=params)
+        prices, index_prices = _strong_uptrend(120)
+
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        signals: list = []
+        base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+        for i in range(len(prices)):
+            s = _snap(prices[i], ts=base + timedelta(seconds=i), index=index_prices[i])
+            store.update(s)
+            result = strategy.evaluate(s, store)
+            signals.extend(result)
+
+        assert len(signals) >= 1
+        sig = signals[0]
+        assert "entry_type" in sig.metadata
+        assert sig.metadata["entry_type"] in ("breakout", "pullback")
+        assert "trend_ema" in sig.metadata
+        assert "trend_slope" in sig.metadata
+        assert "atr" in sig.metadata
+        assert "atr_ratio" in sig.metadata
+        assert "spot_ema" in sig.metadata
+        assert "spot_slope" in sig.metadata
+        assert sig.conviction > 0.0
+        assert sig.conviction <= 1.0
+        assert sig.time_horizon == timedelta(hours=6)
+        assert sig.suggested_target == PortfolioTarget.B
+
+    def test_portfolio_a_routing_on_high_conviction_breakout(self) -> None:
+        """High-conviction breakouts should emit a Portfolio A signal too."""
+        params = _relaxed_params()
+        params.portfolio_a_enabled = True
+        params.portfolio_a_min_conviction = 0.3
+        params.portfolio_a_breakout_only = True
+        strategy = RegimeTrendStrategy(params=params)
+        prices, index_prices = _strong_uptrend(120)
+
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        signals: list = []
+        base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+        for i in range(len(prices)):
+            s = _snap(prices[i], ts=base + timedelta(seconds=i), index=index_prices[i])
+            store.update(s)
+            result = strategy.evaluate(s, store)
+            signals.extend(result)
+
+        a_signals = [s for s in signals if s.suggested_target == PortfolioTarget.A]
+        b_signals = [s for s in signals if s.suggested_target == PortfolioTarget.B]
+
+        # Should have both A and B signals
+        assert len(a_signals) >= 1
+        assert len(b_signals) >= 1
+
+        # A signals should have shorter horizon and tighter stops
+        a_sig = a_signals[0]
+        b_sig = b_signals[0]
+        assert a_sig.time_horizon == timedelta(hours=2)
+        assert b_sig.time_horizon == timedelta(hours=6)
+        assert a_sig.metadata["portfolio"] == "A"
+        assert b_sig.metadata["portfolio"] == "B"
+        assert a_sig.metadata["entry_type"] == "breakout"
+
+    def test_portfolio_a_not_emitted_when_disabled(self) -> None:
+        """When portfolio_a_enabled is False, only B signals should emit."""
+        params = _relaxed_params()
+        params.portfolio_a_enabled = False
+        strategy = RegimeTrendStrategy(params=params)
+        prices, index_prices = _strong_uptrend(120)
+
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        signals: list = []
+        base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+        for i in range(len(prices)):
+            s = _snap(prices[i], ts=base + timedelta(seconds=i), index=index_prices[i])
+            store.update(s)
+            result = strategy.evaluate(s, store)
+            signals.extend(result)
+
+        a_signals = [s for s in signals if s.suggested_target == PortfolioTarget.A]
+        assert len(a_signals) == 0
+
+    def test_portfolio_a_requires_min_conviction(self) -> None:
+        """Portfolio A signal should not emit if conviction is below threshold."""
+        params = _relaxed_params()
+        params.portfolio_a_enabled = True
+        params.portfolio_a_min_conviction = 0.99  # Almost impossible to hit
+        strategy = RegimeTrendStrategy(params=params)
+        prices, index_prices = _strong_uptrend(120)
+
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        signals: list = []
+        base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+        for i in range(len(prices)):
+            s = _snap(prices[i], ts=base + timedelta(seconds=i), index=index_prices[i])
+            store.update(s)
+            result = strategy.evaluate(s, store)
+            signals.extend(result)
+
+        a_signals = [s for s in signals if s.suggested_target == PortfolioTarget.A]
+        b_signals = [s for s in signals if s.suggested_target == PortfolioTarget.B]
+        assert len(a_signals) == 0
+        assert len(b_signals) >= 1  # B should still fire
+
+    def test_config_override(self) -> None:
+        """YAML config dict should override default params."""
+        config = {
+            "parameters": {
+                "trend_ema_period": 40,
+                "adx_threshold": 18.0,
+                "min_conviction": 0.3,
+                "portfolio_a_min_conviction": 0.8,
+            }
+        }
+        strategy = RegimeTrendStrategy(config=config)
+        assert strategy._params.trend_ema_period == 40
+        assert strategy._params.adx_threshold == 18.0
+        assert strategy._params.min_conviction == 0.3
+        assert strategy._params.portfolio_a_min_conviction == 0.8
+        # Unset params keep defaults
+        assert strategy._params.atr_period == 14
+        assert strategy._params.portfolio_a_enabled is True
