@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from libs.common.config import validate_strategy_config
+from libs.common.config import log_config_diff, validate_strategy_config
 
 
 @dataclass
@@ -80,3 +80,36 @@ class TestValidateStrategyConfig:
         }
         # Should not raise
         validate_strategy_config("test", config, _SampleParams)
+
+
+class TestLogConfigDiff:
+    """Tests for log_config_diff()."""
+
+    def test_log_config_diff_shows_overrides(self) -> None:
+        with patch("libs.common.config._config_logger") as mock_logger:
+            log_config_diff(
+                "mean_reversion",
+                "ETH-PERP",
+                {"bb_period": 15, "bb_std": 2.0},
+                {"bb_period": 20, "bb_std": 2.0},
+            )
+            mock_logger.info.assert_called_once_with(
+                "instrument_config_overrides",
+                strategy="mean_reversion",
+                instrument="ETH-PERP",
+                overrides={"bb_period": {"default": 20, "override": 15}},
+            )
+
+    def test_log_config_diff_shows_defaults_when_no_overrides(self) -> None:
+        with patch("libs.common.config._config_logger") as mock_logger:
+            log_config_diff(
+                "momentum",
+                "BTC-PERP",
+                {"fast_ema": 12, "slow_ema": 26},
+                {"fast_ema": 12, "slow_ema": 26},
+            )
+            mock_logger.info.assert_called_once_with(
+                "instrument_using_defaults",
+                strategy="momentum",
+                instrument="BTC-PERP",
+            )

@@ -240,6 +240,41 @@ def validate_strategy_config(
                 )
 
 
+def log_config_diff(
+    strategy_name: str,
+    instrument_id: str,
+    merged_params: dict[str, Any],
+    default_params: dict[str, Any],
+) -> None:
+    """Log which parameters differ from defaults for this instrument.
+
+    Args:
+        strategy_name: Strategy name for log context.
+        instrument_id: Instrument ID for log context.
+        merged_params: Final merged parameter dict.
+        default_params: Base default parameter dict.
+    """
+    diffs: dict[str, dict[str, Any]] = {}
+    for key, merged_val in merged_params.items():
+        default_val = default_params.get(key)
+        if merged_val != default_val:
+            diffs[key] = {"default": default_val, "override": merged_val}
+
+    if diffs:
+        _config_logger.info(
+            "instrument_config_overrides",
+            strategy=strategy_name,
+            instrument=instrument_id,
+            overrides=diffs,
+        )
+    else:
+        _config_logger.info(
+            "instrument_using_defaults",
+            strategy=strategy_name,
+            instrument=instrument_id,
+        )
+
+
 def get_settings() -> AppSettings:
     """Build and return the full application settings.
 

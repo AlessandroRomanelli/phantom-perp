@@ -1,7 +1,8 @@
 """Signal generation agent entrypoint.
 
-Consumes MarketSnapshots from stream:market_snapshots, feeds them to
-all enabled strategies in parallel, and publishes resulting
+Consumes MarketSnapshots from stream:market_snapshots, routes them to
+per-instrument FeatureStores, runs per-instrument strategy instances
+(each with their own parameter overrides), and publishes resulting
 StandardSignals to stream:signals.
 """
 
@@ -13,8 +14,14 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from libs.common.config import get_settings, load_strategy_config
-from libs.common.constants import INSTRUMENT_ID
+from libs.common.config import (
+    get_settings,
+    load_strategy_config,
+    load_strategy_config_for_instrument,
+    log_config_diff,
+    validate_strategy_config,
+)
+from libs.common.constants import ACTIVE_INSTRUMENT_IDS
 from libs.common.logging import setup_logging
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
@@ -23,13 +30,33 @@ from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
 
 from agents.signals.feature_store import FeatureStore
 from agents.signals.strategies.base import SignalStrategy
-from agents.signals.strategies.correlation import CorrelationStrategy
-from agents.signals.strategies.liquidation_cascade import LiquidationCascadeStrategy
-from agents.signals.strategies.mean_reversion import MeanReversionStrategy
-from agents.signals.strategies.momentum import MomentumStrategy
-from agents.signals.strategies.regime_trend import RegimeTrendStrategy
+from agents.signals.strategies.correlation import CorrelationParams, CorrelationStrategy
+from agents.signals.strategies.liquidation_cascade import (
+    LiquidationCascadeParams,
+    LiquidationCascadeStrategy,
+)
+from agents.signals.strategies.mean_reversion import MeanReversionParams, MeanReversionStrategy
+from agents.signals.strategies.momentum import MomentumParams, MomentumStrategy
+from agents.signals.strategies.regime_trend import RegimeTrendParams, RegimeTrendStrategy
 
 logger = setup_logging("signals", json_output=False)
+
+# Strategy name → class mapping.  Add new strategies here.
+STRATEGY_CLASSES: dict[str, type[SignalStrategy]] = {
+    "momentum": MomentumStrategy,
+    "mean_reversion": MeanReversionStrategy,
+    "liquidation_cascade": LiquidationCascadeStrategy,
+    "correlation": CorrelationStrategy,
+    "regime_trend": RegimeTrendStrategy,
+}
+
+STRATEGY_PARAMS_CLASSES: dict[str, type] = {
+    "momentum": MomentumParams,
+    "mean_reversion": MeanReversionParams,
+    "liquidation_cascade": LiquidationCascadeParams,
+    "correlation": CorrelationParams,
+    "regime_trend": RegimeTrendParams,
+}
 
 
 def deserialize_snapshot(payload: dict[str, Any]) -> MarketSnapshot:
@@ -73,24 +100,43 @@ def signal_to_dict(signal: StandardSignal) -> dict[str, Any]:
     }
 
 
-def build_strategies() -> list[SignalStrategy]:
-    """Instantiate all enabled strategies."""
+def build_strategies_for_instrument(instrument_id: str) -> list[SignalStrategy]:
+    """Instantiate all enabled strategies for a specific instrument.
+
+    Each strategy gets its own config with per-instrument parameter
+    overrides merged in.  A strategy can be disabled for a specific
+    instrument by setting ``enabled: false`` in the instrument override
+    section of the strategy YAML.
+
+    Args:
+        instrument_id: Instrument to build strategies for.
+
+    Returns:
+        List of enabled SignalStrategy instances for this instrument.
+    """
     strategies: list[SignalStrategy] = []
 
-    momentum_config = load_strategy_config("momentum")
-    strategies.append(MomentumStrategy(config=momentum_config))
+    for strategy_name, strategy_cls in STRATEGY_CLASSES.items():
+        # Validate raw config schema before merging instrument overrides
+        raw_config = load_strategy_config(strategy_name)
+        params_cls = STRATEGY_PARAMS_CLASSES.get(strategy_name)
+        if raw_config and params_cls:
+            validate_strategy_config(strategy_name, raw_config, params_cls)
 
-    mr_config = load_strategy_config("mean_reversion")
-    strategies.append(MeanReversionStrategy(config=mr_config))
+        config = load_strategy_config_for_instrument(strategy_name, instrument_id)
 
-    liq_config = load_strategy_config("liquidation_cascade")
-    strategies.append(LiquidationCascadeStrategy(config=liq_config))
+        # Log which parameters differ from defaults for this instrument
+        if raw_config and params_cls:
+            default_params = raw_config.get("parameters", {})
+            merged_params = config.get("parameters", {})
+            log_config_diff(strategy_name, instrument_id, merged_params, default_params)
 
-    corr_config = load_strategy_config("correlation")
-    strategies.append(CorrelationStrategy(config=corr_config))
+        # Check if strategy is disabled globally or for this instrument
+        strategy_meta = config.get("strategy", {})
+        if not strategy_meta.get("enabled", True):
+            continue
 
-    rt_config = load_strategy_config("regime_trend")
-    strategies.append(RegimeTrendStrategy(config=rt_config))
+        strategies.append(strategy_cls(config=config))
 
     return [s for s in strategies if s.enabled]
 
@@ -99,15 +145,33 @@ async def run_agent() -> None:
     """Main event loop for the signal generation agent."""
     settings = get_settings()
 
+    # Determine active instruments
+    yaml_instruments = (
+        settings.yaml_config.get("instruments", {}).get("active")
+    )
+    instrument_ids = yaml_instruments if yaml_instruments else ACTIVE_INSTRUMENT_IDS
+
     consumer = RedisConsumer(redis_url=settings.infra.redis_url)
     publisher = RedisPublisher(redis_url=settings.infra.redis_url)
-    store = FeatureStore(sample_interval=timedelta(seconds=30))
-    strategies = build_strategies()
 
-    logger.info(
-        "signals_starting",
-        strategies=[s.name for s in strategies],
-    )
+    # Per-instrument feature stores
+    stores: dict[str, FeatureStore] = {
+        iid: FeatureStore(sample_interval=timedelta(seconds=30))
+        for iid in instrument_ids
+    }
+
+    # Per-instrument strategy instances (each with merged params)
+    strategies_by_instrument: dict[str, list[SignalStrategy]] = {
+        iid: build_strategies_for_instrument(iid)
+        for iid in instrument_ids
+    }
+
+    for iid, strats in strategies_by_instrument.items():
+        logger.info(
+            "instrument_strategies",
+            instrument=iid,
+            strategies=[s.name for s in strats],
+        )
 
     await consumer.subscribe(
         channels=[Channel.MARKET_SNAPSHOTS],
@@ -127,12 +191,18 @@ async def run_agent() -> None:
                 await consumer.ack(channel, "signals_agent", msg_id)
                 continue
 
-            # Update feature store
+            # Route to the correct per-instrument feature store
+            instrument = snapshot.instrument
+            store = stores.get(instrument)
+            if store is None:
+                await consumer.ack(channel, "signals_agent", msg_id)
+                continue
+
             store.update(snapshot)
             snapshot_count += 1
 
-            # Run all strategies
-            for strategy in strategies:
+            # Run this instrument's strategies
+            for strategy in strategies_by_instrument.get(instrument, []):
                 if store.sample_count < strategy.min_history:
                     continue
 
@@ -142,6 +212,7 @@ async def run_agent() -> None:
                     logger.error(
                         "strategy_error",
                         strategy=strategy.name,
+                        instrument=instrument,
                         error=str(e),
                     )
                     continue
@@ -155,6 +226,7 @@ async def run_agent() -> None:
                     logger.info(
                         "signal_emitted",
                         strategy=strategy.name,
+                        instrument=signal.instrument,
                         direction=signal.direction.value,
                         conviction=signal.conviction,
                         entry=str(signal.entry_price),
@@ -167,7 +239,9 @@ async def run_agent() -> None:
                     "signals_progress",
                     snapshots=snapshot_count,
                     signals_emitted=signal_count,
-                    feature_samples=store.sample_count,
+                    store_samples={
+                        iid: s.sample_count for iid, s in stores.items()
+                    },
                 )
     finally:
         await consumer.close()
