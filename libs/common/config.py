@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from typing import Any
 
+import structlog
 import yaml
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -107,17 +109,154 @@ def load_strategy_config(strategy_name: str) -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
+def load_strategy_config_for_instrument(
+    strategy_name: str,
+    instrument_id: str,
+) -> dict[str, Any]:
+    """Load strategy config with per-instrument parameter overrides.
+
+    Reads the base strategy YAML, then merges any instrument-specific
+    overrides from the ``instruments.<instrument_id>`` section.
+
+    The merge is shallow on ``parameters``: instrument-level keys
+    override base keys, unset keys keep the base value.
+
+    An instrument section can also set ``enabled: false`` to disable
+    the strategy for that specific instrument.
+
+    Example YAML layout::
+
+        strategy:
+          name: regime_trend
+          enabled: true
+          weight: 0.30
+        parameters:
+          trend_ema_period: 50
+          adx_threshold: 22
+        instruments:
+          BTC-PERP:
+            parameters:
+              trend_ema_period: 40
+          SPY-PERP:
+            enabled: false
+
+    Args:
+        strategy_name: Strategy name (maps to configs/strategies/{name}.yaml).
+        instrument_id: Instrument to resolve overrides for.
+
+    Returns:
+        Merged config dict with ``strategy``, ``parameters``, and an
+        ``_instrument`` key recording which instrument this is for.
+    """
+    base = load_strategy_config(strategy_name)
+    if not base:
+        return base
+
+    result = dict(base)
+    result["_instrument"] = instrument_id
+
+    overrides = base.get("instruments", {}).get(instrument_id, {})
+    if not overrides:
+        return result
+
+    # Merge strategy-level keys (enabled, weight)
+    if "enabled" in overrides:
+        result.setdefault("strategy", {})["enabled"] = overrides["enabled"]
+    if "weight" in overrides:
+        result.setdefault("strategy", {})["weight"] = overrides["weight"]
+
+    # Merge parameters (shallow: override keys win, rest kept from base)
+    if "parameters" in overrides:
+        merged_params = dict(result.get("parameters", {}))
+        merged_params.update(overrides["parameters"])
+        result["parameters"] = merged_params
+
+    return result
+
+
+_config_logger = structlog.get_logger(__name__)
+
+VALID_TOP_LEVEL_KEYS = {"strategy", "parameters", "instruments"}
+VALID_STRATEGY_KEYS = {"name", "enabled", "weight"}
+
+
+def validate_strategy_config(
+    strategy_name: str,
+    config: dict[str, Any],
+    params_cls: type,
+) -> None:
+    """Validate strategy YAML config keys against known schema.
+
+    Raises ValueError for unknown base-level keys (halts startup).
+    Logs warning for unknown instrument-level keys (non-fatal).
+
+    Args:
+        strategy_name: Name of the strategy (for error messages).
+        config: Parsed YAML config dict.
+        params_cls: The strategy's Params dataclass class.
+
+    Raises:
+        ValueError: If unknown keys found at base level.
+    """
+    # Skip internal keys added by merge logic
+    internal_keys = {"_instrument"}
+
+    # Check top-level keys (D-06: error and halt)
+    unknown_top = set(config.keys()) - VALID_TOP_LEVEL_KEYS - internal_keys
+    if unknown_top:
+        raise ValueError(
+            f"Strategy '{strategy_name}': unknown top-level keys: {sorted(unknown_top)}"
+        )
+
+    # Check strategy block keys (D-06)
+    strategy_block = config.get("strategy", {})
+    if strategy_block:
+        unknown_strategy = set(strategy_block.keys()) - VALID_STRATEGY_KEYS
+        if unknown_strategy:
+            raise ValueError(
+                f"Strategy '{strategy_name}': unknown strategy keys: {sorted(unknown_strategy)}"
+            )
+
+    # Check parameter keys against dataclass fields (D-05: error and halt)
+    valid_params = {f.name for f in dataclasses.fields(params_cls)}
+    yaml_params = set(config.get("parameters", {}).keys())
+    unknown_params = yaml_params - valid_params
+    if unknown_params:
+        raise ValueError(
+            f"Strategy '{strategy_name}': unknown parameter keys: {sorted(unknown_params)}"
+        )
+
+    # Check instrument-level parameter keys (D-07: warn, don't halt)
+    for instrument_id, overrides in config.get("instruments", {}).items():
+        if isinstance(overrides, dict) and "parameters" in overrides:
+            inst_params = set(overrides["parameters"].keys())
+            unknown_inst = inst_params - valid_params
+            if unknown_inst:
+                _config_logger.warning(
+                    "unknown_instrument_params",
+                    strategy=strategy_name,
+                    instrument=instrument_id,
+                    unknown_keys=sorted(unknown_inst),
+                )
+
+
 def get_settings() -> AppSettings:
     """Build and return the full application settings.
 
     Reads from environment variables (via pydantic-settings) and merges
-    with the YAML config determined by the ENVIRONMENT env var.
+    with the YAML config determined by the ENVIRONMENT env var.  Also
+    populates the instrument registry from the YAML config.
     """
+    from libs.common.constants import load_instruments_from_config
+
     infra = InfraSettings()
     yaml_config = load_yaml_config(infra.environment)
     # Fall back to default if environment-specific config is empty
     if not yaml_config:
         yaml_config = load_yaml_config("default")
+
+    # Populate instrument registry from config (before any agent reads it)
+    load_instruments_from_config(yaml_config)
 
     return AppSettings(
         coinbase=CoinbaseSettings(),
