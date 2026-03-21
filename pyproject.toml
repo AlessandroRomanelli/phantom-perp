@@ -25,6 +25,8 @@ dependencies = [
     "numpy>=1.26,<3",
     "scikit-learn>=1.4,<2",
     "xgboost>=2,<3",
+    "scipy>=1.14,<2",
+    "bottleneck>=1.4,<2",
 ]
 
 [project.optional-dependencies]

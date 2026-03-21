@@ -63,6 +63,8 @@ class SignalSource(str, Enum):
     CORRELATION = "correlation"
     ONCHAIN = "onchain"
     REGIME_TREND = "regime_trend"
+    VWAP = "vwap"
+    VOLUME_PROFILE = "volume_profile"
 
 
 class MarketRegime(str, Enum):
