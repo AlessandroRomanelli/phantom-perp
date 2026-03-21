@@ -124,3 +124,82 @@ class TestFeatureStore:
         store = FeatureStore()
         assert store.latest_close is None
         assert store.latest_timestamp is None
+
+
+def _snap_with_volume(
+    ts: datetime,
+    mark: float = 2230.0,
+    volume_24h: float = 15000.0,
+) -> MarketSnapshot:
+    """Create a MarketSnapshot with a specific volume_24h for testing."""
+    return MarketSnapshot(
+        timestamp=ts,
+        instrument=INSTRUMENT_ID,
+        mark_price=Decimal(str(mark)),
+        index_price=Decimal(str(mark - 0.5)),
+        last_price=Decimal(str(mark)),
+        best_bid=Decimal(str(mark - 0.25)),
+        best_ask=Decimal(str(mark + 0.25)),
+        spread_bps=2.2,
+        volume_24h=Decimal(str(volume_24h)),
+        open_interest=Decimal("80000"),
+        funding_rate=Decimal("0.0001"),
+        next_funding_time=ts + timedelta(minutes=30),
+        hours_since_last_funding=0.5,
+        orderbook_imbalance=0.0,
+        volatility_1h=0.15,
+        volatility_24h=0.45,
+    )
+
+
+class TestTimestamps:
+    def test_timestamps_empty(self) -> None:
+        store = FeatureStore()
+        result = store.timestamps
+        assert result.shape == (0,)
+        assert result.dtype == np.float64
+
+    def test_timestamps_returns_epoch_floats(self) -> None:
+        store = FeatureStore(sample_interval=timedelta(seconds=60))
+        base = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
+        ts_list = [base, base + timedelta(seconds=60), base + timedelta(seconds=120)]
+        for ts in ts_list:
+            store.update(_snap_with_volume(ts))
+
+        result = store.timestamps
+        assert result.shape == (3,)
+        assert result.dtype == np.float64
+        for i, ts in enumerate(ts_list):
+            assert result[i] == pytest.approx(ts.timestamp())
+
+
+class TestBarVolumes:
+    def test_bar_volumes_empty(self) -> None:
+        store = FeatureStore()
+        result = store.bar_volumes
+        assert result.shape == (0,)
+
+    def test_bar_volumes_one_sample(self) -> None:
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        base = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
+        store.update(_snap_with_volume(base, volume_24h=100.0))
+        result = store.bar_volumes
+        assert result.shape == (0,)
+
+    def test_bar_volumes_computes_diffs(self) -> None:
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        base = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
+        volumes = [100.0, 150.0, 140.0]
+        for i, vol in enumerate(volumes):
+            store.update(_snap_with_volume(base + timedelta(seconds=i), volume_24h=vol))
+
+        result = store.bar_volumes
+        np.testing.assert_array_almost_equal(result, [50.0, -10.0])
+
+    def test_bar_volumes_length(self) -> None:
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        base = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
+        for i in range(5):
+            store.update(_snap_with_volume(base + timedelta(seconds=i), volume_24h=100.0 + i * 10))
+
+        assert len(store.bar_volumes) == 4
