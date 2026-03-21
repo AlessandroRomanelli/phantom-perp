@@ -7,13 +7,13 @@
 
 ### Infrastructure & Bug Fixes
 
-- [ ] **INFRA-01**: Per-instrument cooldown tracking — strategy cooldown state must be keyed by instrument ID, not shared globally
+- [x] **INFRA-01**: Per-instrument cooldown tracking — strategy cooldown state must be keyed by instrument ID, not shared globally
 - [ ] **INFRA-02**: Config schema validation — warn on unknown YAML parameter keys that don't match the strategy's params dataclass fields
 - [ ] **INFRA-03**: Config diff logging at startup — log which per-instrument parameters differ from defaults and by how much
-- [ ] **INFRA-04**: Add `scipy` and `bottleneck` dependencies for statistical computations and fast rolling windows
-- [ ] **INFRA-05**: Add `VWAP` and `VOLUME_PROFILE` entries to `SignalSource` enum
-- [ ] **INFRA-06**: Add `timestamps` property accessor to FeatureStore (needed for VWAP session reset)
-- [ ] **INFRA-07**: Compute and store `bar_volume` deltas between consecutive volume_24h samples in FeatureStore
+- [x] **INFRA-04**: Add `scipy` and `bottleneck` dependencies for statistical computations and fast rolling windows
+- [x] **INFRA-05**: Add `VWAP` and `VOLUME_PROFILE` entries to `SignalSource` enum
+- [x] **INFRA-06**: Add `timestamps` property accessor to FeatureStore (needed for VWAP session reset)
+- [x] **INFRA-07**: Compute and store `bar_volume` deltas between consecutive volume_24h samples in FeatureStore
 
 ### Per-Instrument Parameter Tuning
 
@@ -123,13 +123,13 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | Phase 1 | Pending |
+| INFRA-01 | Phase 1 | Complete |
 | INFRA-02 | Phase 1 | Pending |
 | INFRA-03 | Phase 1 | Pending |
-| INFRA-04 | Phase 1 | Pending |
-| INFRA-05 | Phase 1 | Pending |
-| INFRA-06 | Phase 1 | Pending |
-| INFRA-07 | Phase 1 | Pending |
+| INFRA-04 | Phase 1 | Complete |
+| INFRA-05 | Phase 1 | Complete |
+| INFRA-06 | Phase 1 | Complete |
+| INFRA-07 | Phase 1 | Complete |
 | TUNE-01 | Phase 1 | Pending |
 | TUNE-02 | Phase 1 | Pending |
 | TUNE-03 | Phase 1 | Pending |
