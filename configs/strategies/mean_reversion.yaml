@@ -11,4 +11,62 @@ parameters:
   rsi_overbought: 70
   adx_period: 14
   adx_max: 40.0
-  min_conviction: 0.4
+  atr_period: 14
+  stop_loss_atr_mult: 1.5
+  min_conviction: 0.35
+  cooldown_bars: 8
+
+instruments:
+  ETH-PERP:
+    parameters:
+      # ETH: Mid-vol, good mean reversion. Lower thresholds for more signals (D-04)
+      bb_std: 1.8
+      rsi_oversold: 32
+      rsi_overbought: 68
+      adx_max: 35.0
+      min_conviction: 0.30
+      cooldown_bars: 6
+
+  BTC-PERP:
+    parameters:
+      # BTC: Lower vol than ETH, tighter bands work, longer cooldown
+      bb_period: 25
+      bb_std: 1.8
+      rsi_oversold: 33
+      rsi_overbought: 67
+      adx_max: 35.0
+      min_conviction: 0.30
+      cooldown_bars: 8
+
+  SOL-PERP:
+    parameters:
+      # SOL: High vol, wider bands needed, faster cooldown for more activity
+      bb_std: 2.2
+      rsi_oversold: 28
+      rsi_overbought: 72
+      adx_max: 45.0
+      stop_loss_atr_mult: 2.0
+      min_conviction: 0.30
+      cooldown_bars: 5
+
+  QQQ-PERP:
+    parameters:
+      # QQQ: Equity perp, lower vol, tighter bands. 24/7 active (D-13, D-15)
+      bb_period: 25
+      bb_std: 1.5
+      rsi_oversold: 35
+      rsi_overbought: 65
+      adx_max: 30.0
+      min_conviction: 0.30
+      cooldown_bars: 10
+
+  SPY-PERP:
+    parameters:
+      # SPY: Lowest vol equity perp, tightest bands
+      bb_period: 25
+      bb_std: 1.5
+      rsi_oversold: 35
+      rsi_overbought: 65
+      adx_max: 28.0
+      min_conviction: 0.30
+      cooldown_bars: 10

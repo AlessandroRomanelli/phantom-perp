@@ -8,4 +8,54 @@ parameters:
   basis_zscore_threshold: 2.0
   oi_divergence_lookback: 20
   oi_divergence_threshold_pct: 1.5
-  min_conviction: 0.4
+  atr_period: 14
+  stop_loss_atr_mult: 2.0
+  take_profit_atr_mult: 3.0
+  min_conviction: 0.35
+  cooldown_bars: 12
+
+instruments:
+  ETH-PERP:
+    parameters:
+      # ETH: Good basis dynamics, lower thresholds for more signals (D-04)
+      basis_zscore_threshold: 1.8
+      oi_divergence_threshold_pct: 1.2
+      min_conviction: 0.30
+      cooldown_bars: 10
+
+  BTC-PERP:
+    parameters:
+      # BTC: Higher liquidity = tighter basis, need lower z-score threshold
+      basis_lookback: 80
+      basis_zscore_threshold: 1.7
+      oi_divergence_threshold_pct: 1.0
+      min_conviction: 0.30
+      cooldown_bars: 12
+
+  SOL-PERP:
+    parameters:
+      # SOL: Wider basis swings, can use higher thresholds but lower conviction
+      basis_zscore_threshold: 2.0
+      oi_divergence_threshold_pct: 2.0
+      stop_loss_atr_mult: 2.5
+      take_profit_atr_mult: 4.0
+      min_conviction: 0.30
+      cooldown_bars: 8
+
+  QQQ-PERP:
+    parameters:
+      # QQQ: Equity perp basis reflects index tracking quality. Higher thresholds.
+      basis_lookback: 80
+      basis_zscore_threshold: 2.2
+      oi_divergence_threshold_pct: 2.0
+      min_conviction: 0.35
+      cooldown_bars: 15
+
+  SPY-PERP:
+    parameters:
+      # SPY: Tightest basis tracking of all. Highest thresholds.
+      basis_lookback: 80
+      basis_zscore_threshold: 2.5
+      oi_divergence_threshold_pct: 2.0
+      min_conviction: 0.35
+      cooldown_bars: 15

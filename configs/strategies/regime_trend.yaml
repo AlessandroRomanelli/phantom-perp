@@ -3,6 +3,7 @@ strategy:
   enabled: true
   weight: 0.30
 
+# Default parameters — applied to all instruments unless overridden below.
 parameters:
   # Higher-timeframe trend filter
   trend_ema_period: 50
@@ -35,6 +36,61 @@ parameters:
   portfolio_a_stop_loss_atr_mult: 1.5
   portfolio_a_take_profit_atr_mult: 2.5
 
-  # Signal control
-  min_conviction: 0.5
+  # Signal control — lowered from 0.5 for more signals (D-04)
+  min_conviction: 0.40
   cooldown_bars: 8
+
+# ── Per-instrument overrides ─────────────────────────────────────────────
+# Only the keys you specify are overridden; everything else keeps the
+# defaults above.  Set "enabled: false" to disable for that instrument.
+
+instruments:
+  ETH-PERP:
+    parameters:
+      # ETH: Mid-vol crypto, slightly lower thresholds than defaults (D-04)
+      adx_threshold: 20
+      atr_expansion_threshold: 1.0
+      min_conviction: 0.35
+      cooldown_bars: 6
+
+  BTC-PERP:
+    parameters:
+      # BTC trends on longer timeframes, needs heavier smoothing
+      trend_ema_period: 60
+      atr_avg_period: 40
+      adx_threshold: 25
+      min_conviction: 0.35
+      cooldown_bars: 12
+
+  SOL-PERP:
+    parameters:
+      # SOL is more volatile — wider expansion threshold, shorter EMAs
+      trend_ema_period: 35
+      atr_expansion_threshold: 1.2
+      fast_ema_period: 15
+      breakout_lookback: 15
+      stop_loss_atr_mult: 3.0
+      take_profit_atr_mult: 5.0
+      min_conviction: 0.35
+      cooldown_bars: 6
+
+  QQQ-PERP:
+    parameters:
+      # Equity index — less volatile, longer trends, tighter filters
+      trend_ema_period: 60
+      adx_threshold: 20
+      atr_expansion_threshold: 1.0
+      min_conviction: 0.35
+      cooldown_bars: 15
+      # Disable Portfolio A — index moves are slower, confirmation preferred
+      portfolio_a_enabled: false
+
+  SPY-PERP:
+    parameters:
+      # Similar to QQQ but even more conservative
+      trend_ema_period: 60
+      adx_threshold: 20
+      atr_expansion_threshold: 1.0
+      min_conviction: 0.35
+      cooldown_bars: 15
+      portfolio_a_enabled: false
