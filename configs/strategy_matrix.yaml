@@ -1,0 +1,45 @@
+# Strategy Matrix — which strategies run on which instruments.
+# This is the single source of truth for per-instrument enablement.
+# Individual strategy YAMLs control global enabled/disabled state;
+# this matrix controls per-instrument enablement within that.
+
+strategies:
+  momentum:
+    enabled: false  # Globally disabled until Phase 2 (D-09)
+    instruments: []
+
+  mean_reversion:
+    enabled: true
+    instruments:
+      - ETH-PERP
+      - BTC-PERP
+      - SOL-PERP
+      - QQQ-PERP
+      - SPY-PERP
+
+  liquidation_cascade:
+    enabled: true
+    instruments:
+      - ETH-PERP
+      - BTC-PERP
+      - SOL-PERP
+      # QQQ/SPY disabled: liquidation cascades are crypto-native (D-11)
+
+  correlation:
+    enabled: true
+    instruments:
+      - ETH-PERP
+      - BTC-PERP
+      - SOL-PERP
+      - QQQ-PERP
+      - SPY-PERP
+      # QQQ/SPY enabled: basis divergence valid for equity perps
+
+  regime_trend:
+    enabled: true
+    instruments:
+      - ETH-PERP
+      - BTC-PERP
+      - SOL-PERP
+      - QQQ-PERP
+      - SPY-PERP

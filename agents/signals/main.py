@@ -12,7 +12,10 @@ import asyncio
 import sys
 from datetime import datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 from libs.common.config import (
     get_settings,
@@ -57,6 +60,15 @@ STRATEGY_PARAMS_CLASSES: dict[str, type] = {
     "correlation": CorrelationParams,
     "regime_trend": RegimeTrendParams,
 }
+
+
+def load_strategy_matrix() -> dict[str, Any]:
+    """Load the strategy-instrument enablement matrix."""
+    matrix_path = Path(__file__).resolve().parent.parent.parent / "configs" / "strategy_matrix.yaml"
+    if not matrix_path.exists():
+        return {}
+    with open(matrix_path) as f:
+        return yaml.safe_load(f) or {}
 
 
 def deserialize_snapshot(payload: dict[str, Any]) -> MarketSnapshot:
@@ -115,8 +127,19 @@ def build_strategies_for_instrument(instrument_id: str) -> list[SignalStrategy]:
         List of enabled SignalStrategy instances for this instrument.
     """
     strategies: list[SignalStrategy] = []
+    matrix = load_strategy_matrix()
 
     for strategy_name, strategy_cls in STRATEGY_CLASSES.items():
+        # Matrix global toggle overrides per-strategy YAML
+        matrix_entry = matrix.get("strategies", {}).get(strategy_name, {})
+        if not matrix_entry.get("enabled", True):
+            continue
+
+        # Matrix instrument list controls per-instrument enablement
+        matrix_instruments = matrix_entry.get("instruments", [])
+        if matrix_instruments and instrument_id not in matrix_instruments:
+            continue
+
         # Validate raw config schema before merging instrument overrides
         raw_config = load_strategy_config(strategy_name)
         params_cls = STRATEGY_PARAMS_CLASSES.get(strategy_name)
