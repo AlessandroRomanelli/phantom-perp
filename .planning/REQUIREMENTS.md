@@ -123,55 +123,55 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | — | Pending |
-| INFRA-02 | — | Pending |
-| INFRA-03 | — | Pending |
-| INFRA-04 | — | Pending |
-| INFRA-05 | — | Pending |
-| INFRA-06 | — | Pending |
-| INFRA-07 | — | Pending |
-| TUNE-01 | — | Pending |
-| TUNE-02 | — | Pending |
-| TUNE-03 | — | Pending |
-| TUNE-04 | — | Pending |
-| TUNE-05 | — | Pending |
-| MOM-01 | — | Pending |
-| MOM-02 | — | Pending |
-| MOM-03 | — | Pending |
-| MOM-04 | — | Pending |
-| MR-01 | — | Pending |
-| MR-02 | — | Pending |
-| MR-03 | — | Pending |
-| MR-04 | — | Pending |
-| LIQ-01 | — | Pending |
-| LIQ-02 | — | Pending |
-| CORR-01 | — | Pending |
-| CORR-02 | — | Pending |
-| CORR-03 | — | Pending |
-| RT-01 | — | Pending |
-| RT-02 | — | Pending |
-| FUND-01 | — | Pending |
-| FUND-02 | — | Pending |
-| FUND-03 | — | Pending |
-| OBI-01 | — | Pending |
-| OBI-02 | — | Pending |
-| OBI-03 | — | Pending |
-| OBI-04 | — | Pending |
-| VWAP-01 | — | Pending |
-| VWAP-02 | — | Pending |
-| VWAP-03 | — | Pending |
-| VWAP-04 | — | Pending |
-| XQ-01 | — | Pending |
-| XQ-02 | — | Pending |
-| XQ-03 | — | Pending |
-| XQ-04 | — | Pending |
-| XQ-05 | — | Pending |
+| INFRA-01 | Phase 1 | Pending |
+| INFRA-02 | Phase 1 | Pending |
+| INFRA-03 | Phase 1 | Pending |
+| INFRA-04 | Phase 1 | Pending |
+| INFRA-05 | Phase 1 | Pending |
+| INFRA-06 | Phase 1 | Pending |
+| INFRA-07 | Phase 1 | Pending |
+| TUNE-01 | Phase 1 | Pending |
+| TUNE-02 | Phase 1 | Pending |
+| TUNE-03 | Phase 1 | Pending |
+| TUNE-04 | Phase 1 | Pending |
+| TUNE-05 | Phase 1 | Pending |
+| MOM-01 | Phase 2 | Pending |
+| MOM-02 | Phase 2 | Pending |
+| MOM-03 | Phase 2 | Pending |
+| MOM-04 | Phase 2 | Pending |
+| MR-01 | Phase 2 | Pending |
+| MR-02 | Phase 2 | Pending |
+| MR-03 | Phase 2 | Pending |
+| MR-04 | Phase 2 | Pending |
+| LIQ-01 | Phase 3 | Pending |
+| LIQ-02 | Phase 3 | Pending |
+| CORR-01 | Phase 3 | Pending |
+| CORR-02 | Phase 3 | Pending |
+| CORR-03 | Phase 3 | Pending |
+| RT-01 | Phase 3 | Pending |
+| RT-02 | Phase 3 | Pending |
+| FUND-01 | Phase 4 | Pending |
+| FUND-02 | Phase 4 | Pending |
+| FUND-03 | Phase 4 | Pending |
+| OBI-01 | Phase 4 | Pending |
+| OBI-02 | Phase 4 | Pending |
+| OBI-03 | Phase 4 | Pending |
+| OBI-04 | Phase 4 | Pending |
+| VWAP-01 | Phase 4 | Pending |
+| VWAP-02 | Phase 4 | Pending |
+| VWAP-03 | Phase 4 | Pending |
+| VWAP-04 | Phase 4 | Pending |
+| XQ-01 | Phase 5 | Pending |
+| XQ-02 | Phase 5 | Pending |
+| XQ-03 | Phase 5 | Pending |
+| XQ-04 | Phase 5 | Pending |
+| XQ-05 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 42 total
-- Mapped to phases: 0
-- Unmapped: 42 ⚠️
+- v1 requirements: 43 total
+- Mapped to phases: 43
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-21*
-*Last updated: 2026-03-21 after initial definition*
+*Last updated: 2026-03-21 after roadmap creation*
