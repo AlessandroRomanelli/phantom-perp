@@ -22,6 +22,11 @@ Better signal quality and broader market coverage — the bot should trade smart
 - ✓ FeatureStore with price, volume, OI, funding, orderbook data — existing
 - ✓ StandardSignal contract with conviction, direction, stops — existing
 - ✓ SignalSource enum with slots for funding_arb, orderbook_imbalance — existing
+- ✓ Per-instrument parameter tuning — separate configs for ETH, BTC, SOL, QQQ, SPY with asset-appropriate thresholds — Validated in Phase 1
+- ✓ Config schema validation — unknown YAML keys detected at startup — Validated in Phase 1
+- ✓ FeatureStore timestamps and bar_volume deltas — Validated in Phase 1
+- ✓ SignalSource enum includes VWAP and VOLUME_PROFILE entries — Validated in Phase 1
+- ✓ Strategy matrix for per-instrument enablement — Validated in Phase 1
 
 ### Active
 
@@ -30,7 +35,6 @@ Better signal quality and broader market coverage — the bot should trade smart
 - [ ] Improve liquidation cascade strategy — graduated response levels, volume confirmation, better timing
 - [ ] Improve correlation strategy — multi-window basis analysis, funding rate integration, stronger divergence detection
 - [ ] Improve regime trend strategy — adaptive filter thresholds, multi-timeframe confirmation, trailing stops
-- [ ] Per-instrument parameter tuning — separate configs for each of ETH, BTC, SOL, QQQ, SPY with asset-appropriate thresholds
 - [ ] Funding rate arbitrage strategy — trade funding rate dislocations, carry trade logic, predicted vs actual rate divergence
 - [ ] Orderbook imbalance strategy — bid/ask depth analysis, absorption detection, sweep detection
 - [ ] VWAP strategy — deviation from session VWAP as mean reversion anchor, time-of-day awareness
@@ -71,7 +75,7 @@ Better signal quality and broader market coverage — the bot should trade smart
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Per-instrument tuning over universal params | ETH weekends vs SPY equity hours are completely different — one-size-fits-all leaves performance on the table | — Pending |
+| Per-instrument tuning over universal params | ETH weekends vs SPY equity hours are completely different — one-size-fits-all leaves performance on the table | ✓ Phase 1 |
 | Proven quant patterns over exotic signals | Focus on well-established patterns (VWAP, volume profile, funding arb, orderbook flow) before exploring exotic approaches | — Pending |
 | Dual routing for all strategies | High-conviction signals from any strategy should be eligible for Portfolio A autonomous execution | — Pending |
 | Both improve existing + build new | Equal priority on making current strategies smarter and adding new ones that fill coverage gaps | — Pending |
@@ -94,4 +98,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-21 after initialization*
+*Last updated: 2026-03-21 after Phase 1 completion*
