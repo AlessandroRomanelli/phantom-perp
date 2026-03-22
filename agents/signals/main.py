@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from dataclasses import replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -26,12 +27,15 @@ from libs.common.config import (
 )
 from libs.common.constants import ACTIVE_INSTRUMENT_IDS
 from libs.common.logging import setup_logging
+from libs.common.models.enums import PortfolioTarget
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
 
+from agents.signals.conviction_normalizer import normalize_conviction, should_route_portfolio_a
 from agents.signals.feature_store import FeatureStore
+from agents.signals.session_classifier import SessionType, classify_session
 from agents.signals.strategies.base import SignalStrategy
 from agents.signals.strategies.correlation import CorrelationParams, CorrelationStrategy
 from agents.signals.strategies.liquidation_cascade import (
@@ -49,7 +53,7 @@ from agents.signals.strategies.vwap import VWAPParams, VWAPStrategy
 
 logger = setup_logging("signals", json_output=False)
 
-# Strategy name → class mapping.  Add new strategies here.
+# Strategy name -> class mapping.  Add new strategies here.
 STRATEGY_CLASSES: dict[str, type[SignalStrategy]] = {
     "momentum": MomentumStrategy,
     "mean_reversion": MeanReversionStrategy,
@@ -78,6 +82,128 @@ def load_strategy_matrix() -> dict[str, Any]:
         return {}
     with open(matrix_path) as f:
         return yaml.safe_load(f) or {}
+
+
+def load_session_config() -> dict[str, Any]:
+    """Load session-aware parameter overrides from configs/sessions.yaml.
+
+    Returns:
+        Parsed YAML dict with 'instrument_types' and 'strategies' keys,
+        or empty dict if file not found.
+    """
+    session_path = Path(__file__).resolve().parent.parent.parent / "configs" / "sessions.yaml"
+    if not session_path.exists():
+        return {}
+    with open(session_path) as f:
+        return yaml.safe_load(f) or {}
+
+
+def get_session_overrides(
+    session_config: dict[str, Any],
+    strategy_name: str,
+    session_type: SessionType,
+    instrument: str,
+) -> dict[str, Any]:
+    """Look up session overrides for a strategy and instrument.
+
+    For equity instruments during non-equity-hours weekday sessions,
+    also checks the equity_off_hours key.
+
+    Args:
+        session_config: Parsed session YAML config.
+        strategy_name: Strategy name (e.g. 'momentum').
+        session_type: Current session type classification.
+        instrument: Instrument ID (e.g. 'ETH-PERP').
+
+    Returns:
+        Dict of parameter overrides, or empty dict if none apply.
+    """
+    strategies = session_config.get("strategies", {})
+    strategy_overrides = strategies.get(strategy_name, {})
+
+    # Determine if this is an equity instrument
+    instrument_types = session_config.get("instrument_types", {})
+    equity_instruments = instrument_types.get("equity", [])
+    is_equity = instrument in equity_instruments
+
+    # For equity instruments during crypto_weekday (non-equity hours),
+    # use equity_off_hours overrides
+    if is_equity and session_type == SessionType.CRYPTO_WEEKDAY:
+        return dict(strategy_overrides.get("equity_off_hours", {}))
+
+    # Standard lookup by session type value
+    return dict(strategy_overrides.get(session_type.value, {}))
+
+
+def _apply_session_overrides(
+    strategy: SignalStrategy,
+    overrides: dict[str, Any],
+) -> dict[str, Any]:
+    """Temporarily apply session overrides to strategy params.
+
+    Saves original values before overwriting so they can be restored.
+
+    Args:
+        strategy: Strategy instance to mutate.
+        overrides: Dict of param_name -> override_value.
+
+    Returns:
+        Dict of param_name -> original_value for restoration.
+    """
+    if not overrides:
+        return {}
+
+    originals: dict[str, Any] = {}
+    params = strategy._params  # type: ignore[attr-defined]
+    for key, value in overrides.items():
+        if hasattr(params, key):
+            originals[key] = getattr(params, key)
+            object.__setattr__(params, key, value)
+    return originals
+
+
+def _restore_params(
+    strategy: SignalStrategy,
+    originals: dict[str, Any],
+) -> None:
+    """Restore original parameter values after session override application.
+
+    Args:
+        strategy: Strategy instance to restore.
+        originals: Dict of param_name -> original_value.
+    """
+    if not originals:
+        return
+
+    params = strategy._params  # type: ignore[attr-defined]
+    for key, value in originals.items():
+        object.__setattr__(params, key, value)
+
+
+def _apply_conviction_normalization(signal: StandardSignal) -> StandardSignal:
+    """Apply conviction normalization and unified Portfolio A routing.
+
+    Post-processes a signal by:
+    1. Computing conviction band via normalize_conviction.
+    2. If conviction meets unified threshold, setting suggested_target to A.
+
+    Args:
+        signal: Original signal from strategy.
+
+    Returns:
+        Updated signal with conviction_band metadata and possibly updated target.
+    """
+    result = normalize_conviction(signal.conviction)
+    updated_metadata = {**signal.metadata, "conviction_band": result.band}
+
+    if should_route_portfolio_a(signal.conviction):
+        return replace(
+            signal,
+            suggested_target=PortfolioTarget.A,
+            metadata=updated_metadata,
+        )
+
+    return replace(signal, metadata=updated_metadata)
 
 
 def deserialize_snapshot(payload: dict[str, Any]) -> MarketSnapshot:
@@ -183,6 +309,14 @@ async def run_agent() -> None:
     )
     instrument_ids = yaml_instruments if yaml_instruments else ACTIVE_INSTRUMENT_IDS
 
+    # Load session config once at startup
+    session_config = load_session_config()
+    if session_config:
+        logger.info(
+            "session_config_loaded",
+            strategies=list(session_config.get("strategies", {}).keys()),
+        )
+
     consumer = RedisConsumer(redis_url=settings.infra.redis_url)
     publisher = RedisPublisher(redis_url=settings.infra.redis_url)
 
@@ -233,10 +367,19 @@ async def run_agent() -> None:
             store.update(snapshot)
             snapshot_count += 1
 
+            # Classify current session for session-aware overrides
+            session_info = classify_session(snapshot.timestamp)
+
             # Run this instrument's strategies
             for strategy in strategies_by_instrument.get(instrument, []):
                 if store.sample_count < strategy.min_history:
                     continue
+
+                # Apply session overrides temporarily
+                overrides = get_session_overrides(
+                    session_config, strategy.name, session_info.session_type, instrument,
+                )
+                originals = _apply_session_overrides(strategy, overrides)
 
                 try:
                     signals = strategy.evaluate(snapshot, store)
@@ -247,9 +390,15 @@ async def run_agent() -> None:
                         instrument=instrument,
                         error=str(e),
                     )
-                    continue
+                    signals = []
+                finally:
+                    # Restore original params after evaluation
+                    _restore_params(strategy, originals)
 
                 for signal in signals:
+                    # Apply conviction normalization and unified routing
+                    signal = _apply_conviction_normalization(signal)
+
                     await publisher.publish(
                         Channel.SIGNALS,
                         signal_to_dict(signal),
@@ -261,6 +410,7 @@ async def run_agent() -> None:
                         instrument=signal.instrument,
                         direction=signal.direction.value,
                         conviction=signal.conviction,
+                        conviction_band=signal.metadata.get("conviction_band"),
                         entry=str(signal.entry_price),
                     )
 

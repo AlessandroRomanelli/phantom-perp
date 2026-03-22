@@ -1,0 +1,58 @@
+# Session-aware parameter overrides.
+# Applied at evaluate()-time based on current session classification.
+# Only params that change need to be listed. Values override base strategy params.
+
+instrument_types:
+  crypto: ["ETH-PERP", "BTC-PERP", "SOL-PERP"]
+  equity: ["QQQ-PERP", "SPY-PERP"]
+
+strategies:
+  momentum:
+    crypto_weekend:
+      min_conviction: 0.30
+      cooldown_bars: 3
+      vol_min_ratio: 0.3
+    equity_off_hours:
+      min_conviction: 0.35
+      cooldown_bars: 4
+  mean_reversion:
+    crypto_weekend:
+      min_conviction: 0.25
+      cooldown_bars: 6
+    equity_off_hours:
+      min_conviction: 0.30
+      cooldown_bars: 8
+  liquidation_cascade:
+    crypto_weekend:
+      min_conviction: 0.30
+      cooldown_bars: 4
+    equity_off_hours:
+      min_conviction: 0.35
+  correlation:
+    crypto_weekend:
+      min_conviction: 0.30
+      cooldown_bars: 8
+    equity_off_hours:
+      min_conviction: 0.35
+      cooldown_bars: 10
+  regime_trend:
+    crypto_weekend:
+      min_conviction: 0.30
+      cooldown_bars: 5
+      adx_threshold: 18.0
+    equity_off_hours:
+      min_conviction: 0.35
+      cooldown_bars: 10
+  orderbook_imbalance:
+    crypto_weekend:
+      min_conviction: 0.30
+      cooldown_bars: 2
+      min_depth_ratio: 0.3
+    equity_off_hours:
+      min_conviction: 0.35
+  vwap:
+    crypto_weekend:
+      min_conviction: 0.30
+      cooldown_bars: 4
+    equity_off_hours:
+      min_conviction: 0.35
