@@ -28,7 +28,6 @@ from libs.coinbase.models import PortfolioResponse, PositionResponse
 from libs.coinbase.rate_limiter import RateLimiter
 from libs.coinbase.rest_client import CoinbaseRESTClient
 from libs.common.config import get_settings
-from libs.common.constants import INSTRUMENT_ID
 from libs.common.exceptions import CoinbaseAPIError, RateLimitExceededError
 from libs.common.logging import setup_logging
 from libs.common.models.enums import (

@@ -23,7 +23,6 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
-from libs.common.constants import INSTRUMENT_ID
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal

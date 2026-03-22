@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from libs.common.constants import TICK_SIZE
 from libs.common.models.enums import OrderSide, OrderType
 
 
@@ -38,6 +37,7 @@ def build_protective_orders(
     fill_size: Decimal,
     stop_loss_price: Decimal | None,
     take_profit_price: Decimal | None,
+    tick_size: Decimal = Decimal("0.01"),
 ) -> ProtectiveOrders:
     """Build protective order parameters after a primary fill.
 
@@ -59,7 +59,7 @@ def build_protective_orders(
             side=close_side,
             size=fill_size,
             order_type=OrderType.STOP_MARKET,
-            stop_price=_round_to_tick(stop_loss_price),
+            stop_price=_round_to_tick(stop_loss_price, tick_size),
             limit_price=None,
             reduce_only=True,
         )
@@ -70,8 +70,8 @@ def build_protective_orders(
             side=close_side,
             size=fill_size,
             order_type=OrderType.LIMIT,
-            stop_price=_round_to_tick(take_profit_price),
-            limit_price=_round_to_tick(take_profit_price),
+            stop_price=_round_to_tick(take_profit_price, tick_size),
+            limit_price=_round_to_tick(take_profit_price, tick_size),
             reduce_only=True,
         )
 
@@ -101,5 +101,5 @@ def validate_stop_loss_required(
     return stop_loss_price > fill_price
 
 
-def _round_to_tick(price: Decimal) -> Decimal:
-    return (price / TICK_SIZE).quantize(Decimal("1")) * TICK_SIZE
+def _round_to_tick(price: Decimal, tick_size: Decimal = Decimal("0.01")) -> Decimal:
+    return (price / tick_size).quantize(Decimal("1")) * tick_size

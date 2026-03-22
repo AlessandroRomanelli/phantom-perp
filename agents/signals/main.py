@@ -26,7 +26,7 @@ from libs.common.config import (
     log_config_diff,
     validate_strategy_config,
 )
-from libs.common.constants import ACTIVE_INSTRUMENT_IDS
+from libs.common.instruments import get_active_instrument_ids
 from libs.common.logging import setup_logging
 from libs.common.models.enums import PortfolioTarget
 from libs.common.models.market_snapshot import MarketSnapshot
@@ -323,7 +323,7 @@ async def run_agent() -> None:
     yaml_instruments = (
         settings.yaml_config.get("instruments", {}).get("active")
     )
-    instrument_ids = yaml_instruments if yaml_instruments else ACTIVE_INSTRUMENT_IDS
+    instrument_ids = yaml_instruments if yaml_instruments else get_active_instrument_ids()
 
     # Load session config once at startup
     session_config = load_session_config()

@@ -94,19 +94,19 @@ def evaluate_retry(
 def _adjust_price_for_retry(
     plan: ExecutionPlan,
     attempt: int,
+    tick_size: Decimal = Decimal("0.01"),
 ) -> ExecutionPlan:
     """Adjust the execution plan for a retry attempt.
 
     For LIMIT orders, widen the price slightly to improve fill probability.
     """
-    from libs.common.constants import TICK_SIZE
     from libs.common.models.enums import OrderType
 
     if plan.order_type != OrderType.LIMIT or plan.limit_price is None:
         return plan
 
     # Each retry widens the price by 1 tick
-    adjustment = TICK_SIZE * Decimal(attempt + 1)
+    adjustment = tick_size * Decimal(attempt + 1)
     # We don't know side here, so widen in both directions
     # The caller should handle which direction is appropriate
     new_price = plan.limit_price + adjustment

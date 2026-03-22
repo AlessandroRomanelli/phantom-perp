@@ -21,10 +21,9 @@ from libs.coinbase.client_pool import CoinbaseClientPool
 from libs.common.config import get_settings, load_yaml_config
 from libs.common.constants import (
     FUNDING_RATE_CIRCUIT_BREAKER_PCT,
-    INSTRUMENT_ID,
-    MIN_ORDER_SIZE,
     STALE_DATA_HALT_SECONDS,
 )
+from libs.common.instruments import get_instrument
 from libs.common.logging import setup_logging
 from libs.common.models.enums import (
     OrderSide,
@@ -199,6 +198,7 @@ class RiskEngine:
         # 7. Position sizing
         # ------------------------------------------------------------------
         entry_price = idea.entry_price or market_price
+        inst = get_instrument(idea.instrument)
         size = compute_position_size(
             entry_price=entry_price,
             conviction=idea.conviction,
@@ -206,13 +206,13 @@ class RiskEngine:
             used_margin=portfolio_state.used_margin_usdc,
             existing_positions=open_positions,
             limits=limits,
+            min_order_size=inst.min_order_size,
         )
-
-        if size < MIN_ORDER_SIZE:
+        if size < inst.min_order_size:
             return RiskCheckResult(
                 approved=False,
                 rejection_reason=(
-                    f"Computed size {size} ETH below minimum {MIN_ORDER_SIZE}"
+                    f"Computed size {size} below minimum {inst.min_order_size}"
                 ),
             )
 
@@ -321,7 +321,7 @@ class RiskEngine:
         order = ProposedOrder(
             order_id=generate_id("ord"),
             signal_id=idea.idea_id,
-            instrument=INSTRUMENT_ID,
+            instrument=idea.instrument,
             portfolio_target=target,
             side=OrderSide.BUY if idea.direction == PositionSide.LONG else OrderSide.SELL,
             size=size,
@@ -333,7 +333,7 @@ class RiskEngine:
             estimated_fee_usdc=fee,
             estimated_funding_cost_1h_usdc=funding_est.hourly_cost_usdc,
             proposed_at=utc_now(),
-            limit_price=round_to_tick(entry_price),
+            limit_price=round_to_tick(entry_price, inst.tick_size),
             stop_loss=idea.stop_loss,
             take_profit=idea.take_profit,
             leverage=effective_leverage.quantize(Decimal("0.01")),

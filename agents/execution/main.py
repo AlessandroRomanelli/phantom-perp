@@ -27,7 +27,7 @@ import redis.asyncio as aioredis
 
 from libs.coinbase.models import OrderResponse
 from libs.common.config import get_settings, load_yaml_config
-from libs.common.constants import FEE_MAKER, FEE_TAKER, INSTRUMENT_ID
+from libs.common.constants import FEE_MAKER, FEE_TAKER
 from libs.common.logging import setup_logging
 from libs.common.models.enums import (
     OrderSide,

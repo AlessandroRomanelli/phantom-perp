@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from libs.common.constants import MIN_ORDER_SIZE
 from libs.common.models.position import PerpPosition
 from libs.common.utils import round_size
 
@@ -22,6 +21,7 @@ def compute_position_size(
     used_margin: Decimal,
     existing_positions: list[PerpPosition],
     limits: RiskLimits,
+    min_order_size: Decimal = Decimal("0.0001"),
 ) -> Decimal:
     """Compute position size respecting all risk constraints.
 
@@ -66,10 +66,10 @@ def compute_position_size(
     # Take the most restrictive constraint
     max_size = min(max_eth, max_from_equity, max_from_leverage, max_from_margin)
 
-    if max_size < MIN_ORDER_SIZE:
+    if max_size < min_order_size:
         return Decimal("0")
 
     # Scale by conviction
     size = max_size * Decimal(str(conviction))
 
-    return round_size(size)
+    return round_size(size, min_order_size)

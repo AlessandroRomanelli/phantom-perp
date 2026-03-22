@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from libs.common.constants import TICK_SIZE
 from libs.common.models.enums import OrderSide, OrderType
 
 
@@ -32,6 +31,7 @@ def select_algo(
     limit_offset_bps: int = 5,
     prefer_maker: bool = True,
     explicit_limit_price: Decimal | None = None,
+    tick_size: Decimal = Decimal("0.01"),
 ) -> ExecutionPlan:
     """Select execution algorithm and compute the limit price.
 
@@ -59,13 +59,13 @@ def select_algo(
     if explicit_limit_price is not None:
         return ExecutionPlan(
             order_type=OrderType.LIMIT,
-            limit_price=_round_to_tick(explicit_limit_price),
+            limit_price=_round_to_tick(explicit_limit_price, tick_size),
             is_maker=True,
         )
 
     # Try to use LIMIT if we prefer maker and have orderbook data
     if prefer_maker and requested_type in (OrderType.LIMIT, OrderType.MARKET):
-        computed = _compute_limit_price(side, best_bid, best_ask, limit_offset_bps)
+        computed = _compute_limit_price(side, best_bid, best_ask, limit_offset_bps, tick_size)
         if computed is not None:
             return ExecutionPlan(
                 order_type=OrderType.LIMIT,
@@ -121,6 +121,7 @@ def _compute_limit_price(
     best_bid: Decimal | None,
     best_ask: Decimal | None,
     offset_bps: int,
+    tick_size: Decimal = Decimal("0.01"),
 ) -> Decimal | None:
     """Compute a limit price offset from the current best bid/ask.
 
@@ -129,13 +130,13 @@ def _compute_limit_price(
     """
     if side == OrderSide.BUY and best_bid is not None:
         offset = best_bid * Decimal(offset_bps) / Decimal("10000")
-        return _round_to_tick(best_bid + offset)
+        return _round_to_tick(best_bid + offset, tick_size)
     if side == OrderSide.SELL and best_ask is not None:
         offset = best_ask * Decimal(offset_bps) / Decimal("10000")
-        return _round_to_tick(best_ask - offset)
+        return _round_to_tick(best_ask - offset, tick_size)
     return None
 
 
-def _round_to_tick(price: Decimal) -> Decimal:
+def _round_to_tick(price: Decimal, tick_size: Decimal = Decimal("0.01")) -> Decimal:
     """Round a price to the nearest tick size."""
-    return (price / TICK_SIZE).quantize(Decimal("1")) * TICK_SIZE
+    return (price / tick_size).quantize(Decimal("1")) * tick_size
