@@ -128,7 +128,7 @@ async def run_all_candle_pollers(
     Runs all timeframe pollers concurrently using a TaskGroup.
 
     Args:
-        rest_client: Coinbase INTX REST client.
+        rest_client: Coinbase Advanced REST client.
         state: Shared ingestion state.
         instrument_id: Instrument to fetch candles for.
     """

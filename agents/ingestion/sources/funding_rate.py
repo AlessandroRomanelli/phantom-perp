@@ -36,7 +36,7 @@ async def poll_funding_once(
     """Fetch the current funding rate and update state.
 
     Args:
-        rest_client: Coinbase INTX REST client.
+        rest_client: Coinbase Advanced REST client.
         state: Shared ingestion state.
         publisher: Optional publisher to emit FundingRate updates.
         instrument_id: Instrument to fetch funding rate for.
@@ -103,7 +103,7 @@ async def run_funding_poller(
     """Continuously poll the funding rate.
 
     Args:
-        rest_client: Coinbase INTX REST client.
+        rest_client: Coinbase Advanced REST client.
         state: Shared ingestion state.
         publisher: Optional publisher for funding update stream.
         instrument_id: Instrument to fetch funding rate for.
