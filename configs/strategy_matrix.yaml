@@ -5,8 +5,13 @@
 
 strategies:
   momentum:
-    enabled: false  # Globally disabled until Phase 2 (D-09)
-    instruments: []
+    enabled: true
+    instruments:
+      - ETH-PERP
+      - BTC-PERP
+      - SOL-PERP
+      - QQQ-PERP
+      - SPY-PERP
 
   mean_reversion:
     enabled: true

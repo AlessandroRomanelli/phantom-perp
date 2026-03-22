@@ -2,11 +2,13 @@
 
 Signal logic:
   1. Compute fast EMA and slow EMA on the price buffer.
-  2. Detect crossovers (fast crosses above slow → bullish, below → bearish).
+  2. Detect crossovers (fast crosses above slow -> bullish, below -> bearish).
   3. Require ADX > threshold to confirm a trending market.
-  4. RSI confirmation: reject long if overbought, reject short if oversold.
-  5. Conviction scales with ADX strength and RSI agreement.
-  6. Stop-loss placed at 2x ATR from entry; take-profit at 3x ATR.
+  4. Volume confirmation: reject crossovers with low bar volume (MOM-01).
+  5. RSI confirmation: reject long if overbought, reject short if oversold.
+  6. Adaptive conviction: ADX (0-0.35) + RSI (0-0.35) + vol/volatility (0-0.30) (MOM-02).
+  7. Swing point stops with ATR fallback (MOM-03).
+  8. Portfolio A routing for high-conviction signals (MOM-04).
 """
 
 from __future__ import annotations
@@ -17,8 +19,10 @@ from decimal import Decimal
 from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
+from scipy.stats import percentileofscore
 
-from libs.common.constants import INSTRUMENT_ID
+from libs.common.constants import INSTRUMENT_ID  # backward compat default
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
@@ -51,10 +55,17 @@ class MomentumParams:
     take_profit_atr_mult: float = 3.0
     min_conviction: float = 0.5
     cooldown_bars: int = 5
+    # Phase 2 additions
+    vol_lookback: int = 10
+    vol_min_ratio: float = 0.5
+    portfolio_a_min_conviction: float = 0.75
+    swing_lookback: int = 20
+    swing_order: int = 3
 
 
 class MomentumStrategy(SignalStrategy):
-    """Multi-timeframe EMA crossover with ADX filter and RSI confirmation.
+    """Multi-timeframe EMA crossover with ADX filter, volume confirmation,
+    adaptive conviction, swing stops, and Portfolio A routing.
 
     Args:
         params: Strategy parameters. Uses defaults if None.
@@ -73,11 +84,25 @@ class MomentumStrategy(SignalStrategy):
             self._params = MomentumParams(
                 fast_ema_period=p.get("fast_ema_period", self._params.fast_ema_period),
                 slow_ema_period=p.get("slow_ema_period", self._params.slow_ema_period),
+                adx_period=p.get("adx_period", self._params.adx_period),
+                adx_threshold=p.get("adx_threshold", self._params.adx_threshold),
                 rsi_period=p.get("rsi_period", self._params.rsi_period),
                 rsi_overbought=p.get("rsi_overbought", self._params.rsi_overbought),
                 rsi_oversold=p.get("rsi_oversold", self._params.rsi_oversold),
                 atr_period=p.get("atr_period", self._params.atr_period),
+                stop_loss_atr_mult=p.get("stop_loss_atr_mult", self._params.stop_loss_atr_mult),
+                take_profit_atr_mult=p.get(
+                    "take_profit_atr_mult", self._params.take_profit_atr_mult
+                ),
                 min_conviction=p.get("min_conviction", self._params.min_conviction),
+                cooldown_bars=p.get("cooldown_bars", self._params.cooldown_bars),
+                vol_lookback=p.get("vol_lookback", self._params.vol_lookback),
+                vol_min_ratio=p.get("vol_min_ratio", self._params.vol_min_ratio),
+                portfolio_a_min_conviction=p.get(
+                    "portfolio_a_min_conviction", self._params.portfolio_a_min_conviction
+                ),
+                swing_lookback=p.get("swing_lookback", self._params.swing_lookback),
+                swing_order=p.get("swing_order", self._params.swing_order),
             )
 
         self._enabled = True
@@ -101,7 +126,7 @@ class MomentumStrategy(SignalStrategy):
         snapshot: MarketSnapshot,
         store: FeatureStore,
     ) -> list[StandardSignal]:
-        """Evaluate EMA crossover, ADX filter, and RSI confirmation."""
+        """Evaluate EMA crossover, volume filter, ADX filter, and RSI confirmation."""
         self._bars_since_signal += 1
 
         if store.sample_count < self.min_history:
@@ -163,6 +188,17 @@ class MomentumStrategy(SignalStrategy):
         if not bullish_cross and not bearish_cross:
             return []
 
+        # Volume confirmation (MOM-01)
+        bar_vols = store.bar_volumes
+        if len(bar_vols) < p.vol_lookback:
+            return []
+        recent_vols = np.abs(bar_vols[-p.vol_lookback :])
+        vol_avg = float(np.mean(recent_vols))
+        cur_vol = float(np.abs(bar_vols[-1]))
+        if vol_avg > 0 and cur_vol < vol_avg * p.vol_min_ratio:
+            return []  # Low volume, likely false breakout
+        volume_ratio = cur_vol / vol_avg if vol_avg > 0 else 1.0
+
         # RSI confirmation
         rsi_valid = not np.isnan(cur_rsi)
         if bullish_cross and rsi_valid and cur_rsi > p.rsi_overbought:
@@ -170,11 +206,14 @@ class MomentumStrategy(SignalStrategy):
         if bearish_cross and rsi_valid and cur_rsi < p.rsi_oversold:
             return []  # Don't go short when oversold
 
-        # Compute conviction
+        # Compute adaptive conviction (MOM-02)
         conviction = self._compute_conviction(
             cur_adx if adx_valid else 25.0,
             cur_rsi if rsi_valid else 50.0,
             bullish_cross,
+            volume_ratio=volume_ratio,
+            atr_vals=atr_vals,
+            cur_atr=cur_atr,
         )
 
         if conviction < p.min_conviction:
@@ -185,29 +224,57 @@ class MomentumStrategy(SignalStrategy):
         entry = snapshot.last_price
         atr_d = Decimal(str(cur_atr))
 
+        # Swing point stops (MOM-03)
+        swing: float | None = None
         if direction == PositionSide.LONG:
-            stop_loss = round_to_tick(entry - atr_d * Decimal(str(p.stop_loss_atr_mult)))
+            swing = self._find_swing_low(lows, p.swing_lookback, p.swing_order)
+            if swing is not None and Decimal(str(swing)) < entry:
+                stop_loss = round_to_tick(Decimal(str(swing)))
+            else:
+                swing = None  # Mark as not used
+                stop_loss = round_to_tick(entry - atr_d * Decimal(str(p.stop_loss_atr_mult)))
             take_profit = round_to_tick(entry + atr_d * Decimal(str(p.take_profit_atr_mult)))
         else:
-            stop_loss = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)))
+            swing = self._find_swing_high(highs, p.swing_lookback, p.swing_order)
+            if swing is not None and Decimal(str(swing)) > entry:
+                stop_loss = round_to_tick(Decimal(str(swing)))
+            else:
+                swing = None  # Mark as not used
+                stop_loss = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)))
             take_profit = round_to_tick(entry - atr_d * Decimal(str(p.take_profit_atr_mult)))
+
+        # Portfolio A routing (MOM-04)
+        suggested_target = (
+            PortfolioTarget.A
+            if conviction >= p.portfolio_a_min_conviction
+            else PortfolioTarget.B
+        )
+
+        # Compute volatility percentile for metadata
+        valid_atr = atr_vals[~np.isnan(atr_vals)]
+        vol_pct = (
+            float(percentileofscore(valid_atr, cur_atr)) / 100.0
+            if len(valid_atr) > 0
+            else 0.5
+        )
 
         reasoning = (
             f"EMA crossover {'bullish' if bullish_cross else 'bearish'}: "
             f"fast({p.fast_ema_period})={cur_fast:.2f} vs slow({p.slow_ema_period})={cur_slow:.2f}, "
             f"ADX={cur_adx:.1f}" + (f", RSI={cur_rsi:.1f}" if rsi_valid else "")
+            + f", vol_ratio={volume_ratio:.2f}"
         )
 
         signal = StandardSignal(
             signal_id=generate_id("sig"),
             timestamp=utc_now(),
-            instrument=INSTRUMENT_ID,
+            instrument=snapshot.instrument,
             direction=direction,
             conviction=conviction,
             source=SignalSource.MOMENTUM,
             time_horizon=timedelta(hours=4),
             reasoning=reasoning,
-            suggested_target=PortfolioTarget.B,
+            suggested_target=suggested_target,
             entry_price=entry,
             stop_loss=stop_loss,
             take_profit=take_profit,
@@ -217,6 +284,9 @@ class MomentumStrategy(SignalStrategy):
                 "adx": round(cur_adx, 1) if adx_valid else None,
                 "rsi": round(cur_rsi, 1) if rsi_valid else None,
                 "atr": round(cur_atr, 2),
+                "volume_ratio": round(volume_ratio, 3),
+                "vol_percentile": round(vol_pct, 3),
+                "swing_stop": swing is not None,
             },
         )
 
@@ -228,22 +298,125 @@ class MomentumStrategy(SignalStrategy):
         adx_value: float,
         rsi_value: float,
         is_bullish: bool,
+        volume_ratio: float = 1.0,
+        atr_vals: NDArray[np.float64] | None = None,
+        cur_atr: float = 0.0,
     ) -> float:
-        """Compute conviction from ADX strength and RSI agreement.
+        """Compute conviction from ADX, RSI, and volume/volatility components.
 
-        ADX contribution (0-0.5): scales from 0 at ADX=20 to 0.5 at ADX=50+.
-        RSI contribution (0-0.5): scales based on how much RSI agrees with direction.
+        Three-component model (MOM-02):
+          - ADX component (0-0.35): scales from 0 at ADX=20 to 0.35 at ADX=80+.
+          - RSI component (0-0.35): scales based on how much RSI agrees with direction.
+          - Volume/volatility component (0-0.30): combines volume_ratio and ATR percentile.
         """
-        # ADX component: stronger trend = higher conviction
-        adx_score = min((adx_value - 20.0) / 60.0, 0.5)
+        # ADX component: stronger trend = higher conviction (0 to 0.35)
+        adx_score = min((adx_value - 20.0) / 60.0 * 0.35 / 0.5, 0.35)
         adx_score = max(adx_score, 0.0)
 
-        # RSI component: RSI alignment with direction
+        # RSI component: RSI alignment with direction (0 to 0.35)
         if is_bullish:
             # For bullish: RSI 30-50 is ideal (not overbought, room to run)
-            rsi_score = max(0.0, min((70.0 - rsi_value) / 80.0, 0.5))
+            rsi_score = max(0.0, min((70.0 - rsi_value) / 80.0 * 0.35 / 0.5, 0.35))
         else:
             # For bearish: RSI 50-70 is ideal
-            rsi_score = max(0.0, min((rsi_value - 30.0) / 80.0, 0.5))
+            rsi_score = max(0.0, min((rsi_value - 30.0) / 80.0 * 0.35 / 0.5, 0.35))
 
-        return round(min(adx_score + rsi_score, 1.0), 3)
+        # Volume/volatility component (0 to 0.30)
+        # Volume ratio contribution: higher volume = higher conviction
+        vol_ratio_score = min(max((volume_ratio - 0.5) / 2.0, 0.0), 0.15)
+
+        # ATR percentile contribution: high volatility breakouts score higher
+        vol_pct = 0.5  # Default if no ATR data
+        if atr_vals is not None:
+            valid_atr = atr_vals[~np.isnan(atr_vals)]
+            if len(valid_atr) > 0:
+                vol_pct = float(percentileofscore(valid_atr, cur_atr)) / 100.0
+        atr_pct_score = min(vol_pct * 0.15, 0.15)
+
+        vol_score = vol_ratio_score + atr_pct_score
+
+        return round(min(adx_score + rsi_score + vol_score, 1.0), 3)
+
+    def _find_swing_low(
+        self,
+        lows: NDArray[np.float64],
+        lookback: int = 20,
+        order: int = 3,
+    ) -> float | None:
+        """Find the most recent swing low within the lookback window.
+
+        A swing low is a point where the low is less than or equal to the
+        `order` bars on each side.
+
+        Args:
+            lows: Array of low prices.
+            lookback: Number of bars to search backwards.
+            order: Minimum bars on each side of the swing.
+
+        Returns:
+            The swing low price, or None if not found.
+        """
+        if len(lows) < lookback:
+            search = lows
+        else:
+            search = lows[-lookback:]
+
+        if len(search) < 2 * order + 1:
+            return None
+
+        for i in range(len(search) - 1 - order, order - 1, -1):
+            is_swing = True
+            for j in range(1, order + 1):
+                if search[i] > search[i - j]:
+                    is_swing = False
+                    break
+            if is_swing:
+                for j in range(1, min(order + 1, len(search) - i)):
+                    if search[i] > search[i + j]:
+                        is_swing = False
+                        break
+            if is_swing:
+                return float(search[i])
+        return None
+
+    def _find_swing_high(
+        self,
+        highs: NDArray[np.float64],
+        lookback: int = 20,
+        order: int = 3,
+    ) -> float | None:
+        """Find the most recent swing high within the lookback window.
+
+        A swing high is a point where the high is greater than or equal to
+        the `order` bars on each side.
+
+        Args:
+            highs: Array of high prices.
+            lookback: Number of bars to search backwards.
+            order: Minimum bars on each side of the swing.
+
+        Returns:
+            The swing high price, or None if not found.
+        """
+        if len(highs) < lookback:
+            search = highs
+        else:
+            search = highs[-lookback:]
+
+        if len(search) < 2 * order + 1:
+            return None
+
+        for i in range(len(search) - 1 - order, order - 1, -1):
+            is_swing = True
+            for j in range(1, order + 1):
+                if search[i] < search[i - j]:
+                    is_swing = False
+                    break
+            if is_swing:
+                for j in range(1, min(order + 1, len(search) - i)):
+                    if search[i] < search[i + j]:
+                        is_swing = False
+                        break
+            if is_swing:
+                return float(search[i])
+        return None
