@@ -17,8 +17,8 @@
 
 ### REST Polling
 
-- [ ] **MPOL-01**: Candle poller fetches candles for each active instrument independently (5 instruments x N timeframes concurrent)
-- [ ] **MPOL-02**: Funding rate poller fetches funding for each active instrument independently (5 concurrent pollers)
+- [x] **MPOL-01**: Candle poller fetches candles for each active instrument independently (5 instruments x N timeframes concurrent)
+- [x] **MPOL-02**: Funding rate poller fetches funding for each active instrument independently (5 concurrent pollers)
 
 ### State Management
 
@@ -61,8 +61,8 @@
 | MCFG-02 | Phase 6 | Complete |
 | MWS-01 | Phase 7 | Complete |
 | MWS-02 | Phase 7 | Complete |
-| MPOL-01 | Phase 8 | Pending |
-| MPOL-02 | Phase 8 | Pending |
+| MPOL-01 | Phase 8 | Complete |
+| MPOL-02 | Phase 8 | Complete |
 | MSTA-01 | Phase 6 | Complete |
 | MSTA-02 | Phase 6 | Complete |
 | ME2E-01 | Phase 9 | Pending |

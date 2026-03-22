@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Multi-Instrument Ingestion
 status: unknown
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-03-22T17:55:46.959Z"
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-03-22T19:59:35.303Z"
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
+  completed_phases: 3
+  total_plans: 4
+  completed_plans: 4
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-22)
 
 **Core value:** Better signal quality and broader market coverage across all instruments and conditions
-**Current focus:** Phase 07 — websocket-multi-instrument
+**Current focus:** Phase 08 — rest-polling-multi-instrument
 
 ## Current Position
 
-Phase: 8
-Plan: Not started
+Phase: 08 (rest-polling-multi-instrument) — EXECUTING
+Plan: 1 of 1
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Plan: Not started
 *Updated after each plan completion*
 | Phase 06 P02 | 22min | 3 tasks | 44 files |
 | Phase 07 P01 | 3min | 2 tasks | 6 files |
+| Phase 08 P01 | 4min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,8 @@ Recent decisions affecting current work:
 - [Phase 06]: Strategy tick_size lookup via get_instrument(snapshot.instrument).tick_size at evaluate() entry point
 - [07-01]: Periodic staleness check every 30s in WS listen loop rather than event-driven after reconnect
 - [07-01]: Readiness flags set directly in candles.py/funding_rate.py source files rather than wrapper tasks in main.py
+- [Phase 08]: Per-instrument REST clients with shared RateLimiter rather than one shared client
+- [Phase 08]: Error isolation via _run_rest_poller_isolated wrapper prevents one instrument crash from tearing down TaskGroup
 
 ### Pending Todos
 
@@ -81,6 +84,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-22T17:50:45Z
-Stopped at: Completed 07-01-PLAN.md
+Last session: 2026-03-22T19:59:35.301Z
+Stopped at: Completed 08-01-PLAN.md
 Resume file: None
