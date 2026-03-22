@@ -19,16 +19,17 @@ Better signal quality and broader market coverage — the bot trades smarter wit
 - Per-instrument IngestionState management
 - End-to-end verification: snapshots for all 5 instruments reach the signals agent
 
-## Current State (v1.0 shipped 2026-03-22)
+## Current State (Phase 6 complete 2026-03-22)
 
 - **7 strategies**: momentum, mean reversion, liquidation cascade, correlation, regime trend, orderbook imbalance, VWAP deviation
 - **Shared utilities**: funding rate filter, adaptive conviction, swing points, session classifier, conviction normalizer
 - **Per-instrument tuning**: all 5 instruments have asset-specific thresholds across all strategies
 - **Session awareness**: crypto_weekday/weekend, equity_market/off_hours with separate configs
 - **Portfolio A routing**: unified conviction threshold at 0.70 via conviction normalizer
-- **Config infrastructure**: strategy matrix, schema validation (error on unknown keys), startup diff logging
-- **Test suite**: 736 tests, all passing
-- **Codebase**: 12,548 LOC Python in signals/libs
+- **Config infrastructure**: strategy matrix, schema validation, startup diff logging, InstrumentConfig registry
+- **Instrument registry**: config-driven InstrumentConfig with per-instrument specs (tick size, lot size, max leverage) — zero hardcoded instrument constants
+- **Test suite**: 743 tests, all passing
+- **Codebase**: ~13k LOC Python in signals/libs
 
 ## Requirements
 
@@ -49,15 +50,15 @@ Better signal quality and broader market coverage — the bot trades smarter wit
 - ✓ Cross-strategy conviction normalization with unified bands — v1.0
 - ✓ Session-aware parameter selection — v1.0
 - ✓ Shared adaptive conviction and swing point utilities — v1.0
+- ✓ Multi-instrument config in default.yaml — instruments list with 5 contracts. Validated in Phase 6: config-state-foundation
+- ✓ Per-instrument IngestionState management — Dict[str, IngestionState] keyed by instrument. Validated in Phase 6: config-state-foundation
+- ✓ Remove hardcoded INSTRUMENT_ID references from ingestion layer — Validated in Phase 6: config-state-foundation
 
 ### Active
 
 - [ ] Multi-instrument WebSocket ingestion — subscribe to all 5 perp contracts via single WS connection
 - [ ] Multi-instrument candle polling — poll candles for each instrument separately
 - [ ] Multi-instrument funding rate polling — poll funding for each instrument separately
-- [ ] Multi-instrument config in default.yaml — replace single instrument block with instruments list
-- [ ] Per-instrument IngestionState management — Dict[str, IngestionState] keyed by instrument
-- [ ] Remove hardcoded INSTRUMENT_ID references from ingestion layer
 - [ ] End-to-end multi-instrument verification — all 5 instruments produce snapshots that reach signals agent
 
 ### Deferred
@@ -95,6 +96,7 @@ Better signal quality and broader market coverage — the bot trades smarter wit
 | Post-processing conviction normalization | Don't rewrite internal models — overlay bands | ✓ Phase 5 |
 | Session config in separate file | Clean separation from per-instrument YAML | ✓ Phase 5 |
 | VWAP feasibility validated programmatically | bar_volumes clamped, 8x smoother than raw price | ✓ Phase 4 |
+| Config-driven instrument registry over constants | Enables multi-instrument without code changes per new instrument | ✓ Phase 6 |
 
 ## Evolution
 
@@ -114,4 +116,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-22 after v1.1 milestone start*
+*Last updated: 2026-03-22 after Phase 6 completion*
