@@ -54,10 +54,10 @@ Plans:
   1. WebSocket client sends a single subscription message covering all active instrument product IDs (not one connection per instrument)
   2. Incoming WS messages are parsed for product ID and dispatched to the correct per-instrument IngestionState
   3. WebSocket reconnection re-subscribes to all instruments (not just the first)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 07-01: TBD
+- [ ] 07-01-PLAN.md — Multi-instrument WS dispatch, readiness flags, per-instrument throttled snapshot publishing
 
 ### Phase 8: REST Polling Multi-Instrument
 **Goal**: Candle and funding rate pollers fetch data for each active instrument independently, producing per-instrument data in the pipeline
@@ -98,6 +98,6 @@ Phases execute in numeric order: 6 → 7 → 8 → 9 (note: 7 and 8 are independ
 | 4. New Strategies | v1.0 | 3/3 | Complete | 2026-03-22 |
 | 5. Cross-Cutting Quality | v1.0 | 3/3 | Complete | 2026-03-22 |
 | 6. Config and State Foundation | v1.1 | 0/2 | In progress | - |
-| 7. WebSocket Multi-Instrument | v1.1 | 0/0 | Not started | - |
+| 7. WebSocket Multi-Instrument | v1.1 | 0/1 | Not started | - |
 | 8. REST Polling Multi-Instrument | v1.1 | 0/0 | Not started | - |
 | 9. End-to-End Verification | v1.1 | 0/0 | Not started | - |
