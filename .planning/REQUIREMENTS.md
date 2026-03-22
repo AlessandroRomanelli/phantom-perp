@@ -55,9 +55,9 @@
 
 ### Funding Rate Filter
 
-- [ ] **FUND-01**: Funding rate as confirmation filter — boost conviction for momentum-SHORT when funding is extreme positive, boost mean-reversion-LONG when funding is extreme negative
-- [ ] **FUND-02**: Funding rate z-score computation — rolling z-score of funding rate vs historical distribution
-- [ ] **FUND-03**: Time-to-funding decay — signal urgency increases as next funding settlement approaches
+- [x] **FUND-01**: Funding rate as confirmation filter — boost conviction for momentum-SHORT when funding is extreme positive, boost mean-reversion-LONG when funding is extreme negative
+- [x] **FUND-02**: Funding rate z-score computation — rolling z-score of funding rate vs historical distribution
+- [x] **FUND-03**: Time-to-funding decay — signal urgency increases as next funding settlement approaches
 
 ### Orderbook Imbalance Strategy
 
@@ -150,9 +150,9 @@
 | CORR-03 | Phase 3 | Complete |
 | RT-01 | Phase 3 | Complete |
 | RT-02 | Phase 3 | Complete |
-| FUND-01 | Phase 4 | Pending |
-| FUND-02 | Phase 4 | Pending |
-| FUND-03 | Phase 4 | Pending |
+| FUND-01 | Phase 4 | Complete |
+| FUND-02 | Phase 4 | Complete |
+| FUND-03 | Phase 4 | Complete |
 | OBI-01 | Phase 4 | Complete |
 | OBI-02 | Phase 4 | Complete |
 | OBI-03 | Phase 4 | Complete |
