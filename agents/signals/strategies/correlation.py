@@ -27,6 +27,7 @@ from libs.common.utils import generate_id, round_to_tick, utc_now
 from libs.indicators.volatility import atr
 
 from agents.signals.feature_store import FeatureStore
+from agents.signals.funding_filter import compute_funding_boost
 from agents.signals.strategies.base import SignalStrategy
 
 
@@ -48,6 +49,8 @@ class CorrelationParams:
     cooldown_bars: int = 15
     # Funding rate integration (CORR-02)
     funding_rate_boost: float = 0.10
+    funding_z_score_threshold: float = 1.5
+    funding_min_samples: int = 10
     # Portfolio A routing (CORR-03)
     portfolio_a_min_conviction: float = 0.70
 
@@ -92,6 +95,12 @@ class CorrelationStrategy(SignalStrategy):
                 min_conviction=p.get("min_conviction", self._params.min_conviction),
                 funding_rate_boost=p.get(
                     "funding_rate_boost", self._params.funding_rate_boost,
+                ),
+                funding_z_score_threshold=p.get(
+                    "funding_z_score_threshold", self._params.funding_z_score_threshold,
+                ),
+                funding_min_samples=p.get(
+                    "funding_min_samples", self._params.funding_min_samples,
                 ),
                 portfolio_a_min_conviction=p.get(
                     "portfolio_a_min_conviction",
@@ -166,15 +175,23 @@ class CorrelationStrategy(SignalStrategy):
         if not basis_trigger and not div_trigger:
             return []
 
-        # 3. Funding rate confirmation (CORR-02, D-05, D-06)
+        # 3. Funding rate confirmation via shared utility (CORR-02, D-05, D-06)
+        basis_direction = PositionSide.SHORT if basis_zscore > 0 else PositionSide.LONG
+        funding_result = compute_funding_boost(
+            funding_rates=store.funding_rates,
+            signal_direction=basis_direction,
+            hours_since_last_funding=snapshot.hours_since_last_funding,
+            z_score_threshold=p.funding_z_score_threshold,
+            max_boost=p.funding_rate_boost,
+            min_samples=p.funding_min_samples,
+        )
+        # For 2/3 agreement gating, use simple direction alignment check
+        # (preserves original behavior where any aligned funding confirms,
+        # independent of z-score threshold or min_samples guard)
         funding_rates = store.funding_rates
         funding_confirms = False
         if basis_trigger and len(funding_rates) > 0:
             cur_funding = float(funding_rates[-1])
-            # Positive basis -> SHORT direction; negative basis -> LONG direction
-            basis_direction = PositionSide.SHORT if basis_zscore > 0 else PositionSide.LONG
-            # Positive funding -> longs pay shorts -> bearish pressure
-            # Negative funding -> shorts pay longs -> bullish pressure
             if basis_direction == PositionSide.LONG and cur_funding < 0:
                 funding_confirms = True
             elif basis_direction == PositionSide.SHORT and cur_funding > 0:
@@ -210,8 +227,14 @@ class CorrelationStrategy(SignalStrategy):
             basis_zscore, oi_div, basis_trigger, div_trigger,
         )
 
-        # D-07: Funding rate boost
-        if funding_confirms:
+        # D-07: Funding rate boost via shared utility (z-score based when data
+        # is sufficient), falling back to flat boost for simple alignment
+        if funding_result.boost > 0:
+            conviction = min(conviction + funding_result.boost, 1.0)
+            conviction = round(conviction, 3)
+        elif funding_confirms:
+            # Fallback: simple direction-aligned boost when insufficient data
+            # for z-score computation (preserves original behavior)
             conviction = min(conviction + p.funding_rate_boost, 1.0)
             conviction = round(conviction, 3)
 
@@ -340,10 +363,10 @@ class CorrelationStrategy(SignalStrategy):
         # If both move same direction: no divergence (return small value)
         # If opposite: divergence (sign indicates bullish/bearish)
         if price_pct > 0 and oi_pct < 0:
-            # Price up, OI down → bearish divergence (distribution)
+            # Price up, OI down -> bearish divergence (distribution)
             return -(abs(price_pct) + abs(oi_pct)) / 2
         elif price_pct < 0 and oi_pct > 0:
-            # Price down, OI up → bullish divergence (accumulation)
+            # Price down, OI up -> bullish divergence (accumulation)
             return (abs(price_pct) + abs(oi_pct)) / 2
         else:
             return 0.0

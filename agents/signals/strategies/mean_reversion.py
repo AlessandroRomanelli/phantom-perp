@@ -10,6 +10,7 @@ Signal logic:
   7. Stop-loss at ATR multiple beyond entry; take-profit at middle band or extended.
   8. Strong reversions get extended take-profit beyond middle band.
   9. High-conviction signals route to Portfolio A.
+  10. Funding rate boost for conviction when funding aligns with direction (Phase 4).
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ from libs.indicators.volatility import atr, bollinger_bands
 from libs.common.logging import setup_logging
 
 from agents.signals.feature_store import FeatureStore
+from agents.signals.funding_filter import compute_funding_boost
 from agents.signals.strategies.base import SignalStrategy
 
 _log = setup_logging("mr_debug", json_output=False)
@@ -60,6 +62,10 @@ class MeanReversionParams:
     extended_deviation_threshold: float = 0.5
     portfolio_a_min_conviction: float = 0.65
     vol_lookback: int = 10
+    # Phase 4 additions: funding rate boost
+    funding_rate_boost: float = 0.08
+    funding_z_score_threshold: float = 1.5
+    funding_min_samples: int = 10
 
 
 class MeanReversionStrategy(SignalStrategy):
@@ -89,19 +95,31 @@ class MeanReversionStrategy(SignalStrategy):
                 adx_period=p.get("adx_period", self._params.adx_period),
                 adx_max=p.get("adx_max", self._params.adx_max),
                 atr_period=p.get("atr_period", self._params.atr_period),
-                stop_loss_atr_mult=p.get("stop_loss_atr_mult", self._params.stop_loss_atr_mult),
+                stop_loss_atr_mult=p.get(
+                    "stop_loss_atr_mult", self._params.stop_loss_atr_mult,
+                ),
                 cooldown_bars=p.get("cooldown_bars", self._params.cooldown_bars),
                 min_conviction=p.get("min_conviction", self._params.min_conviction),
                 trend_reject_threshold=p.get(
-                    "trend_reject_threshold", self._params.trend_reject_threshold
+                    "trend_reject_threshold", self._params.trend_reject_threshold,
                 ),
                 extended_deviation_threshold=p.get(
-                    "extended_deviation_threshold", self._params.extended_deviation_threshold
+                    "extended_deviation_threshold",
+                    self._params.extended_deviation_threshold,
                 ),
                 portfolio_a_min_conviction=p.get(
-                    "portfolio_a_min_conviction", self._params.portfolio_a_min_conviction
+                    "portfolio_a_min_conviction", self._params.portfolio_a_min_conviction,
                 ),
                 vol_lookback=p.get("vol_lookback", self._params.vol_lookback),
+                funding_rate_boost=p.get(
+                    "funding_rate_boost", self._params.funding_rate_boost,
+                ),
+                funding_z_score_threshold=p.get(
+                    "funding_z_score_threshold", self._params.funding_z_score_threshold,
+                ),
+                funding_min_samples=p.get(
+                    "funding_min_samples", self._params.funding_min_samples,
+                ),
             )
 
         self._enabled = True
@@ -263,10 +281,23 @@ class MeanReversionStrategy(SignalStrategy):
             volume_ratio,
         )
 
+        # Funding rate boost (Phase 4)
+        direction = PositionSide.LONG if below_lower else PositionSide.SHORT
+        funding_result = compute_funding_boost(
+            funding_rates=store.funding_rates,
+            signal_direction=direction,
+            hours_since_last_funding=snapshot.hours_since_last_funding,
+            z_score_threshold=p.funding_z_score_threshold,
+            max_boost=p.funding_rate_boost,
+            min_samples=p.funding_min_samples,
+        )
+        if funding_result.boost > 0:
+            conviction = min(conviction + funding_result.boost, 1.0)
+            conviction = round(conviction, 3)
+
         if conviction < p.min_conviction:
             return []
 
-        direction = PositionSide.LONG if below_lower else PositionSide.SHORT
         entry = snapshot.last_price
         atr_d = Decimal(str(cur_atr))
         middle_d = Decimal(str(cur_middle))
@@ -305,12 +336,30 @@ class MeanReversionStrategy(SignalStrategy):
         reasoning = (
             f"BB mean reversion {'long' if below_lower else 'short'}: "
             f"price={cur_close:.2f}, "
-            f"{'lower' if below_lower else 'upper'}={cur_lower if below_lower else cur_upper:.2f}, "
+            f"{'lower' if below_lower else 'upper'}="
+            f"{cur_lower if below_lower else cur_upper:.2f}, "
             f"middle={cur_middle:.2f}"
             + (f", RSI={cur_rsi:.1f}" if rsi_valid else "")
             + (f", ADX={cur_adx:.1f}" if adx_valid else "")
             + f", trend={trend_strength:.2f}"
         )
+
+        metadata: dict[str, object] = {
+            "bb_upper": round(cur_upper, 2),
+            "bb_lower": round(cur_lower, 2),
+            "bb_middle": round(cur_middle, 2),
+            "deviation": round(deviation, 4),
+            "rsi": round(cur_rsi, 1) if rsi_valid else None,
+            "adx": round(cur_adx, 1) if adx_valid else None,
+            "atr": round(cur_atr, 2),
+            "volume_ratio": round(volume_ratio, 3),
+            "adaptive_std": round(adaptive_std, 4),
+            "trend_strength": round(trend_strength, 3),
+            "partial_target": str(partial_target) if partial_target else None,
+        }
+        if funding_result.boost > 0:
+            metadata["funding_boost"] = funding_result.boost
+            metadata["funding_zscore"] = funding_result.z_score
 
         signal = StandardSignal(
             signal_id=generate_id("sig"),
@@ -325,19 +374,7 @@ class MeanReversionStrategy(SignalStrategy):
             entry_price=entry,
             stop_loss=stop_loss,
             take_profit=take_profit,
-            metadata={
-                "bb_upper": round(cur_upper, 2),
-                "bb_lower": round(cur_lower, 2),
-                "bb_middle": round(cur_middle, 2),
-                "deviation": round(deviation, 4),
-                "rsi": round(cur_rsi, 1) if rsi_valid else None,
-                "adx": round(cur_adx, 1) if adx_valid else None,
-                "atr": round(cur_atr, 2),
-                "volume_ratio": round(volume_ratio, 3),
-                "adaptive_std": round(adaptive_std, 4),
-                "trend_strength": round(trend_strength, 3),
-                "partial_target": str(partial_target) if partial_target else None,
-            },
+            metadata=metadata,
         )
 
         self._bars_since_signal = 0

@@ -9,6 +9,7 @@ Signal logic:
   6. Adaptive conviction: ADX (0-0.35) + RSI (0-0.35) + vol/volatility (0-0.30) (MOM-02).
   7. Swing point stops with ATR fallback (MOM-03).
   8. Portfolio A routing for high-conviction signals (MOM-04).
+  9. Funding rate boost for conviction when funding aligns with direction (Phase 4).
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ from libs.indicators.volatility import atr
 from libs.common.logging import setup_logging
 
 from agents.signals.feature_store import FeatureStore
+from agents.signals.funding_filter import compute_funding_boost
 from agents.signals.strategies.base import SignalStrategy
 
 _log = setup_logging("momentum_debug", json_output=False)
@@ -61,6 +63,10 @@ class MomentumParams:
     portfolio_a_min_conviction: float = 0.75
     swing_lookback: int = 20
     swing_order: int = 3
+    # Phase 4 additions: funding rate boost
+    funding_rate_boost: float = 0.08
+    funding_z_score_threshold: float = 1.5
+    funding_min_samples: int = 10
 
 
 class MomentumStrategy(SignalStrategy):
@@ -90,19 +96,30 @@ class MomentumStrategy(SignalStrategy):
                 rsi_overbought=p.get("rsi_overbought", self._params.rsi_overbought),
                 rsi_oversold=p.get("rsi_oversold", self._params.rsi_oversold),
                 atr_period=p.get("atr_period", self._params.atr_period),
-                stop_loss_atr_mult=p.get("stop_loss_atr_mult", self._params.stop_loss_atr_mult),
+                stop_loss_atr_mult=p.get(
+                    "stop_loss_atr_mult", self._params.stop_loss_atr_mult,
+                ),
                 take_profit_atr_mult=p.get(
-                    "take_profit_atr_mult", self._params.take_profit_atr_mult
+                    "take_profit_atr_mult", self._params.take_profit_atr_mult,
                 ),
                 min_conviction=p.get("min_conviction", self._params.min_conviction),
                 cooldown_bars=p.get("cooldown_bars", self._params.cooldown_bars),
                 vol_lookback=p.get("vol_lookback", self._params.vol_lookback),
                 vol_min_ratio=p.get("vol_min_ratio", self._params.vol_min_ratio),
                 portfolio_a_min_conviction=p.get(
-                    "portfolio_a_min_conviction", self._params.portfolio_a_min_conviction
+                    "portfolio_a_min_conviction", self._params.portfolio_a_min_conviction,
                 ),
                 swing_lookback=p.get("swing_lookback", self._params.swing_lookback),
                 swing_order=p.get("swing_order", self._params.swing_order),
+                funding_rate_boost=p.get(
+                    "funding_rate_boost", self._params.funding_rate_boost,
+                ),
+                funding_z_score_threshold=p.get(
+                    "funding_z_score_threshold", self._params.funding_z_score_threshold,
+                ),
+                funding_min_samples=p.get(
+                    "funding_min_samples", self._params.funding_min_samples,
+                ),
             )
 
         self._enabled = True
@@ -216,11 +233,24 @@ class MomentumStrategy(SignalStrategy):
             cur_atr=cur_atr,
         )
 
+        # Funding rate boost (Phase 4)
+        direction = PositionSide.LONG if bullish_cross else PositionSide.SHORT
+        funding_result = compute_funding_boost(
+            funding_rates=store.funding_rates,
+            signal_direction=direction,
+            hours_since_last_funding=snapshot.hours_since_last_funding,
+            z_score_threshold=p.funding_z_score_threshold,
+            max_boost=p.funding_rate_boost,
+            min_samples=p.funding_min_samples,
+        )
+        if funding_result.boost > 0:
+            conviction = min(conviction + funding_result.boost, 1.0)
+            conviction = round(conviction, 3)
+
         if conviction < p.min_conviction:
             return []
 
         # Build signal
-        direction = PositionSide.LONG if bullish_cross else PositionSide.SHORT
         entry = snapshot.last_price
         atr_d = Decimal(str(cur_atr))
 
@@ -265,6 +295,20 @@ class MomentumStrategy(SignalStrategy):
             + f", vol_ratio={volume_ratio:.2f}"
         )
 
+        metadata: dict[str, object] = {
+            "fast_ema": round(cur_fast, 2),
+            "slow_ema": round(cur_slow, 2),
+            "adx": round(cur_adx, 1) if adx_valid else None,
+            "rsi": round(cur_rsi, 1) if rsi_valid else None,
+            "atr": round(cur_atr, 2),
+            "volume_ratio": round(volume_ratio, 3),
+            "vol_percentile": round(vol_pct, 3),
+            "swing_stop": swing is not None,
+        }
+        if funding_result.boost > 0:
+            metadata["funding_boost"] = funding_result.boost
+            metadata["funding_zscore"] = funding_result.z_score
+
         signal = StandardSignal(
             signal_id=generate_id("sig"),
             timestamp=utc_now(),
@@ -278,16 +322,7 @@ class MomentumStrategy(SignalStrategy):
             entry_price=entry,
             stop_loss=stop_loss,
             take_profit=take_profit,
-            metadata={
-                "fast_ema": round(cur_fast, 2),
-                "slow_ema": round(cur_slow, 2),
-                "adx": round(cur_adx, 1) if adx_valid else None,
-                "rsi": round(cur_rsi, 1) if rsi_valid else None,
-                "atr": round(cur_atr, 2),
-                "volume_ratio": round(volume_ratio, 3),
-                "vol_percentile": round(vol_pct, 3),
-                "swing_stop": swing is not None,
-            },
+            metadata=metadata,
         )
 
         self._bars_since_signal = 0
