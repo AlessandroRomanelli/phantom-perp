@@ -15,6 +15,10 @@ parameters:
   stop_loss_atr_mult: 1.5
   min_conviction: 0.35
   cooldown_bars: 8
+  trend_reject_threshold: 0.6
+  extended_deviation_threshold: 0.5
+  portfolio_a_min_conviction: 0.65
+  vol_lookback: 10
 
 instruments:
   ETH-PERP:

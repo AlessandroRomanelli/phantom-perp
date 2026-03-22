@@ -1,13 +1,15 @@
 """Mean reversion strategy — Bollinger Band deviation with RSI confirmation.
 
 Signal logic:
-  1. Compute Bollinger Bands (20-period SMA +/- 2 std devs).
+  1. Compute Bollinger Bands (adaptive width based on volatility percentile).
   2. Price below lower band -> LONG (expect reversion to mean).
   3. Price above upper band -> SHORT (expect reversion to mean).
-  4. ADX filter: reject if ADX > threshold (strong trend kills reversion).
+  4. Multi-factor trend filter: reject if composite trend strength exceeds threshold.
   5. RSI confirmation: require oversold for longs, overbought for shorts.
-  6. Conviction scales with distance beyond band + RSI extremity.
-  7. Stop-loss at 1.5x ATR beyond entry; take-profit at the middle band.
+  6. Conviction scales with distance beyond band + RSI extremity + volume.
+  7. Stop-loss at ATR multiple beyond entry; take-profit at middle band or extended.
+  8. Strong reversions get extended take-profit beyond middle band.
+  9. High-conviction signals route to Portfolio A.
 """
 
 from __future__ import annotations
@@ -18,12 +20,15 @@ from decimal import Decimal
 from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
+from scipy.stats import percentileofscore
 
 from libs.common.constants import INSTRUMENT_ID
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
 from libs.common.utils import generate_id, round_to_tick, utc_now
+from libs.indicators.moving_averages import ema
 from libs.indicators.oscillators import adx, rsi
 from libs.indicators.volatility import atr, bollinger_bands
 
@@ -50,10 +55,16 @@ class MeanReversionParams:
     stop_loss_atr_mult: float = 1.5
     min_conviction: float = 0.5
     cooldown_bars: int = 10
+    # Phase 2 fields:
+    trend_reject_threshold: float = 0.6
+    extended_deviation_threshold: float = 0.5
+    portfolio_a_min_conviction: float = 0.65
+    vol_lookback: int = 10
 
 
 class MeanReversionStrategy(SignalStrategy):
-    """Bollinger Band mean reversion with RSI confirmation and ADX filter.
+    """Bollinger Band mean reversion with RSI confirmation, multi-factor trend
+    filter, adaptive band width, extended targets, and Portfolio A routing.
 
     Args:
         params: Strategy parameters. Uses defaults if None.
@@ -77,7 +88,20 @@ class MeanReversionStrategy(SignalStrategy):
                 rsi_oversold=p.get("rsi_oversold", self._params.rsi_oversold),
                 adx_period=p.get("adx_period", self._params.adx_period),
                 adx_max=p.get("adx_max", self._params.adx_max),
+                atr_period=p.get("atr_period", self._params.atr_period),
+                stop_loss_atr_mult=p.get("stop_loss_atr_mult", self._params.stop_loss_atr_mult),
+                cooldown_bars=p.get("cooldown_bars", self._params.cooldown_bars),
                 min_conviction=p.get("min_conviction", self._params.min_conviction),
+                trend_reject_threshold=p.get(
+                    "trend_reject_threshold", self._params.trend_reject_threshold
+                ),
+                extended_deviation_threshold=p.get(
+                    "extended_deviation_threshold", self._params.extended_deviation_threshold
+                ),
+                portfolio_a_min_conviction=p.get(
+                    "portfolio_a_min_conviction", self._params.portfolio_a_min_conviction
+                ),
+                vol_lookback=p.get("vol_lookback", self._params.vol_lookback),
             )
 
         self._enabled = True
@@ -95,12 +119,45 @@ class MeanReversionStrategy(SignalStrategy):
     def min_history(self) -> int:
         return self._params.bb_period + self._params.adx_period + 5
 
+    def _compute_trend_strength(
+        self,
+        closes: NDArray[np.float64],
+        cur_atr: float,
+        cur_adx: float,
+        adx_valid: bool,
+        ema_period: int = 20,
+        lookback: int = 5,
+    ) -> float:
+        """Compute composite trend strength from EMA slope, consecutive closes, and ADX.
+
+        Returns a value in [0, 1] where higher means stronger trend.
+        """
+        ema_vals = ema(closes, ema_period)
+        if cur_atr > 0 and not np.isnan(ema_vals[-1]) and not np.isnan(ema_vals[-2]):
+            ema_slope = (ema_vals[-1] - ema_vals[-2]) / cur_atr
+        else:
+            ema_slope = 0.0
+        slope_score = min(abs(ema_slope) / 0.5, 1.0) * 0.4  # 0-0.4
+
+        consecutive = 0
+        for i in range(len(closes) - 1, max(len(closes) - lookback - 1, 0), -1):
+            if i < 1:
+                break
+            if (closes[i] > closes[i - 1]) == (closes[-1] > closes[-2]):
+                consecutive += 1
+            else:
+                break
+        consec_score = min(consecutive / lookback, 1.0) * 0.3  # 0-0.3
+
+        adx_score = min(cur_adx / 50.0, 1.0) * 0.3 if adx_valid else 0.15  # 0-0.3
+        return slope_score + consec_score + adx_score
+
     def evaluate(
         self,
         snapshot: MarketSnapshot,
         store: FeatureStore,
     ) -> list[StandardSignal]:
-        """Evaluate Bollinger Band breach with RSI and ADX filters."""
+        """Evaluate Bollinger Band breach with RSI, trend, and volume filters."""
         self._bars_since_signal += 1
 
         if store.sample_count < self.min_history:
@@ -114,10 +171,24 @@ class MeanReversionStrategy(SignalStrategy):
         highs = store.highs
         lows = store.lows
 
-        bb = bollinger_bands(closes, p.bb_period, p.bb_std)
+        # Compute ATR for adaptive bands and stop-loss
+        atr_vals = atr(highs, lows, closes, p.atr_period)
+        cur_atr = atr_vals[-1]
+
+        if np.isnan(cur_atr):
+            return []
+
+        # Adaptive band width based on ATR percentile (MR-02)
+        valid_atr = atr_vals[~np.isnan(atr_vals)]
+        if len(valid_atr) >= 20:
+            vol_pct = percentileofscore(valid_atr, cur_atr) / 100.0
+        else:
+            vol_pct = 0.5
+        adaptive_std = p.bb_std * (0.8 + 0.4 * vol_pct)
+
+        bb = bollinger_bands(closes, p.bb_period, adaptive_std)
         rsi_vals = rsi(closes, p.rsi_period)
         adx_vals = adx(highs, lows, closes, p.adx_period)
-        atr_vals = atr(highs, lows, closes, p.atr_period)
 
         cur_close = closes[-1]
         cur_upper = bb.upper[-1]
@@ -125,13 +196,15 @@ class MeanReversionStrategy(SignalStrategy):
         cur_middle = bb.middle[-1]
         cur_rsi = rsi_vals[-1]
         cur_adx = adx_vals[-1]
-        cur_atr = atr_vals[-1]
 
-        if any(np.isnan(v) for v in [cur_upper, cur_lower, cur_middle, cur_atr]):
+        if any(np.isnan(v) for v in [cur_upper, cur_lower, cur_middle]):
             return []
 
-        # ADX filter: skip if strong trend (reversion fails in trends)
+        # Multi-factor trend rejection (MR-01)
         adx_valid = not np.isnan(cur_adx)
+        trend_strength = self._compute_trend_strength(closes, cur_atr, cur_adx, adx_valid)
+        if trend_strength > p.trend_reject_threshold:
+            return []
 
         # Debug: log indicator values periodically
         if self._bars_since_signal % 10 == 0:
@@ -145,10 +218,9 @@ class MeanReversionStrategy(SignalStrategy):
                 adx=round(cur_adx, 2) if adx_valid else "NaN",
                 rsi=round(cur_rsi, 2),
                 atr=round(cur_atr, 4),
+                adaptive_std=round(adaptive_std, 4),
+                trend_strength=round(trend_strength, 3),
             )
-
-        if adx_valid and cur_adx > p.adx_max:
-            return []
 
         # Detect band breach
         below_lower = cur_close < cur_lower
@@ -160,11 +232,11 @@ class MeanReversionStrategy(SignalStrategy):
         # RSI confirmation
         rsi_valid = not np.isnan(cur_rsi)
         if below_lower and rsi_valid and cur_rsi > p.rsi_oversold:
-            return []  # Price below band but RSI not oversold — skip
+            return []  # Price below band but RSI not oversold -- skip
         if above_upper and rsi_valid and cur_rsi < p.rsi_overbought:
-            return []  # Price above band but RSI not overbought — skip
+            return []  # Price above band but RSI not overbought -- skip
 
-        # Compute conviction
+        # Compute band deviation
         band_width = cur_upper - cur_lower
         if band_width <= 0:
             return []
@@ -174,10 +246,21 @@ class MeanReversionStrategy(SignalStrategy):
         else:
             deviation = (cur_close - cur_upper) / band_width
 
+        # Volume conviction boost (D-15)
+        bar_vols = store.bar_volumes
+        volume_ratio = 1.0
+        if len(bar_vols) >= p.vol_lookback:
+            recent_vols = np.abs(bar_vols[-p.vol_lookback:])
+            vol_avg = np.mean(recent_vols)
+            cur_vol = np.abs(bar_vols[-1])
+            volume_ratio = cur_vol / vol_avg if vol_avg > 0 else 1.0
+
+        # Compute conviction (3-component with volume)
         conviction = self._compute_conviction(
             deviation,
             cur_rsi if rsi_valid else 50.0,
             below_lower,
+            volume_ratio,
         )
 
         if conviction < p.min_conviction:
@@ -187,13 +270,37 @@ class MeanReversionStrategy(SignalStrategy):
         entry = snapshot.last_price
         atr_d = Decimal(str(cur_atr))
         middle_d = Decimal(str(cur_middle))
+        upper_d = Decimal(str(cur_upper))
+        lower_d = Decimal(str(cur_lower))
+
+        # Extended take-profit targets (MR-03, D-09, D-10, D-11)
+        if deviation > p.extended_deviation_threshold:
+            # Strong reversion -- extended target
+            if direction == PositionSide.LONG:
+                extended_target = round_to_tick(
+                    middle_d + (middle_d - lower_d) * Decimal("0.5")
+                )
+            else:
+                extended_target = round_to_tick(
+                    middle_d - (upper_d - middle_d) * Decimal("0.5")
+                )
+            take_profit = extended_target
+            partial_target = round_to_tick(middle_d)
+        else:
+            take_profit = round_to_tick(middle_d)
+            partial_target = None
 
         if direction == PositionSide.LONG:
             stop_loss = round_to_tick(entry - atr_d * Decimal(str(p.stop_loss_atr_mult)))
-            take_profit = round_to_tick(middle_d)
         else:
             stop_loss = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)))
-            take_profit = round_to_tick(middle_d)
+
+        # Portfolio A routing (MR-04, D-01, D-03)
+        suggested_target = (
+            PortfolioTarget.A
+            if conviction >= p.portfolio_a_min_conviction
+            else PortfolioTarget.B
+        )
 
         reasoning = (
             f"BB mean reversion {'long' if below_lower else 'short'}: "
@@ -202,18 +309,19 @@ class MeanReversionStrategy(SignalStrategy):
             f"middle={cur_middle:.2f}"
             + (f", RSI={cur_rsi:.1f}" if rsi_valid else "")
             + (f", ADX={cur_adx:.1f}" if adx_valid else "")
+            + f", trend={trend_strength:.2f}"
         )
 
         signal = StandardSignal(
             signal_id=generate_id("sig"),
             timestamp=utc_now(),
-            instrument=INSTRUMENT_ID,
+            instrument=snapshot.instrument,
             direction=direction,
             conviction=conviction,
             source=SignalSource.MEAN_REVERSION,
             time_horizon=timedelta(hours=8),
             reasoning=reasoning,
-            suggested_target=PortfolioTarget.B,
+            suggested_target=suggested_target,
             entry_price=entry,
             stop_loss=stop_loss,
             take_profit=take_profit,
@@ -225,31 +333,40 @@ class MeanReversionStrategy(SignalStrategy):
                 "rsi": round(cur_rsi, 1) if rsi_valid else None,
                 "adx": round(cur_adx, 1) if adx_valid else None,
                 "atr": round(cur_atr, 2),
+                "volume_ratio": round(volume_ratio, 3),
+                "adaptive_std": round(adaptive_std, 4),
+                "trend_strength": round(trend_strength, 3),
+                "partial_target": str(partial_target) if partial_target else None,
             },
         )
 
         self._bars_since_signal = 0
         return [signal]
 
-    @staticmethod
     def _compute_conviction(
+        self,
         deviation: float,
         rsi_value: float,
         is_long: bool,
+        volume_ratio: float = 1.0,
     ) -> float:
-        """Compute conviction from band deviation and RSI extremity.
+        """Compute conviction from band deviation, RSI extremity, and volume.
 
-        Deviation component (0-0.5): how far beyond the band.
-        RSI component (0-0.5): how extreme the RSI reading is.
+        Deviation component (0-0.40): how far beyond the band.
+        RSI component (0-0.35): how extreme the RSI reading is.
+        Volume component (0-0.25): high volume on band touch = confirmation (D-15).
         """
-        dev_score = min(deviation / 1.0, 0.5)
+        dev_score = min(deviation / 1.0, 0.40)
         dev_score = max(dev_score, 0.0)
 
         if is_long:
             # Lower RSI = more oversold = higher conviction for long
-            rsi_score = max(0.0, min((30.0 - rsi_value + 20.0) / 80.0, 0.5))
+            rsi_score = max(0.0, min((30.0 - rsi_value + 20.0) / 80.0, 0.35))
         else:
             # Higher RSI = more overbought = higher conviction for short
-            rsi_score = max(0.0, min((rsi_value - 70.0 + 20.0) / 80.0, 0.5))
+            rsi_score = max(0.0, min((rsi_value - 70.0 + 20.0) / 80.0, 0.35))
 
-        return round(min(dev_score + rsi_score, 1.0), 3)
+        # Volume component: high volume on band touch = confirmation
+        vol_score = min(max((volume_ratio - 0.5) / 3.0, 0.0), 0.25)
+
+        return round(min(dev_score + rsi_score + vol_score, 1.0), 3)
