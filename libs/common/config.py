@@ -279,19 +279,13 @@ def get_settings() -> AppSettings:
     """Build and return the full application settings.
 
     Reads from environment variables (via pydantic-settings) and merges
-    with the YAML config determined by the ENVIRONMENT env var.  Also
-    populates the instrument registry from the YAML config.
+    with the YAML config determined by the ENVIRONMENT env var.
     """
-    from libs.common.constants import load_instruments_from_config
-
     infra = InfraSettings()
     yaml_config = load_yaml_config(infra.environment)
     # Fall back to default if environment-specific config is empty
     if not yaml_config:
         yaml_config = load_yaml_config("default")
-
-    # Populate instrument registry from config (before any agent reads it)
-    load_instruments_from_config(yaml_config)
 
     return AppSettings(
         coinbase=CoinbaseSettings(),
