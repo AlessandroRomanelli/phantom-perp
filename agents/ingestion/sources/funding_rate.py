@@ -49,6 +49,8 @@ async def poll_funding_once(
         state.funding_mark_price = resp.mark_price
         state.funding_index_price = None  # Not in the response; use WS index
         state.last_funding_update = utc_now()
+        if not state.has_funding:
+            state.has_funding = True
 
         # Advanced Trade WS ticker doesn't provide mark_price/index_price.
         # Always update from the funding endpoint (best available source).

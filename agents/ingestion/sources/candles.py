@@ -64,6 +64,8 @@ async def poll_candles_once(
         )
         # Keep only the most recent candles
         state.candles_by_granularity[tf.granularity] = candles[-tf.max_candles :]
+        if not state.has_candles:
+            state.has_candles = True
         logger.debug(
             "candles_fetched",
             granularity=tf.granularity,
