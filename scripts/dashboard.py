@@ -196,6 +196,48 @@ async def _get_equity_history(
 # ---------------------------------------------------------------------------
 
 
+def _format_strategy_overview() -> list[str]:
+    """Show active strategies, session type, and conviction routing."""
+    lines: list[str] = []
+
+    strategies = [
+        ("momentum", "MOM"),
+        ("mean_reversion", "MR"),
+        ("liquidation_cascade", "LIQ"),
+        ("correlation", "CORR"),
+        ("regime_trend", "RT"),
+        ("orderbook_imbalance", "OBI"),
+        ("vwap", "VWAP"),
+    ]
+
+    # Determine current session type
+    now = datetime.now(UTC)
+    weekday = now.weekday()  # 0=Mon, 6=Sun
+    hour = now.hour
+
+    # Session classification (matches session_classifier.py logic)
+    is_equity_hours = weekday < 5 and 13 <= hour < 20  # 13:30-20:00 UTC approx
+    if weekday >= 5:
+        session = "crypto_weekend"
+        session_color = YELLOW
+    elif is_equity_hours:
+        session = "equity_market_hours"
+        session_color = GREEN
+    else:
+        session = "crypto_weekday"
+        session_color = CYAN
+
+    strat_labels = [f"{CYAN}{abbr}{RESET}" for _, abbr in strategies]
+    lines.append(f"  Active: {' '.join(strat_labels)}")
+    lines.append(
+        f"  Session: {session_color}{session}{RESET}"
+        f"  |  Portfolio A threshold: {BOLD}0.70{RESET} (unified)"
+        f"  |  Bands: {DIM}L{RESET}<0.50 {YELLOW}M{RESET}<0.70 {GREEN}H{RESET}>=0.70"
+    )
+
+    return lines
+
+
 def _format_market(info: dict[str, dict[str, Any]], snapshots: list[dict[str, Any]]) -> list[str]:
     lines: list[str] = []
     data = info.get("stream:market_snapshots", {})
@@ -306,23 +348,40 @@ def _format_signals(info: dict[str, dict[str, Any]], recent: list[dict[str, Any]
         direction = sig.get("direction", "?")
         source = sig.get("source", "?")
         conviction = sig.get("conviction", "?")
+        suggested_target = sig.get("suggested_target")
         entry_id = sig.get("_entry_id", "")
 
         ts = _entry_id_to_ts(entry_id)
         age = _ts_age(ts.isoformat()) if ts else ""
 
         dir_color = GREEN if direction in ("LONG", "BUY") else RED if direction in ("SHORT", "SELL") else WHITE
+
+        # Portfolio routing indicator
+        if suggested_target == "autonomous" or suggested_target == "A":
+            target_str = f"{MAGENTA}A{RESET}"
+        elif suggested_target == "user_confirmed" or suggested_target == "B":
+            target_str = f"{DIM}B{RESET}"
+        else:
+            target_str = f"{DIM}?{RESET}"
+
+        # Conviction bar with band label
         try:
             conv_val = float(conviction)
             conv_bar = "#" * int(conv_val * 10)
             conv_empty = "." * (10 - int(conv_val * 10))
-            conv_str = f"[{conv_bar}{conv_empty}] {conv_val:.2f}"
+            if conv_val >= 0.70:
+                band = f"{GREEN}H{RESET}"
+            elif conv_val >= 0.50:
+                band = f"{YELLOW}M{RESET}"
+            else:
+                band = f"{DIM}L{RESET}"
+            conv_str = f"[{conv_bar}{conv_empty}] {conv_val:.2f} {band}"
         except (ValueError, TypeError):
             conv_str = str(conviction)
 
         lines.append(
             f"  {DIM}{age:>8}{RESET}  {dir_color}{direction:<5}{RESET}"
-            f" {CYAN}{source:<20}{RESET} {conv_str}"
+            f" {CYAN}{source:<22}{RESET} {target_str} {conv_str}"
         )
 
     return lines
@@ -571,9 +630,16 @@ def _render(
 
     parts: list[str] = []
     parts.append("")
-    parts.append(f" {BOLD}{CYAN}phantom-perp{RESET}  {DIM}{now}{RESET}")
-    parts.append(f" {DIM}{total_msgs:,} messages across {active}/{len(STREAMS)} active streams{RESET}")
+    parts.append(f" {BOLD}{CYAN}phantom-perp v1.0{RESET}  {DIM}{now}{RESET}")
+    parts.append(
+        f" {DIM}7 strategies | 5 instruments | "
+        f"{total_msgs:,} messages across {active}/{len(STREAMS)} active streams{RESET}"
+    )
     parts.append(f" {DIM}{sep}{RESET}")
+
+    parts.append(f" {BOLD}Strategy Overview{RESET}")
+    parts.extend(_format_strategy_overview())
+    parts.append("")
 
     parts.append(f" {BOLD}Market Data{RESET}")
     parts.extend(_format_market(info, snapshots))
