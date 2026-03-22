@@ -67,10 +67,10 @@ Plans:
   1. Candle poller fetches candles for each of the 5 active instruments (concurrent polling, not sequential)
   2. Funding rate poller fetches funding for each of the 5 active instruments (concurrent polling)
   3. Polled data updates the correct per-instrument IngestionState (no cross-contamination between instruments)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 08-01: TBD
+- [ ] 08-01-PLAN.md — Per-instrument REST clients, staggered startup, error isolation, consecutive failure tracking, REST staleness detection
 
 ### Phase 9: End-to-End Verification
 **Goal**: All 5 instruments produce MarketSnapshots that flow through the full ingestion pipeline and are consumed by the signals agent
@@ -99,5 +99,5 @@ Phases execute in numeric order: 6 → 7 → 8 → 9 (note: 7 and 8 are independ
 | 5. Cross-Cutting Quality | v1.0 | 3/3 | Complete | 2026-03-22 |
 | 6. Config and State Foundation | v1.1 | 0/2 | In progress | - |
 | 7. WebSocket Multi-Instrument | 1/1 | Complete   | 2026-03-22 | - |
-| 8. REST Polling Multi-Instrument | v1.1 | 0/0 | Not started | - |
+| 8. REST Polling Multi-Instrument | v1.1 | 0/1 | Not started | - |
 | 9. End-to-End Verification | v1.1 | 0/0 | Not started | - |
