@@ -1,6 +1,6 @@
 """REST candle poller for multiple timeframes.
 
-Periodically fetches OHLCV candles from the Coinbase INTX REST API
+Periodically fetches OHLCV candles from the Coinbase Advanced REST API
 for 1m, 5m, 15m, 1h, and 4h granularities, storing them in the
 shared IngestionState for volatility computation.
 """
@@ -50,7 +50,7 @@ async def poll_candles_once(
     """Fetch candles for a single timeframe and update state.
 
     Args:
-        rest_client: Coinbase INTX REST client.
+        rest_client: Coinbase Advanced REST client.
         state: Shared ingestion state.
         tf: Timeframe configuration.
         instrument_id: Instrument to fetch candles for.
@@ -64,19 +64,21 @@ async def poll_candles_once(
         )
         # Keep only the most recent candles
         state.candles_by_granularity[tf.granularity] = candles[-tf.max_candles :]
+        state.last_candle_update = utc_now()
         if not state.has_candles:
             state.has_candles = True
         logger.debug(
             "candles_fetched",
+            instrument=instrument_id,
             granularity=tf.granularity,
             count=len(candles),
         )
     except RateLimitExceededError:
-        logger.warning("candle_poll_rate_limited", granularity=tf.granularity)
+        logger.warning("candle_poll_rate_limited", instrument=instrument_id, granularity=tf.granularity)
     except CoinbaseAPIError as e:
-        logger.error("candle_poll_error", granularity=tf.granularity, error=str(e))
+        logger.error("candle_poll_error", instrument=instrument_id, granularity=tf.granularity, error=str(e))
     except Exception as e:
-        logger.error("candle_poll_unexpected_error", granularity=tf.granularity, error=str(e), exc_type=type(e).__name__)
+        logger.error("candle_poll_unexpected_error", instrument=instrument_id, granularity=tf.granularity, error=str(e), exc_type=type(e).__name__)
 
 
 async def run_candle_poller(
@@ -90,17 +92,30 @@ async def run_candle_poller(
     Runs an initial fetch immediately, then polls at the configured interval.
 
     Args:
-        rest_client: Coinbase INTX REST client.
+        rest_client: Coinbase Advanced REST client.
         state: Shared ingestion state.
         tf: Timeframe configuration.
         instrument_id: Instrument to fetch candles for.
     """
     # Initial fetch
     await poll_candles_once(rest_client, state, tf, instrument_id)
+    consecutive_failures = 0
 
     while True:
         await asyncio.sleep(tf.poll_interval_seconds)
+        before = state.last_candle_update
         await poll_candles_once(rest_client, state, tf, instrument_id)
+        if state.last_candle_update == before:
+            consecutive_failures += 1
+            if consecutive_failures >= 5:
+                logger.warning(
+                    "candle_poller_consecutive_failures",
+                    instrument=instrument_id,
+                    granularity=tf.granularity,
+                    count=consecutive_failures,
+                )
+        else:
+            consecutive_failures = 0
 
 
 async def run_all_candle_pollers(

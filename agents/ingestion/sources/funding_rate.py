@@ -1,7 +1,7 @@
 """REST funding rate poller.
 
-Fetches the current hourly funding rate for ETH-PERP from the
-Coinbase INTX REST API. Polls every 5 minutes (the rate changes slowly
+Fetches the current hourly funding rate for each active instrument from the
+Coinbase Advanced REST API. Polls every 5 minutes (the rate changes slowly
 but we want reasonably fresh data for the signal pipeline).
 
 Also publishes FundingRate updates to stream:funding_updates for
@@ -60,6 +60,7 @@ async def poll_funding_once(
 
         logger.debug(
             "funding_fetched",
+            instrument=instrument_id,
             rate=str(resp.funding_rate),
             event_time=resp.event_time.isoformat(),
             mark_price=str(resp.mark_price),
@@ -69,11 +70,11 @@ async def poll_funding_once(
             await _publish_funding_update(publisher, resp, instrument_id)
 
     except RateLimitExceededError:
-        logger.warning("funding_poll_rate_limited")
+        logger.warning("funding_poll_rate_limited", instrument=instrument_id)
     except CoinbaseAPIError as e:
-        logger.error("funding_poll_error", error=str(e))
+        logger.error("funding_poll_error", instrument=instrument_id, error=str(e))
     except Exception as e:
-        logger.error("funding_poll_unexpected_error", error=str(e), exc_type=type(e).__name__)
+        logger.error("funding_poll_unexpected_error", instrument=instrument_id, error=str(e), exc_type=type(e).__name__)
 
 
 async def _publish_funding_update(
@@ -109,7 +110,19 @@ async def run_funding_poller(
     """
     # Initial fetch
     await poll_funding_once(rest_client, state, publisher, instrument_id)
+    consecutive_failures = 0
 
     while True:
         await asyncio.sleep(FUNDING_POLL_INTERVAL_SECONDS)
+        before = state.last_funding_update
         await poll_funding_once(rest_client, state, publisher, instrument_id)
+        if state.last_funding_update == before:
+            consecutive_failures += 1
+            if consecutive_failures >= 5:
+                logger.warning(
+                    "funding_poller_consecutive_failures",
+                    instrument=instrument_id,
+                    count=consecutive_failures,
+                )
+        else:
+            consecutive_failures = 0

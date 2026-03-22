@@ -56,6 +56,7 @@ class IngestionState:
     # ── REST candle-sourced fields ──────────────────────────────────────
 
     candles_by_granularity: dict[str, list[CandleResponse]] = field(default_factory=dict)
+    last_candle_update: datetime | None = None
 
     # ── REST funding-sourced fields ─────────────────────────────────────
 

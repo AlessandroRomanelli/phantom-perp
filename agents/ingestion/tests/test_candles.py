@@ -90,6 +90,22 @@ class TestPollCandlesOnce:
         assert "ONE_HOUR" not in state.candles_by_granularity
 
 
+    @pytest.mark.asyncio
+    async def test_poll_candles_once_sets_last_candle_update(
+        self, state: IngestionState, tf: TimeframeConfig
+    ) -> None:
+        mock_client = AsyncMock()
+        candles = [_make_candle_response(str(2230 + i)) for i in range(5)]
+        mock_client.get_candles.return_value = candles
+
+        assert state.last_candle_update is None
+        await poll_candles_once(mock_client, state, tf, instrument_id="BTC-PERP")
+
+        assert state.last_candle_update is not None
+        call_kwargs = mock_client.get_candles.call_args.kwargs
+        assert call_kwargs["instrument_id"] == "BTC-PERP"
+
+
 class TestTimeframeConfig:
     def test_all_timeframes_have_positive_intervals(self) -> None:
         for tf in TIMEFRAMES:

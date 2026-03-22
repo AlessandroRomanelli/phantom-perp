@@ -79,6 +79,17 @@ class TestPollFundingOnce:
         assert state.funding_rate is None
 
     @pytest.mark.asyncio
+    async def test_forwards_instrument_id(self, state: IngestionState) -> None:
+        mock_client = AsyncMock()
+        mock_client.get_funding_rate.return_value = _make_funding_response()
+
+        await poll_funding_once(mock_client, state, instrument_id="BTC-PERP")
+
+        call_kwargs = mock_client.get_funding_rate.call_args.kwargs
+        assert call_kwargs["instrument_id"] == "BTC-PERP"
+        assert state.last_funding_update is not None
+
+    @pytest.mark.asyncio
     async def test_no_publish_without_publisher(self, state: IngestionState) -> None:
         mock_client = AsyncMock()
         mock_client.get_funding_rate.return_value = _make_funding_response()
