@@ -22,7 +22,6 @@ from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy.stats import percentileofscore
 
 from libs.common.constants import INSTRUMENT_ID
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
@@ -35,6 +34,7 @@ from libs.indicators.volatility import atr, bollinger_bands
 
 from libs.common.logging import setup_logging
 
+from agents.signals.adaptive_conviction import compute_adaptive_threshold
 from agents.signals.feature_store import FeatureStore
 from agents.signals.funding_filter import compute_funding_boost
 from agents.signals.strategies.base import SignalStrategy
@@ -197,12 +197,11 @@ class MeanReversionStrategy(SignalStrategy):
             return []
 
         # Adaptive band width based on ATR percentile (MR-02)
-        valid_atr = atr_vals[~np.isnan(atr_vals)]
-        if len(valid_atr) >= 20:
-            vol_pct = percentileofscore(valid_atr, cur_atr) / 100.0
-        else:
-            vol_pct = 0.5
-        adaptive_std = p.bb_std * (0.8 + 0.4 * vol_pct)
+        adaptive_result = compute_adaptive_threshold(
+            atr_vals, cur_atr, p.bb_std,
+            low_vol_mult=0.85, high_vol_mult=1.15, min_samples=20,
+        )
+        adaptive_std = adaptive_result.adjusted_threshold
 
         bb = bollinger_bands(closes, p.bb_period, adaptive_std)
         rsi_vals = rsi(closes, p.rsi_period)

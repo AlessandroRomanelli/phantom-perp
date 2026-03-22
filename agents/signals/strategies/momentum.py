@@ -21,7 +21,6 @@ from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy.stats import percentileofscore
 
 from libs.common.constants import INSTRUMENT_ID  # backward compat default
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
@@ -34,9 +33,11 @@ from libs.indicators.volatility import atr
 
 from libs.common.logging import setup_logging
 
+from agents.signals.adaptive_conviction import compute_adaptive_threshold
 from agents.signals.feature_store import FeatureStore
 from agents.signals.funding_filter import compute_funding_boost
 from agents.signals.strategies.base import SignalStrategy
+from agents.signals.swing_points import find_swing_high, find_swing_low
 
 _log = setup_logging("momentum_debug", json_output=False)
 
@@ -257,7 +258,7 @@ class MomentumStrategy(SignalStrategy):
         # Swing point stops (MOM-03)
         swing: float | None = None
         if direction == PositionSide.LONG:
-            swing = self._find_swing_low(lows, p.swing_lookback, p.swing_order)
+            swing = find_swing_low(lows, p.swing_lookback, p.swing_order)
             if swing is not None and Decimal(str(swing)) < entry:
                 stop_loss = round_to_tick(Decimal(str(swing)))
             else:
@@ -265,7 +266,7 @@ class MomentumStrategy(SignalStrategy):
                 stop_loss = round_to_tick(entry - atr_d * Decimal(str(p.stop_loss_atr_mult)))
             take_profit = round_to_tick(entry + atr_d * Decimal(str(p.take_profit_atr_mult)))
         else:
-            swing = self._find_swing_high(highs, p.swing_lookback, p.swing_order)
+            swing = find_swing_high(highs, p.swing_lookback, p.swing_order)
             if swing is not None and Decimal(str(swing)) > entry:
                 stop_loss = round_to_tick(Decimal(str(swing)))
             else:
@@ -281,12 +282,10 @@ class MomentumStrategy(SignalStrategy):
         )
 
         # Compute volatility percentile for metadata
-        valid_atr = atr_vals[~np.isnan(atr_vals)]
-        vol_pct = (
-            float(percentileofscore(valid_atr, cur_atr)) / 100.0
-            if len(valid_atr) > 0
-            else 0.5
+        adaptive_meta = compute_adaptive_threshold(
+            atr_vals, cur_atr, 1.0, min_samples=1,
         )
+        vol_pct = adaptive_meta.volatility_percentile
 
         reasoning = (
             f"EMA crossover {'bullish' if bullish_cross else 'bearish'}: "
@@ -363,95 +362,13 @@ class MomentumStrategy(SignalStrategy):
         # ATR percentile contribution: high volatility breakouts score higher
         vol_pct = 0.5  # Default if no ATR data
         if atr_vals is not None:
-            valid_atr = atr_vals[~np.isnan(atr_vals)]
-            if len(valid_atr) > 0:
-                vol_pct = float(percentileofscore(valid_atr, cur_atr)) / 100.0
+            adaptive_result = compute_adaptive_threshold(
+                atr_vals, cur_atr, 1.0, min_samples=1,
+            )
+            vol_pct = adaptive_result.volatility_percentile
         atr_pct_score = min(vol_pct * 0.15, 0.15)
 
         vol_score = vol_ratio_score + atr_pct_score
 
         return round(min(adx_score + rsi_score + vol_score, 1.0), 3)
 
-    def _find_swing_low(
-        self,
-        lows: NDArray[np.float64],
-        lookback: int = 20,
-        order: int = 3,
-    ) -> float | None:
-        """Find the most recent swing low within the lookback window.
-
-        A swing low is a point where the low is less than or equal to the
-        `order` bars on each side.
-
-        Args:
-            lows: Array of low prices.
-            lookback: Number of bars to search backwards.
-            order: Minimum bars on each side of the swing.
-
-        Returns:
-            The swing low price, or None if not found.
-        """
-        if len(lows) < lookback:
-            search = lows
-        else:
-            search = lows[-lookback:]
-
-        if len(search) < 2 * order + 1:
-            return None
-
-        for i in range(len(search) - 1 - order, order - 1, -1):
-            is_swing = True
-            for j in range(1, order + 1):
-                if search[i] > search[i - j]:
-                    is_swing = False
-                    break
-            if is_swing:
-                for j in range(1, min(order + 1, len(search) - i)):
-                    if search[i] > search[i + j]:
-                        is_swing = False
-                        break
-            if is_swing:
-                return float(search[i])
-        return None
-
-    def _find_swing_high(
-        self,
-        highs: NDArray[np.float64],
-        lookback: int = 20,
-        order: int = 3,
-    ) -> float | None:
-        """Find the most recent swing high within the lookback window.
-
-        A swing high is a point where the high is greater than or equal to
-        the `order` bars on each side.
-
-        Args:
-            highs: Array of high prices.
-            lookback: Number of bars to search backwards.
-            order: Minimum bars on each side of the swing.
-
-        Returns:
-            The swing high price, or None if not found.
-        """
-        if len(highs) < lookback:
-            search = highs
-        else:
-            search = highs[-lookback:]
-
-        if len(search) < 2 * order + 1:
-            return None
-
-        for i in range(len(search) - 1 - order, order - 1, -1):
-            is_swing = True
-            for j in range(1, order + 1):
-                if search[i] < search[i - j]:
-                    is_swing = False
-                    break
-            if is_swing:
-                for j in range(1, min(order + 1, len(search) - i)):
-                    if search[i] < search[i + j]:
-                        is_swing = False
-                        break
-            if is_swing:
-                return float(search[i])
-        return None

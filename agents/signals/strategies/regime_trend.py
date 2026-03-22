@@ -23,7 +23,6 @@ from decimal import Decimal
 from typing import Any
 
 import numpy as np
-from scipy.stats import percentileofscore
 
 from libs.common.constants import INSTRUMENT_ID
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
@@ -34,6 +33,7 @@ from libs.indicators.moving_averages import ema, sma
 from libs.indicators.oscillators import adx
 from libs.indicators.volatility import atr
 
+from agents.signals.adaptive_conviction import compute_adaptive_threshold
 from agents.signals.feature_store import FeatureStore
 from agents.signals.strategies.base import SignalStrategy
 
@@ -233,9 +233,11 @@ class RegimeTrendStrategy(SignalStrategy):
                 atr_vals, cur_atr, p,
             )
             # Compute vol_pct for metadata
-            valid_atr_for_pct = atr_vals[~np.isnan(atr_vals)]
-            if len(valid_atr_for_pct) >= 10:
-                vol_pct = round(float(percentileofscore(valid_atr_for_pct, cur_atr)) / 100.0, 3)
+            vol_pct_result = compute_adaptive_threshold(
+                atr_vals, cur_atr, 1.0, min_samples=10,
+            )
+            if vol_pct_result.volatility_percentile != 0.5 or len(atr_vals[~np.isnan(atr_vals)]) >= 10:
+                vol_pct = round(vol_pct_result.volatility_percentile, 3)
         else:
             effective_adx_thresh = p.adx_threshold
             effective_atr_exp_thresh = p.atr_expansion_threshold
@@ -431,23 +433,24 @@ class RegimeTrendStrategy(SignalStrategy):
         Low vol -> lower thresholds (easier to enter trends in quiet markets).
         High vol -> higher thresholds (stricter confirmation in volatile markets).
         """
-        valid_atr = atr_vals[~np.isnan(atr_vals)]
-        if len(valid_atr) < 10:
-            return p.adx_threshold, p.atr_expansion_threshold
-
-        vol_pct = float(percentileofscore(valid_atr, cur_atr)) / 100.0
-
-        # Linear interpolation: low_mult at vol_pct=0, high_mult at vol_pct=1
-        adx_mult = p.adx_adapt_low_mult + (p.adx_adapt_high_mult - p.adx_adapt_low_mult) * vol_pct
-        adaptive_adx = p.adx_threshold * adx_mult
-        adaptive_adx = max(p.adx_adapt_min, min(p.adx_adapt_max, adaptive_adx))
-
-        atr_mult = (
-            p.atr_expand_adapt_low_mult
-            + (p.atr_expand_adapt_high_mult - p.atr_expand_adapt_low_mult) * vol_pct
+        adx_result = compute_adaptive_threshold(
+            atr_vals, cur_atr, p.adx_threshold,
+            low_vol_mult=p.adx_adapt_low_mult,
+            high_vol_mult=p.adx_adapt_high_mult,
+            min_samples=10,
         )
-        adaptive_atr_exp = p.atr_expansion_threshold * atr_mult
-        adaptive_atr_exp = max(p.atr_expand_adapt_min, min(p.atr_expand_adapt_max, adaptive_atr_exp))
+        adaptive_adx = max(p.adx_adapt_min, min(p.adx_adapt_max, adx_result.adjusted_threshold))
+
+        atr_exp_result = compute_adaptive_threshold(
+            atr_vals, cur_atr, p.atr_expansion_threshold,
+            low_vol_mult=p.atr_expand_adapt_low_mult,
+            high_vol_mult=p.atr_expand_adapt_high_mult,
+            min_samples=10,
+        )
+        adaptive_atr_exp = max(
+            p.atr_expand_adapt_min,
+            min(p.atr_expand_adapt_max, atr_exp_result.adjusted_threshold),
+        )
 
         return adaptive_adx, adaptive_atr_exp
 
