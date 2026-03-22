@@ -65,6 +65,19 @@ class IngestionState:
     funding_index_price: Decimal | None = None
     last_funding_update: datetime | None = None
 
+    # ── Readiness flags ──────────────────────────────────────────────
+    has_ws_tick: bool = False
+    has_candles: bool = False
+    has_funding: bool = False
+
+    def is_ready(self) -> bool:
+        """Check if all data sources have delivered at least one update.
+
+        Snapshot publishing is gated on this -- an instrument that hasn't
+        received candles or funding data yet should not emit snapshots.
+        """
+        return self.has_ws_tick and self.has_candles and self.has_funding
+
     def has_minimum_data(self) -> bool:
         """Check if we have enough data to build a MarketSnapshot.
 
