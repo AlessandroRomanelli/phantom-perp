@@ -83,6 +83,9 @@ Recent decisions affecting current work:
 - [Phase 03]: QQQ/SPY trail disabled since Portfolio A already disabled for these instruments
 - [Phase 03]: Tiered cascade: T1 [2%,4%), T2 [4%,8%), T3 [8%+) with tier-specific stop/TP ATR mults and conviction boost
 - [Phase 03]: Volume surge gate uses store.bar_volumes with 1.5x average threshold to filter organic OI reduction
+- [Phase 03]: Multi-window consensus: 3/3 fires always, 2/3 requires funding confirmation for correlation
+- [Phase 03]: Funding rate direction: positive=bearish, negative=bullish for correlation confirmation
+- [Phase 03]: Portfolio A conviction threshold at 0.70 for correlation strategy
 
 ### Pending Todos
 

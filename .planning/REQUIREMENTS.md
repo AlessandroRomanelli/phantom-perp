@@ -44,9 +44,9 @@
 
 ### Correlation Strategy Improvements
 
-- [ ] **CORR-01**: Multi-window basis analysis — short (30 bars), medium (60 bars), long (120 bars) lookback windows; signal fires when multiple agree
-- [ ] **CORR-02**: Funding rate integration — extreme funding + extreme basis = higher conviction; create three-factor model
-- [ ] **CORR-03**: Portfolio A dual routing — multi-window + funding agreement signals eligible for autonomous execution
+- [x] **CORR-01**: Multi-window basis analysis — short (30 bars), medium (60 bars), long (120 bars) lookback windows; signal fires when multiple agree
+- [x] **CORR-02**: Funding rate integration — extreme funding + extreme basis = higher conviction; create three-factor model
+- [x] **CORR-03**: Portfolio A dual routing — multi-window + funding agreement signals eligible for autonomous execution
 
 ### Regime Trend Strategy Improvements
 
@@ -145,9 +145,9 @@
 | MR-04 | Phase 2 | Complete |
 | LIQ-01 | Phase 3 | Complete |
 | LIQ-02 | Phase 3 | Complete |
-| CORR-01 | Phase 3 | Pending |
-| CORR-02 | Phase 3 | Pending |
-| CORR-03 | Phase 3 | Pending |
+| CORR-01 | Phase 3 | Complete |
+| CORR-02 | Phase 3 | Complete |
+| CORR-03 | Phase 3 | Complete |
 | RT-01 | Phase 3 | Complete |
 | RT-02 | Phase 3 | Complete |
 | FUND-01 | Phase 4 | Pending |
