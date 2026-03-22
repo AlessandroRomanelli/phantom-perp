@@ -23,6 +23,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+from libs.common.instruments import get_instrument
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
@@ -184,6 +185,7 @@ class MeanReversionStrategy(SignalStrategy):
             return []
 
         p = self._params
+        tick_size = get_instrument(snapshot.instrument).tick_size
         closes = store.closes
         highs = store.highs
         lows = store.lows
@@ -307,22 +309,22 @@ class MeanReversionStrategy(SignalStrategy):
             # Strong reversion -- extended target
             if direction == PositionSide.LONG:
                 extended_target = round_to_tick(
-                    middle_d + (middle_d - lower_d) * Decimal("0.5")
+                    middle_d + (middle_d - lower_d) * Decimal("0.5"), tick_size,
                 )
             else:
                 extended_target = round_to_tick(
-                    middle_d - (upper_d - middle_d) * Decimal("0.5")
+                    middle_d - (upper_d - middle_d) * Decimal("0.5"), tick_size,
                 )
             take_profit = extended_target
-            partial_target = round_to_tick(middle_d)
+            partial_target = round_to_tick(middle_d, tick_size)
         else:
-            take_profit = round_to_tick(middle_d)
+            take_profit = round_to_tick(middle_d, tick_size)
             partial_target = None
 
         if direction == PositionSide.LONG:
-            stop_loss = round_to_tick(entry - atr_d * Decimal(str(p.stop_loss_atr_mult)))
+            stop_loss = round_to_tick(entry - atr_d * Decimal(str(p.stop_loss_atr_mult)), tick_size)
         else:
-            stop_loss = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)))
+            stop_loss = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)), tick_size)
 
         # Portfolio A routing (MR-04, D-01, D-03)
         suggested_target = (

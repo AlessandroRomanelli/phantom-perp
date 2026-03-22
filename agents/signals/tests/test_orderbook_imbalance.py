@@ -5,7 +5,6 @@ from decimal import Decimal
 
 import numpy as np
 
-from libs.common.constants import INSTRUMENT_ID
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 
@@ -14,6 +13,8 @@ from agents.signals.strategies.orderbook_imbalance import (
     OrderbookImbalanceParams,
     OrderbookImbalanceStrategy,
 )
+
+TEST_INSTRUMENT_ID = "ETH-PERP"
 
 
 def _snap(
@@ -27,7 +28,7 @@ def _snap(
         ts = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
     return MarketSnapshot(
         timestamp=ts,
-        instrument=INSTRUMENT_ID,
+        instrument=TEST_INSTRUMENT_ID,
         mark_price=Decimal(str(price)),
         index_price=Decimal(str(price - 0.5)),
         last_price=Decimal(str(price)),

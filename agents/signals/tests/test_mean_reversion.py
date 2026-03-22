@@ -5,12 +5,13 @@ from decimal import Decimal
 
 import numpy as np
 
-from libs.common.constants import INSTRUMENT_ID
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 
 from agents.signals.feature_store import FeatureStore
 from agents.signals.strategies.mean_reversion import MeanReversionParams, MeanReversionStrategy
+
+TEST_INSTRUMENT_ID = "ETH-PERP"
 
 
 def _snap(
@@ -21,7 +22,7 @@ def _snap(
         ts = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
     return MarketSnapshot(
         timestamp=ts,
-        instrument=INSTRUMENT_ID,
+        instrument=TEST_INSTRUMENT_ID,
         mark_price=Decimal(str(mark)),
         index_price=Decimal(str(mark - 0.5)),
         last_price=Decimal(str(mark)),
@@ -109,7 +110,7 @@ def _build_store_with_high_volume_breach(
     # High volume breach bar: jump volume by 5000 (vs avg ~100/bar)
     snap = MarketSnapshot(
         timestamp=base + timedelta(seconds=len(prices)),
-        instrument=INSTRUMENT_ID,
+        instrument=TEST_INSTRUMENT_ID,
         mark_price=Decimal(str(breach_price)),
         index_price=Decimal(str(breach_price - 0.5)),
         last_price=Decimal(str(breach_price)),
@@ -171,7 +172,7 @@ def _build_store_with_low_volume_breach(
     # Low volume breach bar: volume delta of just 10 (vs avg ~100/bar)
     snap = MarketSnapshot(
         timestamp=base + timedelta(seconds=len(prices)),
-        instrument=INSTRUMENT_ID,
+        instrument=TEST_INSTRUMENT_ID,
         mark_price=Decimal(str(breach_price)),
         index_price=Decimal(str(breach_price - 0.5)),
         last_price=Decimal(str(breach_price)),
@@ -653,7 +654,7 @@ class TestMRPortfolioRouting:
 
         snap = MarketSnapshot(
             timestamp=base + timedelta(seconds=len(prices)),
-            instrument=INSTRUMENT_ID,
+            instrument=TEST_INSTRUMENT_ID,
             mark_price=Decimal(str(breach_price)),
             index_price=Decimal(str(breach_price - 0.5)),
             last_price=Decimal(str(breach_price)),

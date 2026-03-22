@@ -14,9 +14,9 @@ import pytest
 
 from libs.common.constants import (
     FUNDING_RATE_CIRCUIT_BREAKER_PCT,
-    INSTRUMENT_ID,
     STALE_DATA_HALT_SECONDS,
 )
+from libs.common.instruments import load_instruments
 from libs.common.models.enums import (
     PortfolioTarget,
     PositionSide,
@@ -30,6 +30,18 @@ from libs.common.utils import utc_now
 from agents.risk.limits import RiskLimits
 from agents.risk.main import RiskEngine
 
+TEST_INSTRUMENT_ID = "ETH-PERP"
+
+# Load instrument registry for get_instrument() calls inside RiskEngine.evaluate()
+load_instruments({
+    "instruments": [{
+        "id": "ETH-PERP",
+        "base_currency": "ETH",
+        "quote_currency": "USDC",
+        "tick_size": 0.01,
+        "min_order_size": 0.0001,
+    }]
+})
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +92,7 @@ def _idea(
     return RankedTradeIdea(
         idea_id="test-idea-001",
         timestamp=utc_now(),
-        instrument=INSTRUMENT_ID,
+        instrument=TEST_INSTRUMENT_ID,
         portfolio_target=target,
         direction=direction,
         conviction=conviction,
@@ -122,7 +134,7 @@ def _make_position(
     target: PortfolioTarget = PortfolioTarget.A,
 ) -> PerpPosition:
     return PerpPosition(
-        instrument=INSTRUMENT_ID,
+        instrument=TEST_INSTRUMENT_ID,
         portfolio_target=target,
         side=side,
         size=size,
@@ -552,7 +564,7 @@ class TestSerialization:
         d = order_to_dict(result.proposed_order)
         assert d["portfolio_target"] == "autonomous"
         assert d["side"] == "BUY"
-        assert d["instrument"] == INSTRUMENT_ID
+        assert d["instrument"] == TEST_INSTRUMENT_ID
         assert d["status"] == "risk_approved"
         assert Decimal(d["size"]) > 0
         assert Decimal(d["estimated_fee_usdc"]) > 0
@@ -564,7 +576,7 @@ class TestSerialization:
         payload = {
             "idea_id": "idea-abc",
             "timestamp": "2025-06-15T12:00:00+00:00",
-            "instrument": INSTRUMENT_ID,
+            "instrument": TEST_INSTRUMENT_ID,
             "portfolio_target": "autonomous",
             "direction": "LONG",
             "conviction": "0.75",

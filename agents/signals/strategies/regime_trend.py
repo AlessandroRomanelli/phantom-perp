@@ -24,6 +24,7 @@ from typing import Any
 
 import numpy as np
 
+from libs.common.instruments import get_instrument
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
@@ -191,6 +192,7 @@ class RegimeTrendStrategy(SignalStrategy):
             return []
 
         p = self._params
+        tick_size = get_instrument(snapshot.instrument).tick_size
         closes = store.closes
         highs = store.highs
         lows = store.lows
@@ -355,11 +357,11 @@ class RegimeTrendStrategy(SignalStrategy):
             sl_mult_b = Decimal(str(p.stop_loss_atr_mult))
 
         if direction == PositionSide.LONG:
-            sl_b = round_to_tick(entry - atr_d * sl_mult_b)
-            tp_b = round_to_tick(entry + atr_d * Decimal(str(p.take_profit_atr_mult)))
+            sl_b = round_to_tick(entry - atr_d * sl_mult_b, tick_size)
+            tp_b = round_to_tick(entry + atr_d * Decimal(str(p.take_profit_atr_mult)), tick_size)
         else:
-            sl_b = round_to_tick(entry + atr_d * sl_mult_b)
-            tp_b = round_to_tick(entry - atr_d * Decimal(str(p.take_profit_atr_mult)))
+            sl_b = round_to_tick(entry + atr_d * sl_mult_b, tick_size)
+            tp_b = round_to_tick(entry - atr_d * Decimal(str(p.take_profit_atr_mult)), tick_size)
 
         reasoning_b = (
             f"Regime-filtered {side_label} ({entry_type}): "
@@ -394,11 +396,11 @@ class RegimeTrendStrategy(SignalStrategy):
 
         if a_eligible:
             if direction == PositionSide.LONG:
-                sl_a = round_to_tick(entry - atr_d * Decimal(str(p.portfolio_a_stop_loss_atr_mult)))
-                tp_a = round_to_tick(entry + atr_d * Decimal(str(p.portfolio_a_take_profit_atr_mult)))
+                sl_a = round_to_tick(entry - atr_d * Decimal(str(p.portfolio_a_stop_loss_atr_mult)), tick_size)
+                tp_a = round_to_tick(entry + atr_d * Decimal(str(p.portfolio_a_take_profit_atr_mult)), tick_size)
             else:
-                sl_a = round_to_tick(entry + atr_d * Decimal(str(p.portfolio_a_stop_loss_atr_mult)))
-                tp_a = round_to_tick(entry - atr_d * Decimal(str(p.portfolio_a_take_profit_atr_mult)))
+                sl_a = round_to_tick(entry + atr_d * Decimal(str(p.portfolio_a_stop_loss_atr_mult)), tick_size)
+                tp_a = round_to_tick(entry - atr_d * Decimal(str(p.portfolio_a_take_profit_atr_mult)), tick_size)
 
             signals.append(StandardSignal(
                 signal_id=generate_id("sig"),

@@ -22,6 +22,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+from libs.common.instruments import get_instrument
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
@@ -153,6 +154,7 @@ class MomentumStrategy(SignalStrategy):
             return []
 
         p = self._params
+        tick_size = get_instrument(snapshot.instrument).tick_size
         closes = store.closes
         highs = store.highs
         lows = store.lows
@@ -259,19 +261,19 @@ class MomentumStrategy(SignalStrategy):
         if direction == PositionSide.LONG:
             swing = find_swing_low(lows, p.swing_lookback, p.swing_order)
             if swing is not None and Decimal(str(swing)) < entry:
-                stop_loss = round_to_tick(Decimal(str(swing)))
+                stop_loss = round_to_tick(Decimal(str(swing)), tick_size)
             else:
                 swing = None  # Mark as not used
-                stop_loss = round_to_tick(entry - atr_d * Decimal(str(p.stop_loss_atr_mult)))
-            take_profit = round_to_tick(entry + atr_d * Decimal(str(p.take_profit_atr_mult)))
+                stop_loss = round_to_tick(entry - atr_d * Decimal(str(p.stop_loss_atr_mult)), tick_size)
+            take_profit = round_to_tick(entry + atr_d * Decimal(str(p.take_profit_atr_mult)), tick_size)
         else:
             swing = find_swing_high(highs, p.swing_lookback, p.swing_order)
             if swing is not None and Decimal(str(swing)) > entry:
-                stop_loss = round_to_tick(Decimal(str(swing)))
+                stop_loss = round_to_tick(Decimal(str(swing)), tick_size)
             else:
                 swing = None  # Mark as not used
-                stop_loss = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)))
-            take_profit = round_to_tick(entry - atr_d * Decimal(str(p.take_profit_atr_mult)))
+                stop_loss = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)), tick_size)
+            take_profit = round_to_tick(entry - atr_d * Decimal(str(p.take_profit_atr_mult)), tick_size)
 
         # Portfolio A routing (MOM-04)
         suggested_target = (

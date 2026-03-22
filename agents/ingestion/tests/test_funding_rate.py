@@ -15,7 +15,7 @@ from agents.ingestion.state import IngestionState
 
 @pytest.fixture
 def state() -> IngestionState:
-    return IngestionState()
+    return IngestionState(instrument_id="ETH-PERP")
 
 
 def _make_funding_response() -> FundingRateResponse:

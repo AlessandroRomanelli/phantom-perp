@@ -19,6 +19,7 @@ from typing import Any
 
 import numpy as np
 
+from libs.common.instruments import get_instrument
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
@@ -141,6 +142,7 @@ class CorrelationStrategy(SignalStrategy):
             return []
 
         p = self._params
+        tick_size = get_instrument(snapshot.instrument).tick_size
         closes = store.closes
         highs = store.highs
         lows = store.lows
@@ -251,11 +253,11 @@ class CorrelationStrategy(SignalStrategy):
         atr_d = Decimal(str(cur_atr))
 
         if direction == PositionSide.LONG:
-            stop_loss = round_to_tick(entry - atr_d * Decimal(str(p.stop_loss_atr_mult)))
-            take_profit = round_to_tick(entry + atr_d * Decimal(str(p.take_profit_atr_mult)))
+            stop_loss = round_to_tick(entry - atr_d * Decimal(str(p.stop_loss_atr_mult)), tick_size)
+            take_profit = round_to_tick(entry + atr_d * Decimal(str(p.take_profit_atr_mult)), tick_size)
         else:
-            stop_loss = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)))
-            take_profit = round_to_tick(entry - atr_d * Decimal(str(p.take_profit_atr_mult)))
+            stop_loss = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)), tick_size)
+            take_profit = round_to_tick(entry - atr_d * Decimal(str(p.take_profit_atr_mult)), tick_size)
 
         parts = []
         if basis_trigger:

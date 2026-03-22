@@ -6,10 +6,11 @@ from decimal import Decimal
 import numpy as np
 import pytest
 
-from libs.common.constants import INSTRUMENT_ID
 from libs.common.models.market_snapshot import MarketSnapshot
 
 from agents.signals.feature_store import FeatureStore
+
+TEST_INSTRUMENT_ID = "ETH-PERP"
 
 
 def _snap(
@@ -20,7 +21,7 @@ def _snap(
     """Create a minimal MarketSnapshot for testing."""
     return MarketSnapshot(
         timestamp=ts,
-        instrument=INSTRUMENT_ID,
+        instrument=TEST_INSTRUMENT_ID,
         mark_price=Decimal(str(mark)),
         index_price=Decimal(str(mark - 0.5)),
         last_price=Decimal(str(mark)),
@@ -134,7 +135,7 @@ def _snap_with_volume(
     """Create a MarketSnapshot with a specific volume_24h for testing."""
     return MarketSnapshot(
         timestamp=ts,
-        instrument=INSTRUMENT_ID,
+        instrument=TEST_INSTRUMENT_ID,
         mark_price=Decimal(str(mark)),
         index_price=Decimal(str(mark - 0.5)),
         last_price=Decimal(str(mark)),

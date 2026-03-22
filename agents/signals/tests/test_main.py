@@ -3,18 +3,19 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from libs.common.constants import INSTRUMENT_ID
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.signal import StandardSignal
 
 from agents.signals.main import deserialize_snapshot, signal_to_dict
+
+TEST_INSTRUMENT_ID = "ETH-PERP"
 
 
 class TestDeserializeSnapshot:
     def test_roundtrip(self) -> None:
         payload = {
             "timestamp": "2025-06-15T12:00:00+00:00",
-            "instrument": INSTRUMENT_ID,
+            "instrument": TEST_INSTRUMENT_ID,
             "mark_price": "2230.60",
             "index_price": "2230.10",
             "last_price": "2230.50",
@@ -33,7 +34,7 @@ class TestDeserializeSnapshot:
 
         snap = deserialize_snapshot(payload)
 
-        assert snap.instrument == INSTRUMENT_ID
+        assert snap.instrument == TEST_INSTRUMENT_ID
         assert snap.mark_price == Decimal("2230.60")
         assert snap.best_bid == Decimal("2230.25")
         assert snap.spread_bps == 2.24
@@ -45,7 +46,7 @@ class TestSignalToDict:
         signal = StandardSignal(
             signal_id="sig-test-123",
             timestamp=datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC),
-            instrument=INSTRUMENT_ID,
+            instrument=TEST_INSTRUMENT_ID,
             direction=PositionSide.LONG,
             conviction=0.75,
             source=SignalSource.MOMENTUM,
@@ -75,7 +76,7 @@ class TestSignalToDict:
         signal = StandardSignal(
             signal_id="sig-test-456",
             timestamp=datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC),
-            instrument=INSTRUMENT_ID,
+            instrument=TEST_INSTRUMENT_ID,
             direction=PositionSide.SHORT,
             conviction=0.5,
             source=SignalSource.MEAN_REVERSION,

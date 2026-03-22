@@ -22,6 +22,7 @@ from typing import Any
 
 import numpy as np
 
+from libs.common.instruments import get_instrument
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
@@ -180,6 +181,7 @@ class LiquidationCascadeStrategy(SignalStrategy):
             return []
 
         p = self._params
+        tick_size = get_instrument(snapshot.instrument).tick_size
         closes = store.closes
         highs = store.highs
         lows = store.lows
@@ -244,11 +246,11 @@ class LiquidationCascadeStrategy(SignalStrategy):
         tp_mult: float = getattr(p, f"tier{tier}_tp_atr_mult")
 
         if direction == PositionSide.LONG:
-            stop_loss = round_to_tick(entry - atr_d * Decimal(str(stop_mult)))
-            take_profit = round_to_tick(entry + atr_d * Decimal(str(tp_mult)))
+            stop_loss = round_to_tick(entry - atr_d * Decimal(str(stop_mult)), tick_size)
+            take_profit = round_to_tick(entry + atr_d * Decimal(str(tp_mult)), tick_size)
         else:
-            stop_loss = round_to_tick(entry + atr_d * Decimal(str(stop_mult)))
-            take_profit = round_to_tick(entry - atr_d * Decimal(str(tp_mult)))
+            stop_loss = round_to_tick(entry + atr_d * Decimal(str(stop_mult)), tick_size)
+            take_profit = round_to_tick(entry - atr_d * Decimal(str(tp_mult)), tick_size)
 
         reasoning = (
             f"Liquidation cascade {mode} (Tier {tier}): OI dropped {oi_change_pct:.2f}% "

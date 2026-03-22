@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 
+from libs.common.instruments import get_instrument
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
@@ -112,6 +113,7 @@ class OrderbookImbalanceStrategy(SignalStrategy):
             return []
 
         p = self._params
+        tick_size = get_instrument(snapshot.instrument).tick_size
         imbalances = store.orderbook_imbalances
         closes = store.closes
         highs = store.highs
@@ -176,11 +178,11 @@ class OrderbookImbalanceStrategy(SignalStrategy):
         atr_d = Decimal(str(cur_atr))
 
         if direction == PositionSide.LONG:
-            stop_loss = round_to_tick(entry - atr_d * Decimal(str(p.stop_loss_atr_mult)))
-            take_profit = round_to_tick(entry + atr_d * Decimal(str(p.take_profit_atr_mult)))
+            stop_loss = round_to_tick(entry - atr_d * Decimal(str(p.stop_loss_atr_mult)), tick_size)
+            take_profit = round_to_tick(entry + atr_d * Decimal(str(p.take_profit_atr_mult)), tick_size)
         else:
-            stop_loss = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)))
-            take_profit = round_to_tick(entry - atr_d * Decimal(str(p.take_profit_atr_mult)))
+            stop_loss = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)), tick_size)
+            take_profit = round_to_tick(entry - atr_d * Decimal(str(p.take_profit_atr_mult)), tick_size)
 
         reasoning = (
             f"OBI {'long' if direction == PositionSide.LONG else 'short'}: "

@@ -118,23 +118,23 @@ class TestComputeVolatility:
         assert vol_100 > 0.0
 
     def test_volatility_1h_uses_one_minute_candles(self) -> None:
-        state = IngestionState()
+        state = IngestionState(instrument_id="ETH-PERP")
         prices = [2000.0 + i * 0.5 for i in range(60)]
         state.candles_by_granularity["ONE_MINUTE"] = self._make_candles(prices)
         vol = compute_volatility_1h(state)
         assert vol > 0.0
 
     def test_volatility_24h_uses_one_hour_candles(self) -> None:
-        state = IngestionState()
+        state = IngestionState(instrument_id="ETH-PERP")
         prices = [2000.0 + i * 5 for i in range(24)]
         state.candles_by_granularity["ONE_HOUR"] = self._make_candles(prices)
         vol = compute_volatility_24h(state)
         assert vol > 0.0
 
     def test_volatility_1h_no_candles(self) -> None:
-        state = IngestionState()
+        state = IngestionState(instrument_id="ETH-PERP")
         assert compute_volatility_1h(state) == 0.0
 
     def test_volatility_24h_no_candles(self) -> None:
-        state = IngestionState()
+        state = IngestionState(instrument_id="ETH-PERP")
         assert compute_volatility_24h(state) == 0.0

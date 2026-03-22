@@ -6,7 +6,6 @@ from decimal import Decimal
 import pytest
 
 from libs.coinbase.models import CandleResponse
-from libs.common.constants import INSTRUMENT_ID
 
 from agents.ingestion.normalizer import (
     _hours_since_last_funding,
@@ -16,10 +15,12 @@ from agents.ingestion.normalizer import (
 )
 from agents.ingestion.state import BookLevel, IngestionState
 
+TEST_INSTRUMENT_ID = "ETH-PERP"
+
 
 def _populated_state() -> IngestionState:
     """Create a state with all minimum required fields populated."""
-    state = IngestionState()
+    state = IngestionState(instrument_id=TEST_INSTRUMENT_ID)
     state.best_bid = Decimal("2230.50")
     state.best_ask = Decimal("2231.00")
     state.last_price = Decimal("2230.75")
@@ -46,7 +47,7 @@ class TestBuildSnapshot:
         snapshot = build_snapshot(state)
 
         assert snapshot is not None
-        assert snapshot.instrument == INSTRUMENT_ID
+        assert snapshot.instrument == TEST_INSTRUMENT_ID
         assert snapshot.mark_price == Decimal("2230.60")
         assert snapshot.index_price == Decimal("2230.55")
         assert snapshot.last_price == Decimal("2230.75")
@@ -57,11 +58,11 @@ class TestBuildSnapshot:
         assert snapshot.funding_rate == Decimal("0.0001")
 
     def test_returns_none_for_empty_state(self) -> None:
-        state = IngestionState()
+        state = IngestionState(instrument_id=TEST_INSTRUMENT_ID)
         assert build_snapshot(state) is None
 
     def test_returns_none_for_partial_state(self) -> None:
-        state = IngestionState()
+        state = IngestionState(instrument_id=TEST_INSTRUMENT_ID)
         state.best_bid = Decimal("2230.50")
         state.best_ask = Decimal("2231.00")
         # Missing last_price, mark_price, index_price
@@ -123,7 +124,7 @@ class TestSnapshotToDict:
         assert snapshot is not None
         d = snapshot_to_dict(snapshot)
 
-        assert d["instrument"] == INSTRUMENT_ID
+        assert d["instrument"] == TEST_INSTRUMENT_ID
         assert d["mark_price"] == "2230.60"
         assert d["index_price"] == "2230.55"
         assert d["last_price"] == "2230.75"

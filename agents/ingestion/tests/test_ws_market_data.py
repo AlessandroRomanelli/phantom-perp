@@ -4,13 +4,15 @@ from decimal import Decimal
 
 import pytest
 
-from agents.ingestion.sources.ws_market_data import WS_PRODUCT_ID, parse_market_data
+from agents.ingestion.sources.ws_market_data import parse_market_data
 from agents.ingestion.state import IngestionState
+
+WS_PRODUCT_ID = "ETH-PERP-INTX"
 
 
 @pytest.fixture
 def state() -> IngestionState:
-    return IngestionState()
+    return IngestionState(instrument_id="ETH-PERP")
 
 
 class TestParseMarketData:

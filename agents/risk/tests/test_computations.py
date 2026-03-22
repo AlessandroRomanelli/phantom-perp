@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pytest
 
-from libs.common.constants import FEE_MAKER, FEE_TAKER, MIN_ORDER_SIZE
+from libs.common.constants import FEE_MAKER, FEE_TAKER
 from libs.common.models.enums import PortfolioTarget, PositionSide
 from libs.common.models.position import PerpPosition
 
@@ -324,5 +324,5 @@ class TestPositionSizer:
             existing_positions=[],
             limits=_default_limits(),
         )
-        # Must be a multiple of MIN_ORDER_SIZE
-        assert size % MIN_ORDER_SIZE == 0
+        # Must be a multiple of min_order_size
+        assert size % Decimal("0.0001") == 0

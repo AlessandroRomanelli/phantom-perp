@@ -5,7 +5,6 @@ from decimal import Decimal
 
 import numpy as np
 
-from libs.common.constants import INSTRUMENT_ID
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 
@@ -14,6 +13,8 @@ from agents.signals.strategies.liquidation_cascade import (
     LiquidationCascadeParams,
     LiquidationCascadeStrategy,
 )
+
+TEST_INSTRUMENT_ID = "ETH-PERP"
 
 
 def _snap(
@@ -28,7 +29,7 @@ def _snap(
         ts = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
     return MarketSnapshot(
         timestamp=ts,
-        instrument=INSTRUMENT_ID,
+        instrument=TEST_INSTRUMENT_ID,
         mark_price=Decimal(str(mark)),
         index_price=Decimal(str(mark - 0.5)),
         last_price=Decimal(str(mark)),

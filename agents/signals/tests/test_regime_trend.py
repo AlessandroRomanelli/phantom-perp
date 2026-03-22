@@ -6,12 +6,13 @@ from decimal import Decimal
 import numpy as np
 import pytest
 
-from libs.common.constants import INSTRUMENT_ID
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 
 from agents.signals.feature_store import FeatureStore
 from agents.signals.strategies.regime_trend import RegimeTrendParams, RegimeTrendStrategy
+
+TEST_INSTRUMENT_ID = "ETH-PERP"
 
 
 def _snap(
@@ -25,7 +26,7 @@ def _snap(
     idx = index if index is not None else mark - 0.5
     return MarketSnapshot(
         timestamp=ts,
-        instrument=INSTRUMENT_ID,
+        instrument=TEST_INSTRUMENT_ID,
         mark_price=Decimal(str(mark)),
         index_price=Decimal(str(idx)),
         last_price=Decimal(str(mark)),
@@ -181,7 +182,7 @@ class TestRegimeTrendStrategy:
 
         sig = long_signals[0]
         assert sig.source == SignalSource.REGIME_TREND
-        assert sig.instrument == INSTRUMENT_ID
+        assert sig.instrument == TEST_INSTRUMENT_ID
         assert sig.stop_loss is not None
         assert sig.take_profit is not None
         assert sig.entry_price is not None
