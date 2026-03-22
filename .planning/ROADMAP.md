@@ -47,11 +47,11 @@ Plans:
   3. Momentum and mean reversion strategies place stops at recent swing highs/lows (or partial targets at mean) instead of fixed ATR multiples
   4. Mean reversion strategy uses multi-factor trend rejection (EMA slope + consecutive closes + momentum strength) instead of a single ADX threshold
   5. High-conviction signals from both strategies route to Portfolio A for autonomous execution
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md — Momentum: volume confirmation, adaptive conviction, swing stops, Portfolio A routing, YAML loader fix
+- [ ] 02-02-PLAN.md — Mean reversion: multi-factor trend rejection, adaptive bands, extended targets, volume boost, Portfolio A routing
 
 ### Phase 3: Liquidation, Correlation, and Regime Improvements
 **Goal**: The remaining three existing strategies produce more nuanced signals with graduated responses, multi-window analysis, and adaptive thresholds
@@ -108,7 +108,7 @@ Phases execute in numeric order. Phases 2, 3, and 4 depend only on Phase 1 and c
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation and Per-Instrument Tuning | 2/3 | In Progress|  |
-| 2. Momentum and Mean Reversion Improvements | 0/? | Not started | - |
+| 2. Momentum and Mean Reversion Improvements | 0/2 | Not started | - |
 | 3. Liquidation, Correlation, and Regime Improvements | 0/? | Not started | - |
 | 4. New Strategies | 0/? | Not started | - |
 | 5. Cross-Cutting Quality | 0/? | Not started | - |
