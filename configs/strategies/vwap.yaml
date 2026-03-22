@@ -1,0 +1,34 @@
+strategy:
+  name: "vwap"
+  enabled: true
+  weight: 0.10
+
+parameters:
+  session_reset_hour_utc: 0
+  deviation_threshold: 2.0
+  min_session_progress: 0.2
+  session_conviction_weight: 0.3
+  atr_period: 14
+  stop_loss_atr_mult: 2.0
+  take_profit_atr_mult: 1.5
+  min_conviction: 0.40
+  cooldown_bars: 10
+  portfolio_a_min_conviction: 0.70
+  lookback_bars: 60
+  use_session_reset: true
+  session_length_hours: 24
+
+instruments:
+  ETH-PERP:
+    deviation_threshold: 2.0
+  BTC-PERP:
+    deviation_threshold: 2.5
+  SOL-PERP:
+    deviation_threshold: 1.8
+    min_conviction: 0.45
+  QQQ-PERP:
+    session_reset_hour_utc: 14
+    deviation_threshold: 2.0
+  SPY-PERP:
+    session_reset_hour_utc: 14
+    deviation_threshold: 2.0

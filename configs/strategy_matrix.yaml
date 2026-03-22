@@ -58,3 +58,12 @@ strategies:
       - QQQ-PERP
       - SPY-PERP
       # All instruments enabled per D-11; depth gate naturally suppresses thin books
+
+  vwap:
+    enabled: true
+    instruments:
+      - ETH-PERP
+      - BTC-PERP
+      - SOL-PERP
+      - QQQ-PERP
+      - SPY-PERP

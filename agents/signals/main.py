@@ -45,6 +45,7 @@ from agents.signals.strategies.orderbook_imbalance import (
     OrderbookImbalanceStrategy,
 )
 from agents.signals.strategies.regime_trend import RegimeTrendParams, RegimeTrendStrategy
+from agents.signals.strategies.vwap import VWAPParams, VWAPStrategy
 
 logger = setup_logging("signals", json_output=False)
 
@@ -56,6 +57,7 @@ STRATEGY_CLASSES: dict[str, type[SignalStrategy]] = {
     "correlation": CorrelationStrategy,
     "regime_trend": RegimeTrendStrategy,
     "orderbook_imbalance": OrderbookImbalanceStrategy,
+    "vwap": VWAPStrategy,
 }
 
 STRATEGY_PARAMS_CLASSES: dict[str, type] = {
@@ -65,6 +67,7 @@ STRATEGY_PARAMS_CLASSES: dict[str, type] = {
     "correlation": CorrelationParams,
     "regime_trend": RegimeTrendParams,
     "orderbook_imbalance": OrderbookImbalanceParams,
+    "vwap": VWAPParams,
 }
 
 
