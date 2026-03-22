@@ -79,12 +79,12 @@ Plans:
   2. Orderbook imbalance strategy emits directional signals based on time-weighted bid/ask depth imbalance, suppressing signals when the book is too thin
   3. Orderbook imbalance signals route to Portfolio A given their short time horizon
   4. VWAP feasibility is validated: either the volume-delta approximation produces usable VWAP values and the strategy emits deviation-based signals with session reset and time-of-session awareness, or the strategy is deferred to v2 with documented rationale
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
-- [ ] 04-03: TBD
+- [ ] 04-01-PLAN.md — Funding rate filter utility: z-score computation, time-to-settlement decay, integration into correlation/momentum/mean_reversion
+- [ ] 04-02-PLAN.md — Orderbook imbalance strategy: time-weighted imbalance, depth gate, Portfolio A routing, per-instrument config
+- [ ] 04-03-PLAN.md — VWAP feasibility validation and conditional strategy implementation or deferral
 
 ### Phase 5: Cross-Cutting Quality
 **Goal**: All strategies benefit from shared utilities for adaptive conviction, session awareness, conviction normalization, and structure-aware stops
@@ -111,5 +111,5 @@ Phases execute in numeric order. Phases 2, 3, and 4 depend only on Phase 1 and c
 | 1. Foundation and Per-Instrument Tuning | 2/3 | In Progress|  |
 | 2. Momentum and Mean Reversion Improvements | 2/2 | Complete   | 2026-03-22 |
 | 3. Liquidation, Correlation, and Regime Improvements | 3/3 | Complete   | 2026-03-22 |
-| 4. New Strategies | 0/? | Not started | - |
+| 4. New Strategies | 0/3 | Not started | - |
 | 5. Cross-Cutting Quality | 0/? | Not started | - |
