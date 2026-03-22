@@ -61,10 +61,10 @@
 
 ### Orderbook Imbalance Strategy
 
-- [ ] **OBI-01**: New strategy using bid/ask depth imbalance as directional signal for short-term trades
-- [ ] **OBI-02**: Time-weighted imbalance — average imbalance over multiple samples rather than point-in-time
-- [ ] **OBI-03**: Minimum depth gate — suppress signals when orderbook is too thin to be meaningful
-- [ ] **OBI-04**: Portfolio A routing — short time horizon signals route to autonomous execution
+- [x] **OBI-01**: New strategy using bid/ask depth imbalance as directional signal for short-term trades
+- [x] **OBI-02**: Time-weighted imbalance — average imbalance over multiple samples rather than point-in-time
+- [x] **OBI-03**: Minimum depth gate — suppress signals when orderbook is too thin to be meaningful
+- [x] **OBI-04**: Portfolio A routing — short time horizon signals route to autonomous execution
 
 ### VWAP Deviation Strategy
 
@@ -153,10 +153,10 @@
 | FUND-01 | Phase 4 | Pending |
 | FUND-02 | Phase 4 | Pending |
 | FUND-03 | Phase 4 | Pending |
-| OBI-01 | Phase 4 | Pending |
-| OBI-02 | Phase 4 | Pending |
-| OBI-03 | Phase 4 | Pending |
-| OBI-04 | Phase 4 | Pending |
+| OBI-01 | Phase 4 | Complete |
+| OBI-02 | Phase 4 | Complete |
+| OBI-03 | Phase 4 | Complete |
+| OBI-04 | Phase 4 | Complete |
 | VWAP-01 | Phase 4 | Pending |
 | VWAP-02 | Phase 4 | Pending |
 | VWAP-03 | Phase 4 | Pending |
