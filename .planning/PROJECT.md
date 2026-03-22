@@ -27,11 +27,11 @@ Better signal quality and broader market coverage — the bot should trade smart
 - ✓ FeatureStore timestamps and bar_volume deltas — Validated in Phase 1
 - ✓ SignalSource enum includes VWAP and VOLUME_PROFILE entries — Validated in Phase 1
 - ✓ Strategy matrix for per-instrument enablement — Validated in Phase 1
+- ✓ Momentum strategy — volume confirmation, adaptive conviction, swing stops, Portfolio A routing — Validated in Phase 2
+- ✓ Mean reversion strategy — multi-factor trend rejection, adaptive bands, extended targets, Portfolio A routing — Validated in Phase 2
 
 ### Active
 
-- [ ] Improve momentum strategy — adaptive EMA periods, better conviction model, smarter stop placement
-- [ ] Improve mean reversion strategy — dynamic band width, partial-target exits, trend-aware filtering
 - [ ] Improve liquidation cascade strategy — graduated response levels, volume confirmation, better timing
 - [ ] Improve correlation strategy — multi-window basis analysis, funding rate integration, stronger divergence detection
 - [ ] Improve regime trend strategy — adaptive filter thresholds, multi-timeframe confirmation, trailing stops
@@ -98,4 +98,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-21 after Phase 1 completion*
+*Last updated: 2026-03-22 after Phase 2 completion*
