@@ -38,11 +38,14 @@ Better signal quality and broader market coverage — the bot should trade smart
 - ✓ Orderbook imbalance strategy — time-weighted depth imbalance, spread depth gate, Portfolio A routing — Validated in Phase 4
 - ✓ VWAP deviation strategy — session-aware VWAP with feasibility validation, deviation signals — Validated in Phase 4
 
+- ✓ Cross-strategy conviction normalization — unified bands, Portfolio A threshold at 0.70 — Validated in Phase 5
+- ✓ Session-aware parameter selection — session classifier + configs/sessions.yaml — Validated in Phase 5
+- ✓ Shared adaptive conviction and swing point utilities — Validated in Phase 5
+- ✓ Per-instrument tuning refresh for momentum, mean reversion, correlation — Validated in Phase 5
+
 ### Active
 
 - [ ] Volume profile strategy — high-volume nodes as support/resistance, low-volume gaps as breakout targets
-- [ ] Dual portfolio routing for all strategies — high-conviction fast signals → Portfolio A, all else → Portfolio B
-- [ ] Cross-strategy signal quality — conviction models that account for instrument-specific volatility and liquidity
 
 ### Out of Scope
 
@@ -78,9 +81,9 @@ Better signal quality and broader market coverage — the bot should trade smart
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Per-instrument tuning over universal params | ETH weekends vs SPY equity hours are completely different — one-size-fits-all leaves performance on the table | ✓ Phase 1 |
-| Proven quant patterns over exotic signals | Focus on well-established patterns (VWAP, volume profile, funding arb, orderbook flow) before exploring exotic approaches | — Pending |
-| Dual routing for all strategies | High-conviction signals from any strategy should be eligible for Portfolio A autonomous execution | — Pending |
-| Both improve existing + build new | Equal priority on making current strategies smarter and adding new ones that fill coverage gaps | — Pending |
+| Proven quant patterns over exotic signals | Focus on well-established patterns (VWAP, volume profile, funding arb, orderbook flow) before exploring exotic approaches | ✓ Phase 4 |
+| Dual routing for all strategies | High-conviction signals from any strategy should be eligible for Portfolio A autonomous execution | ✓ Phase 5 |
+| Both improve existing + build new | Equal priority on making current strategies smarter and adding new ones that fill coverage gaps | ✓ Phases 2-4 |
 
 ## Evolution
 
@@ -100,4 +103,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-22 after Phase 4 completion*
+*Last updated: 2026-03-22 after Phase 5 completion — milestone complete*
