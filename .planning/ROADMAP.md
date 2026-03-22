@@ -40,11 +40,11 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`
   2. No hardcoded INSTRUMENT_ID, BASE_CURRENCY, QUOTE_CURRENCY, TICK_SIZE, or MIN_ORDER_SIZE constants remain in constants.py — all values are config-driven
   3. Ingestion main.py creates a Dict[str, IngestionState] with one entry per active instrument from config
   4. Normalizer accepts an instrument parameter and builds MarketSnapshot with that instrument ID (not a hardcoded constant)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 06-01: TBD
-- [ ] 06-02: TBD
+- [ ] 06-01-PLAN.md — InstrumentConfig registry, YAML instruments list, wire into startup, remove constant defaults
+- [ ] 06-02-PLAN.md — Per-instrument IngestionState, migrate all callers, update all tests
 
 ### Phase 7: WebSocket Multi-Instrument
 **Goal**: A single WebSocket connection receives real-time market data for all 5 instruments and routes messages to the correct per-instrument state
@@ -97,7 +97,7 @@ Phases execute in numeric order: 6 → 7 → 8 → 9 (note: 7 and 8 are independ
 | 3. Liquidation, Correlation, and Regime Improvements | v1.0 | 3/3 | Complete | 2026-03-22 |
 | 4. New Strategies | v1.0 | 3/3 | Complete | 2026-03-22 |
 | 5. Cross-Cutting Quality | v1.0 | 3/3 | Complete | 2026-03-22 |
-| 6. Config and State Foundation | v1.1 | 0/0 | Not started | - |
+| 6. Config and State Foundation | v1.1 | 0/2 | In progress | - |
 | 7. WebSocket Multi-Instrument | v1.1 | 0/0 | Not started | - |
 | 8. REST Polling Multi-Instrument | v1.1 | 0/0 | Not started | - |
 | 9. End-to-End Verification | v1.1 | 0/0 | Not started | - |
