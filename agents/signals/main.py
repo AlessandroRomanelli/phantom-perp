@@ -40,6 +40,10 @@ from agents.signals.strategies.liquidation_cascade import (
 )
 from agents.signals.strategies.mean_reversion import MeanReversionParams, MeanReversionStrategy
 from agents.signals.strategies.momentum import MomentumParams, MomentumStrategy
+from agents.signals.strategies.orderbook_imbalance import (
+    OrderbookImbalanceParams,
+    OrderbookImbalanceStrategy,
+)
 from agents.signals.strategies.regime_trend import RegimeTrendParams, RegimeTrendStrategy
 
 logger = setup_logging("signals", json_output=False)
@@ -51,6 +55,7 @@ STRATEGY_CLASSES: dict[str, type[SignalStrategy]] = {
     "liquidation_cascade": LiquidationCascadeStrategy,
     "correlation": CorrelationStrategy,
     "regime_trend": RegimeTrendStrategy,
+    "orderbook_imbalance": OrderbookImbalanceStrategy,
 }
 
 STRATEGY_PARAMS_CLASSES: dict[str, type] = {
@@ -59,6 +64,7 @@ STRATEGY_PARAMS_CLASSES: dict[str, type] = {
     "liquidation_cascade": LiquidationCascadeParams,
     "correlation": CorrelationParams,
     "regime_trend": RegimeTrendParams,
+    "orderbook_imbalance": OrderbookImbalanceParams,
 }
 
 
