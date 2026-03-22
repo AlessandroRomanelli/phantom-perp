@@ -50,8 +50,8 @@
 
 ### Regime Trend Strategy Improvements
 
-- [ ] **RT-01**: Adaptive filter thresholds — ADX and ATR expansion thresholds adjust with volatility regime
-- [ ] **RT-02**: Dynamic trailing stop concept — emit tighter initial stop with metadata suggesting trail parameters for execution layer
+- [x] **RT-01**: Adaptive filter thresholds — ADX and ATR expansion thresholds adjust with volatility regime
+- [x] **RT-02**: Dynamic trailing stop concept — emit tighter initial stop with metadata suggesting trail parameters for execution layer
 
 ### Funding Rate Filter
 
@@ -148,8 +148,8 @@
 | CORR-01 | Phase 3 | Pending |
 | CORR-02 | Phase 3 | Pending |
 | CORR-03 | Phase 3 | Pending |
-| RT-01 | Phase 3 | Pending |
-| RT-02 | Phase 3 | Pending |
+| RT-01 | Phase 3 | Complete |
+| RT-02 | Phase 3 | Complete |
 | FUND-01 | Phase 4 | Pending |
 | FUND-02 | Phase 4 | Pending |
 | FUND-03 | Phase 4 | Pending |

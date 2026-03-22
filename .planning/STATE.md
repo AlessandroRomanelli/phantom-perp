@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 status: unknown
 stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-03-22T09:33:20.508Z"
+last_updated: "2026-03-22T10:01:54.415Z"
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 5
+  total_plans: 8
   completed_plans: 5
 ---
 
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-21)
 
 **Core value:** Better signal quality and broader market coverage across all instruments and conditions
-**Current focus:** Phase 02 — Momentum and Mean Reversion Improvements
+**Current focus:** Phase 03 — Liquidation, Correlation, and Regime Improvements
 
 ## Current Position
 
-Phase: 02 (Momentum and Mean Reversion Improvements) — EXECUTING
-Plan: 1 of 2
+Phase: 03 (Liquidation, Correlation, and Regime Improvements) — EXECUTING
+Plan: 2 of 3
 
 ## Performance Metrics
 
@@ -51,6 +51,7 @@ Plan: 1 of 2
 | Phase 01 P03 | 3min | 3 tasks | 7 files |
 | Phase 02 P01 | 4min | 1 tasks | 4 files |
 | Phase 02 P02 | 5min | 1 tasks | 3 files |
+| Phase 03 P03 | 4min | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,9 @@ Recent decisions affecting current work:
 - [Phase 02]: 3-component conviction model for mean reversion: deviation (0-0.40) + RSI (0-0.35) + volume (0-0.25)
 - [Phase 02]: Portfolio A threshold at 0.65 for mean reversion (lower than momentum 0.75, per D-01)
 - [Phase 02]: Used scipy percentileofscore for ATR-based adaptive Bollinger Band width
+- [Phase 03]: Regime trend adaptive ADX/ATR thresholds via percentileofscore (same pattern as momentum)
+- [Phase 03]: Trail metadata emitted as signal metadata keys for future execution layer consumption
+- [Phase 03]: QQQ/SPY trail disabled since Portfolio A already disabled for these instruments
 
 ### Pending Todos
 
