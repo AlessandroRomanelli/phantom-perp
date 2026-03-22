@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Multi-Instrument Ingestion
-status: defining_requirements
+status: ready_to_plan
 stopped_at: null
-last_updated: "2026-03-22T13:00:00.000Z"
+last_updated: "2026-03-22T14:00:00.000Z"
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -19,47 +19,39 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-22)
 
 **Core value:** Better signal quality and broader market coverage across all instruments and conditions
-**Current focus:** Defining requirements for v1.1 Multi-Instrument Ingestion
+**Current focus:** Phase 6 — Config and State Foundation
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 6 of 9 (Config and State Foundation)
 Plan: —
+Status: Ready to plan
+Last activity: 2026-03-22 — Roadmap created for v1.1 Multi-Instrument Ingestion
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
-
-- Total plans completed: 1
-- Average duration: -
-- Total execution time: 0 hours
+- Total plans completed: 14 (from v1.0)
+- Average duration: 4 min
+- Total execution time: ~1 hour
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| Phase 01 | 3 | 7min | 2.3min |
+| Phase 02 | 2 | 9min | 4.5min |
+| Phase 03 | 3 | 12min | 4min |
+| Phase 04 | 3 | 16min | 5.3min |
+| Phase 05 | 3 | 12min | 4min |
 
 **Recent Trend:**
-
-- Last 5 plans: -
-- Trend: -
+- Last 5 plans: 8min, 4min, 3min, 6min, 3min
+- Trend: Stable
 
 *Updated after each plan completion*
-| Phase 01 P01 | 2min | 3 tasks | 5 files |
-| Phase 01 P02 | 2min | 2 tasks | 4 files |
-| Phase 01 P03 | 3min | 3 tasks | 7 files |
-| Phase 02 P01 | 4min | 1 tasks | 4 files |
-| Phase 02 P02 | 5min | 1 tasks | 3 files |
-| Phase 03 P02 | 4min | 1 tasks | 3 files |
-| Phase 03 P03 | 4min | 1 tasks | 3 files |
-| Phase 03 P01 | 4min | 1 tasks | 3 files |
-| Phase 04 P02 | 4min | 2 tasks | 5 files |
-| Phase 04 P01 | 8min | 2 tasks | 5 files |
-| Phase 04 P03 | 4min | 2 tasks | 5 files |
-| Phase 05 P01 | 3min | 2 tasks | 8 files |
-| Phase 05 P03 | 3min | 2 tasks | 3 files |
-| Phase 05 P02 | 6min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -68,60 +60,20 @@ Plan: —
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- [Roadmap]: Per-instrument tuning before strategy code changes (establish tuning discipline first)
-- [Roadmap]: VWAP strategy gated on feasibility validation (VWAP-01) before full implementation
-- [Roadmap]: Phases 2, 3, 4 depend only on Phase 1 (not on each other), enabling flexible ordering
-- [Phase 01]: bar_volumes uses np.diff allowing negative values for rolling-off volume
-- [Phase 01]: INFRA-01 verified by test (not code change) since per-instance architecture already isolates cooldowns
-- [Phase 01]: Used mock patching for structlog logger assertions (structlog bypasses Python logging caplog)
-- [Phase 01]: Config validation runs on raw config before instrument merge; diff logging runs after merge
-- [Phase 01]: Strategy matrix controls per-instrument enablement, separate from per-strategy YAML enabled flag
-- [Phase 01]: Liquidation cascade disabled for QQQ/SPY (crypto-native, D-11); correlation enabled for QQQ/SPY (basis divergence valid)
-- [Phase 01]: All min_conviction values lowered to 0.30-0.40 range for increased signal frequency (D-04)
-- [Phase 02]: Used scipy.stats.percentileofscore for ATR volatility percentile in momentum conviction model
-- [Phase 02]: Momentum Portfolio A threshold at 0.75 (higher than MR's 0.65) for stricter autonomous routing
-- [Phase 02]: Volume filter applied as pre-conviction gate; swing stops use structural levels with ATR fallback
-- [Phase 02]: 3-component conviction model for mean reversion: deviation (0-0.40) + RSI (0-0.35) + volume (0-0.25)
-- [Phase 02]: Portfolio A threshold at 0.65 for mean reversion (lower than momentum 0.75, per D-01)
-- [Phase 02]: Used scipy percentileofscore for ATR-based adaptive Bollinger Band width
-- [Phase 03]: Regime trend adaptive ADX/ATR thresholds via percentileofscore (same pattern as momentum)
-- [Phase 03]: Trail metadata emitted as signal metadata keys for future execution layer consumption
-- [Phase 03]: QQQ/SPY trail disabled since Portfolio A already disabled for these instruments
-- [Phase 03]: Tiered cascade: T1 [2%,4%), T2 [4%,8%), T3 [8%+) with tier-specific stop/TP ATR mults and conviction boost
-- [Phase 03]: Volume surge gate uses store.bar_volumes with 1.5x average threshold to filter organic OI reduction
-- [Phase 03]: Multi-window consensus: 3/3 fires always, 2/3 requires funding confirmation for correlation
-- [Phase 03]: Funding rate direction: positive=bearish, negative=bullish for correlation confirmation
-- [Phase 03]: Portfolio A conviction threshold at 0.70 for correlation strategy
-- [Phase 04]: 3-component OBI conviction: imbalance magnitude (0-0.45) + spread quality (0-0.30) + volume ratio (0-0.25)
-- [Phase 04]: OBI depth gate uses spread_bps as proxy for orderbook depth quality
-- [Phase 04]: OBI time-weighted average uses linear weights for recency bias
-- [Phase 04]: Correlation 2/3 agreement gate uses simple direction alignment for funding confirmation, with z-score-based boost as enhancement
-- [Phase 04]: Shared funding utility pattern: extract to module, preserve backward compat via fallback, opt-in with configurable params
-- [Phase 04]: Feasibility PASSES: clamped bar_volumes produce VWAP 8x smoother than price despite 48% negative values
-- [Phase 04]: VWAP uses session-reset mode by default; rolling mode (D-07) available via use_session_reset=false
-- [Phase 05]: Swing points extracted verbatim from momentum -- identical logic, no self parameter
-- [Phase 05]: PORTFOLIO_A_UNIFIED_THRESHOLD = 0.70 as single cross-strategy routing constant
-- [Phase 05]: Correlation per-instrument tuning limited to params actually loaded by __init__ (excludes cooldown_bars, ATR params)
-- [Phase 05]: Session overrides via temporary mutation pattern (save/restore around evaluate) for evaluate()-time params
-- [Phase 05]: Conviction normalization is post-processing overlay in main.py with unified Portfolio A routing at 0.70
+- [Roadmap v1.1]: Phases 7 and 8 are independent (WS and REST polling can execute in either order after Phase 6)
+- [Roadmap v1.1]: 4 phases for 10 requirements — config/state foundation, then WS and REST as parallel tracks, then E2E verification
 
 ### Pending Todos
 
 None yet.
 
-### Quick Tasks Completed
-
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 260322-ja5 | Update dashboard for v1.0 strategy enhancements | 2026-03-22 | 1d46bd6 | [260322-ja5](./quick/260322-ja5-update-dashboard-for-v1-0-strategy-enhan/) |
-
 ### Blockers/Concerns
 
-- Coinbase INTX WebSocket product IDs for BTC, SOL, QQQ, SPY need verification (likely BTC-PERP-INTX, SOL-PERP-INTX, etc.)
+- Coinbase Advanced API product IDs for perp contracts need verification (likely BTC-PERP-INTX, SOL-PERP-INTX, etc. but could differ for Advanced vs INTX)
 - Rate limiting across 5 instruments — candle/funding pollers will make 5x more API calls
 
 ## Session Continuity
 
-Last session: 2026-03-22T12:37:30.967Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-03-22
+Stopped at: Roadmap created for v1.1
 Resume file: None

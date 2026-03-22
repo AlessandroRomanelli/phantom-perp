@@ -57,22 +57,22 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MCFG-01 | TBD | Pending |
-| MCFG-02 | TBD | Pending |
-| MWS-01 | TBD | Pending |
-| MWS-02 | TBD | Pending |
-| MPOL-01 | TBD | Pending |
-| MPOL-02 | TBD | Pending |
-| MSTA-01 | TBD | Pending |
-| MSTA-02 | TBD | Pending |
-| ME2E-01 | TBD | Pending |
-| ME2E-02 | TBD | Pending |
+| MCFG-01 | Phase 6 | Pending |
+| MCFG-02 | Phase 6 | Pending |
+| MWS-01 | Phase 7 | Pending |
+| MWS-02 | Phase 7 | Pending |
+| MPOL-01 | Phase 8 | Pending |
+| MPOL-02 | Phase 8 | Pending |
+| MSTA-01 | Phase 6 | Pending |
+| MSTA-02 | Phase 6 | Pending |
+| ME2E-01 | Phase 9 | Pending |
+| ME2E-02 | Phase 9 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 10 total
-- Mapped to phases: 0
-- Unmapped: 10
+- Mapped to phases: 10
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-22*
-*Last updated: 2026-03-22 after initial definition*
+*Last updated: 2026-03-22 after roadmap creation*
