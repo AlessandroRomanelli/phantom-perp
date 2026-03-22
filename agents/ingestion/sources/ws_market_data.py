@@ -1,24 +1,33 @@
-"""WebSocket market data handler for ETH-PERP.
+"""WebSocket market data handler for multi-instrument ingestion.
 
 Connects to the Coinbase Advanced Trade WebSocket feed, subscribes to
 ticker (top-of-book), level2 (orderbook), and market_trades channels
-for ETH-PERP-INTX, and updates the shared IngestionState on every tick.
+for all configured instruments, dispatches messages to per-instrument
+IngestionState objects, and invokes on_update callbacks.
 
 Coinbase Advanced Trade WebSocket channels:
-  ticker        — best bid/ask, last price, volume, 24h stats
-  level2        — L2 orderbook snapshots and incremental updates
-  market_trades — individual trade executions (price, size, side)
+  ticker        -- best bid/ask, last price, volume, 24h stats
+  level2        -- L2 orderbook snapshots and incremental updates
+  market_trades -- individual trade executions (price, size, side)
 """
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from libs.coinbase.ws_client import CoinbaseWSClient
+from libs.common.constants import STALE_DATA_HALT_SECONDS
+from libs.common.logging import setup_logging
 from libs.common.utils import utc_now
 
 from agents.ingestion.state import BookLevel, IngestionState
+
+logger = setup_logging("ws_market_data", json_output=False)
+
 
 def _to_decimal(value: Any) -> Decimal | None:
     """Safely convert a value to Decimal, returning None on failure."""
@@ -28,6 +37,126 @@ def _to_decimal(value: Any) -> Decimal | None:
         return Decimal(str(value))
     except (InvalidOperation, ValueError, TypeError):
         return None
+
+
+def _extract_product_ids(message: dict[str, Any], channel: str) -> set[str]:
+    """Extract all unique product IDs from a WebSocket message.
+
+    Different channels embed product_id at different levels:
+      - ticker: events[].tickers[].product_id
+      - market_trades: events[].trades[].product_id
+      - l2_data: events[].product_id
+
+    Args:
+        message: Parsed JSON message from the WebSocket.
+        channel: Channel name (ticker, l2_data, market_trades).
+
+    Returns:
+        Set of unique product ID strings found in the message.
+    """
+    product_ids: set[str] = set()
+    events = message.get("events", [])
+
+    for event in events:
+        if channel == "ticker":
+            for ticker in event.get("tickers", []):
+                pid = ticker.get("product_id")
+                if pid:
+                    product_ids.add(pid)
+        elif channel == "market_trades":
+            for trade in event.get("trades", []):
+                pid = trade.get("product_id")
+                if pid:
+                    product_ids.add(pid)
+        elif channel == "l2_data":
+            pid = event.get("product_id")
+            if pid:
+                product_ids.add(pid)
+
+    return product_ids
+
+
+def _dispatch_message(
+    message: dict[str, Any],
+    states: dict[str, IngestionState],
+    product_to_instrument: dict[str, str],
+) -> list[str]:
+    """Route a WebSocket message to the correct per-instrument state(s).
+
+    Extracts product IDs from the message, maps each to an instrument ID,
+    and calls parse_market_data to update the corresponding state.
+
+    Args:
+        message: Parsed JSON message from the WebSocket.
+        states: Per-instrument IngestionState objects keyed by instrument ID.
+        product_to_instrument: Mapping from WS product ID to instrument ID.
+
+    Returns:
+        List of instrument IDs that were updated.
+    """
+    channel = message.get("channel", "")
+
+    # Skip non-data channels
+    if channel in ("", "subscriptions", "heartbeats"):
+        return []
+
+    product_ids = _extract_product_ids(message, channel)
+    if not product_ids:
+        return []
+
+    updated_instruments: list[str] = []
+
+    for product_id in product_ids:
+        instrument_id = product_to_instrument.get(product_id)
+        if instrument_id is None:
+            logger.warning("unrecognized_product_id", product_id=product_id)
+            continue
+
+        state = states.get(instrument_id)
+        if state is None:
+            continue
+
+        changed = parse_market_data(message, state, product_id)
+        if changed:
+            if not state.has_ws_tick:
+                state.has_ws_tick = True
+                logger.info("instrument_ws_ready", instrument=instrument_id)
+            if instrument_id not in updated_instruments:
+                updated_instruments.append(instrument_id)
+
+    return updated_instruments
+
+
+def _mark_stale_instruments(
+    states: dict[str, IngestionState],
+) -> None:
+    """After WS reconnect, mark instruments stale if no data arrived within threshold.
+
+    Checks each instrument's last_ws_update against STALE_DATA_HALT_SECONDS.
+    Instruments that haven't received WS data within the threshold get
+    has_ws_tick reset to False, which prevents snapshot publishing via
+    the is_ready() gate until fresh data arrives (D-10).
+    """
+    now = datetime.now(UTC)
+    for instrument_id, state in states.items():
+        if not state.has_ws_tick:
+            continue  # Already not ready
+        if state.last_ws_update is None:
+            # has_ws_tick is True but no timestamp -- shouldn't happen, mark stale
+            state.has_ws_tick = False
+            logger.warning(
+                "instrument_ws_stale", instrument=instrument_id, reason="no_timestamp",
+            )
+            continue
+        elapsed = (now - state.last_ws_update).total_seconds()
+        if elapsed > STALE_DATA_HALT_SECONDS:
+            state.has_ws_tick = False
+            logger.warning(
+                "instrument_ws_stale",
+                instrument=instrument_id,
+                elapsed_seconds=round(elapsed, 1),
+                threshold=STALE_DATA_HALT_SECONDS,
+            )
 
 
 def parse_market_data(
@@ -43,6 +172,7 @@ def parse_market_data(
     Args:
         message: Parsed JSON message from the WebSocket.
         state: Shared ingestion state to update.
+        ws_product_id: Product ID to filter for in this instrument's data.
 
     Returns:
         True if state was updated (i.e., a snapshot should be published).
@@ -197,7 +327,7 @@ def _apply_level_update(
                 levels[i] = BookLevel(price=price, size=size)
             return
 
-    # New level — insert in sorted order
+    # New level -- insert in sorted order
     if size > 0:
         levels.append(BookLevel(price=price, size=size))
         levels.sort(key=lambda lvl: lvl.price, reverse=reverse)
@@ -205,28 +335,40 @@ def _apply_level_update(
 
 async def run_ws_market_data(
     ws_client: CoinbaseWSClient,
-    state: IngestionState,
-    on_update: Any = None,
-    ws_product_id: str = "ETH-PERP-INTX",
+    states: dict[str, IngestionState],
+    product_to_instrument: dict[str, str],
+    on_update: Callable[[str], Any] | None = None,
 ) -> None:
-    """Run the WebSocket market data listener.
+    """Run the WebSocket market data listener for all instruments.
 
     Connects to the Coinbase Advanced Trade market data feed, subscribes to
-    ticker, level2, and market_trades channels for the given product, and
-    continuously updates shared state.
+    ticker, level2, and market_trades channels for all configured product IDs,
+    dispatches messages to per-instrument states, and invokes on_update
+    callbacks with the instrument ID.
 
     Args:
         ws_client: Configured CoinbaseWSClient for market data URL.
-        state: Shared ingestion state to update.
-        on_update: Optional async callback invoked after each state update.
-        ws_product_id: WebSocket product ID (e.g., "ETH-PERP-INTX").
+        states: Per-instrument IngestionState objects keyed by instrument ID.
+        product_to_instrument: Mapping from WS product ID to instrument ID.
+        on_update: Optional async callback invoked with instrument_id after each
+            state update.
     """
     await ws_client.subscribe(
         channels=["ticker", "level2", "market_trades"],
-        product_ids=[ws_product_id],
+        product_ids=list(product_to_instrument.keys()),
     )
 
+    _last_stale_check = time.monotonic()
+
     async for message in ws_client.listen():
-        if parse_market_data(message, state, ws_product_id):
+        updated_instruments = _dispatch_message(message, states, product_to_instrument)
+
+        for instrument_id in updated_instruments:
             if on_update is not None:
-                await on_update()
+                await on_update(instrument_id)
+
+        # Periodic staleness check (D-10): every STALE_DATA_HALT_SECONDS
+        now = time.monotonic()
+        if now - _last_stale_check > STALE_DATA_HALT_SECONDS:
+            _mark_stale_instruments(states)
+            _last_stale_check = now
