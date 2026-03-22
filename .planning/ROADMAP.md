@@ -95,11 +95,12 @@ Plans:
   2. A session/time-of-week classifier distinguishes crypto_weekday, crypto_weekend, equity_market_hours, and equity_off_hours, and strategies load different thresholds based on the current session
   3. Conviction bands (low/medium/high) are defined and all strategies map their raw conviction to consistent normalized values
   4. A shared swing-point detection utility provides structure-aware stop placement, reusable across momentum, mean reversion, and regime trend strategies
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
+- [ ] 05-01-PLAN.md — Shared utilities: adaptive conviction, swing points, session classifier, conviction normalizer
+- [ ] 05-02-PLAN.md — Session config, strategy integration, conviction normalization wiring, inline replacement
+- [ ] 05-03-PLAN.md — Per-instrument tuning refresh for momentum, mean reversion, correlation
 
 ## Progress
 
@@ -112,4 +113,4 @@ Phases execute in numeric order. Phases 2, 3, and 4 depend only on Phase 1 and c
 | 2. Momentum and Mean Reversion Improvements | 2/2 | Complete   | 2026-03-22 |
 | 3. Liquidation, Correlation, and Regime Improvements | 3/3 | Complete   | 2026-03-22 |
 | 4. New Strategies | 2/3 | In Progress|  |
-| 5. Cross-Cutting Quality | 0/? | Not started | - |
+| 5. Cross-Cutting Quality | 0/3 | Not started | - |
