@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-03-21T21:53:24.250Z"
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-03-22T09:32:19.137Z"
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 5
+  completed_plans: 4
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-21)
 
 **Core value:** Better signal quality and broader market coverage across all instruments and conditions
-**Current focus:** Phase 01 — Foundation and Per-Instrument Tuning
+**Current focus:** Phase 02 — Momentum and Mean Reversion Improvements
 
 ## Current Position
 
-Phase: 01 (Foundation and Per-Instrument Tuning) — COMPLETE
-Plan: 3 of 3
+Phase: 02 (Momentum and Mean Reversion Improvements) — EXECUTING
+Plan: 1 of 2
 
 ## Performance Metrics
 
@@ -49,6 +49,7 @@ Plan: 3 of 3
 | Phase 01 P01 | 2min | 3 tasks | 5 files |
 | Phase 01 P02 | 2min | 2 tasks | 4 files |
 | Phase 01 P03 | 3min | 3 tasks | 7 files |
+| Phase 02 P01 | 4min | 1 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -67,6 +68,9 @@ Recent decisions affecting current work:
 - [Phase 01]: Strategy matrix controls per-instrument enablement, separate from per-strategy YAML enabled flag
 - [Phase 01]: Liquidation cascade disabled for QQQ/SPY (crypto-native, D-11); correlation enabled for QQQ/SPY (basis divergence valid)
 - [Phase 01]: All min_conviction values lowered to 0.30-0.40 range for increased signal frequency (D-04)
+- [Phase 02]: Used scipy.stats.percentileofscore for ATR volatility percentile in momentum conviction model
+- [Phase 02]: Momentum Portfolio A threshold at 0.75 (higher than MR's 0.65) for stricter autonomous routing
+- [Phase 02]: Volume filter applied as pre-conviction gate; swing stops use structural levels with ATR fallback
 
 ### Pending Todos
 
@@ -79,6 +83,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-21T21:53:24.248Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-03-22T09:32:19.135Z
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None

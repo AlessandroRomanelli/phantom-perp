@@ -25,10 +25,10 @@
 
 ### Momentum Strategy Improvements
 
-- [ ] **MOM-01**: Volume confirmation — reject EMA crossovers when volume rate-of-change is declining
-- [ ] **MOM-02**: Adaptive conviction model — scale conviction thresholds with current vs historical volatility percentile
-- [ ] **MOM-03**: Structure-aware stop placement — use recent swing high/low instead of fixed ATR multiples
-- [ ] **MOM-04**: Portfolio A dual routing — high-conviction breakout signals eligible for autonomous execution
+- [x] **MOM-01**: Volume confirmation — reject EMA crossovers when volume rate-of-change is declining
+- [x] **MOM-02**: Adaptive conviction model — scale conviction thresholds with current vs historical volatility percentile
+- [x] **MOM-03**: Structure-aware stop placement — use recent swing high/low instead of fixed ATR multiples
+- [x] **MOM-04**: Portfolio A dual routing — high-conviction breakout signals eligible for autonomous execution
 
 ### Mean Reversion Strategy Improvements
 
@@ -135,10 +135,10 @@
 | TUNE-03 | Phase 1 | Complete |
 | TUNE-04 | Phase 1 | Complete |
 | TUNE-05 | Phase 1 | Complete |
-| MOM-01 | Phase 2 | Pending |
-| MOM-02 | Phase 2 | Pending |
-| MOM-03 | Phase 2 | Pending |
-| MOM-04 | Phase 2 | Pending |
+| MOM-01 | Phase 2 | Complete |
+| MOM-02 | Phase 2 | Complete |
+| MOM-03 | Phase 2 | Complete |
+| MOM-04 | Phase 2 | Complete |
 | MR-01 | Phase 2 | Pending |
 | MR-02 | Phase 2 | Pending |
 | MR-03 | Phase 2 | Pending |

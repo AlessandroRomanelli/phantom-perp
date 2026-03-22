@@ -108,7 +108,7 @@ Phases execute in numeric order. Phases 2, 3, and 4 depend only on Phase 1 and c
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation and Per-Instrument Tuning | 2/3 | In Progress|  |
-| 2. Momentum and Mean Reversion Improvements | 0/2 | Not started | - |
+| 2. Momentum and Mean Reversion Improvements | 1/2 | In Progress|  |
 | 3. Liquidation, Correlation, and Regime Improvements | 0/? | Not started | - |
 | 4. New Strategies | 0/? | Not started | - |
 | 5. Cross-Cutting Quality | 0/? | Not started | - |
