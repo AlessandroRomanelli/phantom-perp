@@ -63,11 +63,12 @@ Plans:
   3. Correlation strategy uses short/medium/long lookback windows and fires when multiple windows agree, with funding rate as a third factor boosting conviction
   4. Regime trend strategy adjusts ADX and ATR expansion thresholds based on volatility regime, and emits tighter initial stops with trail parameter metadata
   5. High-conviction correlation signals route to Portfolio A for autonomous execution
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01-PLAN.md — Liquidation cascade: graduated tiers with volume surge confirmation
+- [ ] 03-02-PLAN.md — Correlation: multi-window basis analysis, funding rate integration, Portfolio A routing
+- [ ] 03-03-PLAN.md — Regime trend: adaptive ADX/ATR thresholds, trailing stop metadata
 
 ### Phase 4: New Strategies
 **Goal**: Three new signal sources fill coverage gaps in funding rate dislocations, orderbook flow, and intraday VWAP deviation
@@ -109,6 +110,6 @@ Phases execute in numeric order. Phases 2, 3, and 4 depend only on Phase 1 and c
 |-------|----------------|--------|-----------|
 | 1. Foundation and Per-Instrument Tuning | 2/3 | In Progress|  |
 | 2. Momentum and Mean Reversion Improvements | 2/2 | Complete   | 2026-03-22 |
-| 3. Liquidation, Correlation, and Regime Improvements | 0/? | Not started | - |
+| 3. Liquidation, Correlation, and Regime Improvements | 0/3 | Not started | - |
 | 4. New Strategies | 0/? | Not started | - |
 | 5. Cross-Cutting Quality | 0/? | Not started | - |
