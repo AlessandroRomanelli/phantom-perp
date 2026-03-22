@@ -75,11 +75,11 @@
 
 ### Cross-Cutting Quality
 
-- [ ] **XQ-01**: Adaptive conviction thresholds — shared utility that scales min_conviction with volatility percentile for any strategy
-- [ ] **XQ-02**: Session/time-of-week classifier — classify current time as crypto_weekday, crypto_weekend, equity_market_hours, equity_off_hours
+- [x] **XQ-01**: Adaptive conviction thresholds — shared utility that scales min_conviction with volatility percentile for any strategy
+- [x] **XQ-02**: Session/time-of-week classifier — classify current time as crypto_weekday, crypto_weekend, equity_market_hours, equity_off_hours
 - [ ] **XQ-03**: Session-aware parameter selection — strategies load different thresholds based on current session classification
-- [ ] **XQ-04**: Cross-strategy conviction normalization — define conviction bands (low/medium/high) and ensure consistent mapping across all strategies
-- [ ] **XQ-05**: Dynamic stop placement utility — swing point detection for structure-aware stops, reusable across strategies
+- [x] **XQ-04**: Cross-strategy conviction normalization — define conviction bands (low/medium/high) and ensure consistent mapping across all strategies
+- [x] **XQ-05**: Dynamic stop placement utility — swing point detection for structure-aware stops, reusable across strategies
 
 ## v2 Requirements
 
@@ -161,11 +161,11 @@
 | VWAP-02 | Phase 4 | Complete |
 | VWAP-03 | Phase 4 | Complete |
 | VWAP-04 | Phase 4 | Complete |
-| XQ-01 | Phase 5 | Pending |
-| XQ-02 | Phase 5 | Pending |
+| XQ-01 | Phase 5 | Complete |
+| XQ-02 | Phase 5 | Complete |
 | XQ-03 | Phase 5 | Pending |
-| XQ-04 | Phase 5 | Pending |
-| XQ-05 | Phase 5 | Pending |
+| XQ-04 | Phase 5 | Complete |
+| XQ-05 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 43 total

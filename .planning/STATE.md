@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-03-22T11:00:20.638Z"
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-03-22T12:29:09.519Z"
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 11
-  completed_plans: 11
+  total_plans: 14
+  completed_plans: 12
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-21)
 
 **Core value:** Better signal quality and broader market coverage across all instruments and conditions
-**Current focus:** Phase 04 — New Strategies
+**Current focus:** Phase 05 — Cross-Cutting Quality
 
 ## Current Position
 
-Phase: 04 (New Strategies) — EXECUTING
+Phase: 05 (Cross-Cutting Quality) — EXECUTING
 Plan: 2 of 3
 
 ## Performance Metrics
@@ -57,6 +57,7 @@ Plan: 2 of 3
 | Phase 04 P02 | 4min | 2 tasks | 5 files |
 | Phase 04 P01 | 8min | 2 tasks | 5 files |
 | Phase 04 P03 | 4min | 2 tasks | 5 files |
+| Phase 05 P01 | 3min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -96,6 +97,8 @@ Recent decisions affecting current work:
 - [Phase 04]: Shared funding utility pattern: extract to module, preserve backward compat via fallback, opt-in with configurable params
 - [Phase 04]: Feasibility PASSES: clamped bar_volumes produce VWAP 8x smoother than price despite 48% negative values
 - [Phase 04]: VWAP uses session-reset mode by default; rolling mode (D-07) available via use_session_reset=false
+- [Phase 05]: Swing points extracted verbatim from momentum -- identical logic, no self parameter
+- [Phase 05]: PORTFOLIO_A_UNIFIED_THRESHOLD = 0.70 as single cross-strategy routing constant
 
 ### Pending Todos
 
@@ -108,6 +111,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-22T11:00:20.636Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-03-22T12:29:09.516Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None
