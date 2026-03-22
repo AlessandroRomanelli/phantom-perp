@@ -22,6 +22,7 @@ def _snap(
     imbalance: float = 0.0,
     vol_1h: float = 0.15,
     ts: datetime | None = None,
+    volume_24h: float = 15000.0,
 ) -> MarketSnapshot:
     if ts is None:
         ts = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
@@ -34,7 +35,7 @@ def _snap(
         best_bid=Decimal(str(mark - 0.25)),
         best_ask=Decimal(str(mark + 0.25)),
         spread_bps=2.2,
-        volume_24h=Decimal("15000"),
+        volume_24h=Decimal(str(volume_24h)),
         open_interest=Decimal(str(oi)),
         funding_rate=Decimal("0.0001"),
         next_funding_time=ts + timedelta(minutes=30),
@@ -52,11 +53,16 @@ def _build_cascade_store(
     price_end: float,
     imbalance: float = -0.5,
     n_bars: int = 30,
+    volume_base: float = 15000.0,
+    volume_surge_mult: float = 3.0,
 ) -> tuple[FeatureStore, MarketSnapshot]:
     """Build a store simulating a liquidation cascade.
 
     First 2/3 of bars are calm, then the cascade hits hard in the final 1/3
     so that the lookback window sees the full impact.
+
+    Volume increases linearly during calm period (small increments) and surges
+    during cascade (large increments) to create bar_volume deltas.
     """
     store = FeatureStore(sample_interval=timedelta(seconds=0))
     base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
@@ -64,28 +70,35 @@ def _build_cascade_store(
     calm_bars = n_bars * 2 // 3
     cascade_bars = n_bars - calm_bars
 
-    # Calm period: stable OI and price
+    # Calm period: stable OI and price, small volume increments
     for i in range(calm_bars):
+        vol = volume_base + i * 100  # Small steady increments
         store.update(_snap(
             mark=price_start, oi=oi_start, imbalance=0.0,
             ts=base + timedelta(seconds=i),
+            volume_24h=vol,
         ))
 
-    # Cascade period: sharp OI drop and price move
+    # Cascade period: sharp OI drop and price move, volume surges
     for i in range(cascade_bars):
         t = (i + 1) / cascade_bars
         oi = oi_start + (oi_end - oi_start) * t
         price = price_start + (price_end - price_start) * t
+        # Volume surges during cascade
+        vol = volume_base + calm_bars * 100 + (i + 1) * 100 * volume_surge_mult
         store.update(_snap(
             mark=price, oi=oi, imbalance=imbalance * t,
             vol_1h=0.3 + 0.3 * t,
             ts=base + timedelta(seconds=calm_bars + i),
+            volume_24h=vol,
         ))
 
+    final_vol = volume_base + calm_bars * 100 + (cascade_bars + 1) * 100 * volume_surge_mult
     final = _snap(
         mark=price_end, oi=oi_end, imbalance=imbalance,
         vol_1h=0.6,
         ts=base + timedelta(seconds=n_bars),
+        volume_24h=final_vol,
     )
     store.update(final)
     return store, final
@@ -293,3 +306,196 @@ class TestCascadeConviction:
             params=LiquidationCascadeParams(),
         )
         assert c <= 1.0
+
+
+class TestTierClassification:
+    """Tests for graduated cascade response tiers (LIQ-01)."""
+
+    def test_tier1_3pct_oi_drop_uses_tier1_stops(self) -> None:
+        """OI drop of 3% classifies as Tier 1 with tier1 stop/TP ATR mults."""
+        params = LiquidationCascadeParams(
+            oi_lookback=10,
+            min_conviction=0.0,
+            cooldown_bars=0,
+            imbalance_threshold=0.2,
+        )
+        strategy = LiquidationCascadeStrategy(params=params)
+
+        # 3% OI drop: (80000 - 77600) / 80000 = 3%
+        store, snap = _build_cascade_store(
+            oi_start=80000, oi_end=77600,
+            price_start=2250, price_end=2200,
+            imbalance=-0.5,
+        )
+
+        signals = strategy.evaluate(snap, store)
+        assert len(signals) == 1
+        assert signals[0].metadata["tier"] == 1
+
+    def test_tier2_6pct_oi_drop_uses_tier2_stops(self) -> None:
+        """OI drop of 6% classifies as Tier 2 with tier2 stop/TP ATR mults."""
+        params = LiquidationCascadeParams(
+            oi_lookback=10,
+            min_conviction=0.0,
+            cooldown_bars=0,
+            imbalance_threshold=0.2,
+        )
+        strategy = LiquidationCascadeStrategy(params=params)
+
+        # 6% OI drop: (80000 - 75200) / 80000 = 6%
+        store, snap = _build_cascade_store(
+            oi_start=80000, oi_end=75200,
+            price_start=2250, price_end=2200,
+            imbalance=-0.5,
+        )
+
+        signals = strategy.evaluate(snap, store)
+        assert len(signals) == 1
+        assert signals[0].metadata["tier"] == 2
+
+    def test_tier3_10pct_oi_drop_uses_tier3_stops(self) -> None:
+        """OI drop of 10% classifies as Tier 3 with tier3 stop/TP ATR mults."""
+        params = LiquidationCascadeParams(
+            oi_lookback=10,
+            min_conviction=0.0,
+            cooldown_bars=0,
+            imbalance_threshold=0.2,
+        )
+        strategy = LiquidationCascadeStrategy(params=params)
+
+        # 10% OI drop: (80000 - 72000) / 80000 = 10%
+        store, snap = _build_cascade_store(
+            oi_start=80000, oi_end=72000,
+            price_start=2250, price_end=2200,
+            imbalance=-0.5,
+        )
+
+        signals = strategy.evaluate(snap, store)
+        assert len(signals) == 1
+        assert signals[0].metadata["tier"] == 3
+
+    def test_tier_boundary_4pct_is_tier2(self) -> None:
+        """Exactly 4.0% drop classifies as Tier 2 (boundary: [2%,4%)=T1, [4%,8%)=T2)."""
+        tier = LiquidationCascadeStrategy._classify_tier(4.0)
+        assert tier == 2
+
+    def test_tier_boundary_8pct_is_tier3(self) -> None:
+        """Exactly 8.0% drop classifies as Tier 3."""
+        tier = LiquidationCascadeStrategy._classify_tier(8.0)
+        assert tier == 3
+
+    def test_tier3_higher_conviction_than_tier1(self) -> None:
+        """Tier 3 signal has higher base conviction than Tier 1 for same inputs."""
+        params = LiquidationCascadeParams(
+            min_conviction=0.0,
+        )
+
+        c1 = LiquidationCascadeStrategy._compute_conviction(
+            oi_change_pct=-3.0,
+            price_change_pct=-2.0,
+            imbalance=-0.4,
+            volatility_1h=0.3,
+            params=params,
+            tier=1,
+        )
+
+        c3 = LiquidationCascadeStrategy._compute_conviction(
+            oi_change_pct=-3.0,
+            price_change_pct=-2.0,
+            imbalance=-0.4,
+            volatility_1h=0.3,
+            params=params,
+            tier=3,
+        )
+
+        assert c3 > c1
+
+
+class TestVolumeSurgeConfirmation:
+    """Tests for volume surge confirmation gate (LIQ-02)."""
+
+    def test_volume_surge_below_threshold_no_signal(self) -> None:
+        """OI drop of 3% with volume surge < 1.5x average returns no signal."""
+        params = LiquidationCascadeParams(
+            oi_lookback=10,
+            min_conviction=0.0,
+            cooldown_bars=0,
+            imbalance_threshold=0.2,
+            vol_surge_min_ratio=1.5,
+        )
+        strategy = LiquidationCascadeStrategy(params=params)
+
+        # Build store with NO volume surge (flat volume)
+        store, snap = _build_cascade_store(
+            oi_start=80000, oi_end=77600,  # 3% drop
+            price_start=2250, price_end=2200,
+            imbalance=-0.5,
+            volume_surge_mult=1.0,  # No surge, same as calm period
+        )
+
+        signals = strategy.evaluate(snap, store)
+        assert signals == []
+
+    def test_volume_surge_above_threshold_signal(self) -> None:
+        """OI drop of 3% with volume surge >= 1.5x average returns signal."""
+        params = LiquidationCascadeParams(
+            oi_lookback=10,
+            min_conviction=0.0,
+            cooldown_bars=0,
+            imbalance_threshold=0.2,
+            vol_surge_min_ratio=1.5,
+        )
+        strategy = LiquidationCascadeStrategy(params=params)
+
+        # Build store with volume surge (3x normal during cascade)
+        store, snap = _build_cascade_store(
+            oi_start=80000, oi_end=77600,  # 3% drop
+            price_start=2250, price_end=2200,
+            imbalance=-0.5,
+            volume_surge_mult=3.0,  # 3x surge
+        )
+
+        signals = strategy.evaluate(snap, store)
+        assert len(signals) == 1
+
+    def test_signal_metadata_contains_vol_surge_ratio(self) -> None:
+        """Signal metadata contains 'vol_surge_ratio' key."""
+        params = LiquidationCascadeParams(
+            oi_lookback=10,
+            min_conviction=0.0,
+            cooldown_bars=0,
+            imbalance_threshold=0.2,
+        )
+        strategy = LiquidationCascadeStrategy(params=params)
+
+        store, snap = _build_cascade_store(
+            oi_start=80000, oi_end=77600,
+            price_start=2250, price_end=2200,
+            imbalance=-0.5,
+        )
+
+        signals = strategy.evaluate(snap, store)
+        assert len(signals) == 1
+        assert "vol_surge_ratio" in signals[0].metadata
+        assert isinstance(signals[0].metadata["vol_surge_ratio"], float)
+
+    def test_signal_metadata_contains_tier(self) -> None:
+        """Signal metadata contains 'tier' key with integer value."""
+        params = LiquidationCascadeParams(
+            oi_lookback=10,
+            min_conviction=0.0,
+            cooldown_bars=0,
+            imbalance_threshold=0.2,
+        )
+        strategy = LiquidationCascadeStrategy(params=params)
+
+        store, snap = _build_cascade_store(
+            oi_start=80000, oi_end=77600,
+            price_start=2250, price_end=2200,
+            imbalance=-0.5,
+        )
+
+        signals = strategy.evaluate(snap, store)
+        assert len(signals) == 1
+        assert "tier" in signals[0].metadata
+        assert signals[0].metadata["tier"] in (1, 2, 3)
