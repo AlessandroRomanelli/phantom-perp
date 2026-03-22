@@ -16,6 +16,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import yaml
 
 from libs.common.config import (
@@ -228,6 +229,21 @@ def deserialize_snapshot(payload: dict[str, Any]) -> MarketSnapshot:
     )
 
 
+def _json_safe(value: Any) -> Any:
+    """Convert numpy types to native Python types for JSON serialization."""
+    if isinstance(value, (np.floating, np.float64, np.float32)):
+        return float(value)
+    if isinstance(value, (np.integer, np.int64, np.int32)):
+        return int(value)
+    if isinstance(value, np.bool_):
+        return bool(value)
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    return value
+
+
 def signal_to_dict(signal: StandardSignal) -> dict[str, Any]:
     """Serialize a StandardSignal to a JSON-compatible dict for Redis."""
     return {
@@ -235,7 +251,7 @@ def signal_to_dict(signal: StandardSignal) -> dict[str, Any]:
         "timestamp": signal.timestamp.isoformat(),
         "instrument": signal.instrument,
         "direction": signal.direction.value,
-        "conviction": signal.conviction,
+        "conviction": float(signal.conviction),
         "source": signal.source.value,
         "time_horizon_seconds": int(signal.time_horizon.total_seconds()),
         "reasoning": signal.reasoning,
@@ -243,7 +259,7 @@ def signal_to_dict(signal: StandardSignal) -> dict[str, Any]:
         "entry_price": str(signal.entry_price) if signal.entry_price else None,
         "stop_loss": str(signal.stop_loss) if signal.stop_loss else None,
         "take_profit": str(signal.take_profit) if signal.take_profit else None,
-        "metadata": signal.metadata,
+        "metadata": _json_safe(signal.metadata),
     }
 
 
