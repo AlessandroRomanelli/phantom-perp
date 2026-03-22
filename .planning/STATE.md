@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-03-22T12:29:09.519Z"
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-03-22T12:33:09.907Z"
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 14
-  completed_plans: 12
+  completed_plans: 13
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 ## Current Position
 
 Phase: 05 (Cross-Cutting Quality) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Plan: 2 of 3
 | Phase 04 P01 | 8min | 2 tasks | 5 files |
 | Phase 04 P03 | 4min | 2 tasks | 5 files |
 | Phase 05 P01 | 3min | 2 tasks | 8 files |
+| Phase 05 P03 | 3min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,7 @@ Recent decisions affecting current work:
 - [Phase 04]: VWAP uses session-reset mode by default; rolling mode (D-07) available via use_session_reset=false
 - [Phase 05]: Swing points extracted verbatim from momentum -- identical logic, no self parameter
 - [Phase 05]: PORTFOLIO_A_UNIFIED_THRESHOLD = 0.70 as single cross-strategy routing constant
+- [Phase 05]: Correlation per-instrument tuning limited to params actually loaded by __init__ (excludes cooldown_bars, ATR params)
 
 ### Pending Todos
 
@@ -111,6 +113,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-22T12:29:09.516Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-03-22T12:33:09.904Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None
