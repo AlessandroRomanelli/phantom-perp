@@ -36,6 +36,23 @@ parameters:
   portfolio_a_stop_loss_atr_mult: 1.5
   portfolio_a_take_profit_atr_mult: 2.5
 
+  # Adaptive thresholds (RT-01)
+  adx_adapt_enabled: true
+  adx_adapt_low_mult: 0.8
+  adx_adapt_high_mult: 1.2
+  adx_adapt_min: 15.0
+  adx_adapt_max: 35.0
+  atr_expand_adapt_low_mult: 0.85
+  atr_expand_adapt_high_mult: 1.15
+  atr_expand_adapt_min: 0.8
+  atr_expand_adapt_max: 1.5
+
+  # Trailing stop metadata (RT-02)
+  trail_enabled: true
+  trail_activation_pct: 1.0
+  trail_distance_atr: 1.5
+  initial_stop_atr_mult: 1.8
+
   # Signal control — lowered from 0.5 for more signals (D-04)
   min_conviction: 0.40
   cooldown_bars: 8
@@ -61,6 +78,7 @@ instruments:
       adx_threshold: 25
       min_conviction: 0.35
       cooldown_bars: 12
+      trail_activation_pct: 1.5
 
   SOL-PERP:
     parameters:
@@ -73,6 +91,8 @@ instruments:
       take_profit_atr_mult: 5.0
       min_conviction: 0.35
       cooldown_bars: 6
+      adx_adapt_high_mult: 1.3
+      trail_distance_atr: 2.0
 
   QQQ-PERP:
     parameters:
@@ -84,6 +104,7 @@ instruments:
       cooldown_bars: 15
       # Disable Portfolio A — index moves are slower, confirmation preferred
       portfolio_a_enabled: false
+      trail_enabled: false
 
   SPY-PERP:
     parameters:
@@ -94,3 +115,4 @@ instruments:
       min_conviction: 0.35
       cooldown_bars: 15
       portfolio_a_enabled: false
+      trail_enabled: false

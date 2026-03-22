@@ -23,6 +23,7 @@ from decimal import Decimal
 from typing import Any
 
 import numpy as np
+from scipy.stats import percentileofscore
 
 from libs.common.constants import INSTRUMENT_ID
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
@@ -72,6 +73,23 @@ class RegimeTrendParams:
     portfolio_a_stop_loss_atr_mult: float = 1.5
     portfolio_a_take_profit_atr_mult: float = 2.5
 
+    # ── Adaptive threshold scaling (RT-01) ──
+    adx_adapt_enabled: bool = True
+    adx_adapt_low_mult: float = 0.8
+    adx_adapt_high_mult: float = 1.2
+    adx_adapt_min: float = 15.0
+    adx_adapt_max: float = 35.0
+    atr_expand_adapt_low_mult: float = 0.85
+    atr_expand_adapt_high_mult: float = 1.15
+    atr_expand_adapt_min: float = 0.8
+    atr_expand_adapt_max: float = 1.5
+
+    # ── Trailing stop metadata (RT-02) ──
+    trail_enabled: bool = True
+    trail_activation_pct: float = 1.0
+    trail_distance_atr: float = 1.5
+    initial_stop_atr_mult: float = 1.8
+
     # ── Signal control ──
     min_conviction: float = 0.5
     cooldown_bars: int = 8
@@ -109,6 +127,19 @@ class RegimeTrendStrategy(SignalStrategy):
                 pullback_tolerance_atr=p.get("pullback_tolerance_atr", self._params.pullback_tolerance_atr),
                 stop_loss_atr_mult=p.get("stop_loss_atr_mult", self._params.stop_loss_atr_mult),
                 take_profit_atr_mult=p.get("take_profit_atr_mult", self._params.take_profit_atr_mult),
+                adx_adapt_enabled=p.get("adx_adapt_enabled", self._params.adx_adapt_enabled),
+                adx_adapt_low_mult=p.get("adx_adapt_low_mult", self._params.adx_adapt_low_mult),
+                adx_adapt_high_mult=p.get("adx_adapt_high_mult", self._params.adx_adapt_high_mult),
+                adx_adapt_min=p.get("adx_adapt_min", self._params.adx_adapt_min),
+                adx_adapt_max=p.get("adx_adapt_max", self._params.adx_adapt_max),
+                atr_expand_adapt_low_mult=p.get("atr_expand_adapt_low_mult", self._params.atr_expand_adapt_low_mult),
+                atr_expand_adapt_high_mult=p.get("atr_expand_adapt_high_mult", self._params.atr_expand_adapt_high_mult),
+                atr_expand_adapt_min=p.get("atr_expand_adapt_min", self._params.atr_expand_adapt_min),
+                atr_expand_adapt_max=p.get("atr_expand_adapt_max", self._params.atr_expand_adapt_max),
+                trail_enabled=p.get("trail_enabled", self._params.trail_enabled),
+                trail_activation_pct=p.get("trail_activation_pct", self._params.trail_activation_pct),
+                trail_distance_atr=p.get("trail_distance_atr", self._params.trail_distance_atr),
+                initial_stop_atr_mult=p.get("initial_stop_atr_mult", self._params.initial_stop_atr_mult),
                 portfolio_a_enabled=p.get("portfolio_a_enabled", self._params.portfolio_a_enabled),
                 portfolio_a_min_conviction=p.get("portfolio_a_min_conviction", self._params.portfolio_a_min_conviction),
                 portfolio_a_breakout_only=p.get("portfolio_a_breakout_only", self._params.portfolio_a_breakout_only),
@@ -194,6 +225,21 @@ class RegimeTrendStrategy(SignalStrategy):
         if any(np.isnan(v) for v in critical):
             return []
 
+        # ── Adaptive threshold computation (RT-01) ──────────────────────
+
+        vol_pct: float | None = None
+        if p.adx_adapt_enabled:
+            effective_adx_thresh, effective_atr_exp_thresh = self._compute_adaptive_thresholds(
+                atr_vals, cur_atr, p,
+            )
+            # Compute vol_pct for metadata
+            valid_atr_for_pct = atr_vals[~np.isnan(atr_vals)]
+            if len(valid_atr_for_pct) >= 10:
+                vol_pct = round(float(percentileofscore(valid_atr_for_pct, cur_atr)) / 100.0, 3)
+        else:
+            effective_adx_thresh = p.adx_threshold
+            effective_atr_exp_thresh = p.atr_expansion_threshold
+
         # ── Filter 1: Higher-timeframe trend ────────────────────────────
 
         # EMA slope over the lookback window
@@ -214,7 +260,7 @@ class RegimeTrendStrategy(SignalStrategy):
 
         # ADX confirms trending (allow NaN ADX to pass with reduced conviction)
         adx_valid = not np.isnan(cur_adx)
-        if adx_valid and cur_adx < p.adx_threshold:
+        if adx_valid and cur_adx < effective_adx_thresh:
             return []
 
         # ── Filter 2: Volatility expansion ──────────────────────────────
@@ -223,7 +269,7 @@ class RegimeTrendStrategy(SignalStrategy):
             return []
 
         atr_ratio = cur_atr / cur_atr_avg
-        if atr_ratio < p.atr_expansion_threshold:
+        if atr_ratio < effective_atr_exp_thresh:
             return []
 
         # ── Filter 3: Spot confirmation ─────────────────────────────────
@@ -289,16 +335,29 @@ class RegimeTrendStrategy(SignalStrategy):
             "atr_ratio": round(atr_ratio, 3),
             "spot_ema": round(cur_spot_ema, 2),
             "spot_slope": round(spot_slope, 4),
+            "adaptive_adx_threshold": round(effective_adx_thresh, 2),
+            "adaptive_atr_expansion": round(effective_atr_exp_thresh, 3),
+            "trail_enabled": p.trail_enabled,
+            "trail_activation_pct": p.trail_activation_pct if p.trail_enabled else None,
+            "trail_distance_atr": p.trail_distance_atr if p.trail_enabled else None,
+            "initial_stop_tightened": p.trail_enabled,
+            "vol_percentile": vol_pct,
         }
 
         signals: list[StandardSignal] = []
 
         # Portfolio B signal (wider stops, longer horizon)
+        # Use tighter initial stop when trailing stop is enabled (RT-02)
+        if p.trail_enabled:
+            sl_mult_b = Decimal(str(p.initial_stop_atr_mult))
+        else:
+            sl_mult_b = Decimal(str(p.stop_loss_atr_mult))
+
         if direction == PositionSide.LONG:
-            sl_b = round_to_tick(entry - atr_d * Decimal(str(p.stop_loss_atr_mult)))
+            sl_b = round_to_tick(entry - atr_d * sl_mult_b)
             tp_b = round_to_tick(entry + atr_d * Decimal(str(p.take_profit_atr_mult)))
         else:
-            sl_b = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)))
+            sl_b = round_to_tick(entry + atr_d * sl_mult_b)
             tp_b = round_to_tick(entry - atr_d * Decimal(str(p.take_profit_atr_mult)))
 
         reasoning_b = (
@@ -312,7 +371,7 @@ class RegimeTrendStrategy(SignalStrategy):
         signals.append(StandardSignal(
             signal_id=generate_id("sig"),
             timestamp=now,
-            instrument=INSTRUMENT_ID,
+            instrument=snapshot.instrument,
             direction=direction,
             conviction=conviction,
             source=SignalSource.REGIME_TREND,
@@ -343,7 +402,7 @@ class RegimeTrendStrategy(SignalStrategy):
             signals.append(StandardSignal(
                 signal_id=generate_id("sig"),
                 timestamp=now,
-                instrument=INSTRUMENT_ID,
+                instrument=snapshot.instrument,
                 direction=direction,
                 conviction=conviction,
                 source=SignalSource.REGIME_TREND,
@@ -358,6 +417,39 @@ class RegimeTrendStrategy(SignalStrategy):
 
         self._bars_since_signal = 0
         return signals
+
+    # ── Adaptive threshold computation ─────────────────────────────────
+
+    @staticmethod
+    def _compute_adaptive_thresholds(
+        atr_vals: np.ndarray,
+        cur_atr: float,
+        p: RegimeTrendParams,
+    ) -> tuple[float, float]:
+        """Compute volatility-adaptive ADX and ATR expansion thresholds.
+
+        Low vol -> lower thresholds (easier to enter trends in quiet markets).
+        High vol -> higher thresholds (stricter confirmation in volatile markets).
+        """
+        valid_atr = atr_vals[~np.isnan(atr_vals)]
+        if len(valid_atr) < 10:
+            return p.adx_threshold, p.atr_expansion_threshold
+
+        vol_pct = float(percentileofscore(valid_atr, cur_atr)) / 100.0
+
+        # Linear interpolation: low_mult at vol_pct=0, high_mult at vol_pct=1
+        adx_mult = p.adx_adapt_low_mult + (p.adx_adapt_high_mult - p.adx_adapt_low_mult) * vol_pct
+        adaptive_adx = p.adx_threshold * adx_mult
+        adaptive_adx = max(p.adx_adapt_min, min(p.adx_adapt_max, adaptive_adx))
+
+        atr_mult = (
+            p.atr_expand_adapt_low_mult
+            + (p.atr_expand_adapt_high_mult - p.atr_expand_adapt_low_mult) * vol_pct
+        )
+        adaptive_atr_exp = p.atr_expansion_threshold * atr_mult
+        adaptive_atr_exp = max(p.atr_expand_adapt_min, min(p.atr_expand_adapt_max, adaptive_atr_exp))
+
+        return adaptive_adx, adaptive_atr_exp
 
     # ── Entry pattern detection ─────────────────────────────────────────
 
