@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from libs.coinbase.rest_client import CoinbaseRESTClient
-from libs.common.constants import INSTRUMENT_ID
 from libs.common.exceptions import CoinbaseAPIError, RateLimitExceededError
 from libs.common.logging import setup_logging
 from libs.common.utils import utc_now
@@ -46,6 +45,7 @@ async def poll_candles_once(
     rest_client: CoinbaseRESTClient,
     state: IngestionState,
     tf: TimeframeConfig,
+    instrument_id: str = "ETH-PERP",
 ) -> None:
     """Fetch candles for a single timeframe and update state.
 
@@ -53,11 +53,12 @@ async def poll_candles_once(
         rest_client: Coinbase INTX REST client.
         state: Shared ingestion state.
         tf: Timeframe configuration.
+        instrument_id: Instrument to fetch candles for.
     """
     try:
         start = utc_now() - tf.candle_duration * tf.max_candles
         candles = await rest_client.get_candles(
-            instrument_id=INSTRUMENT_ID,
+            instrument_id=instrument_id,
             granularity=tf.granularity,
             start=start.isoformat(),
         )
@@ -80,6 +81,7 @@ async def run_candle_poller(
     rest_client: CoinbaseRESTClient,
     state: IngestionState,
     tf: TimeframeConfig,
+    instrument_id: str = "ETH-PERP",
 ) -> None:
     """Continuously poll candles for a single timeframe.
 
@@ -89,18 +91,20 @@ async def run_candle_poller(
         rest_client: Coinbase INTX REST client.
         state: Shared ingestion state.
         tf: Timeframe configuration.
+        instrument_id: Instrument to fetch candles for.
     """
     # Initial fetch
-    await poll_candles_once(rest_client, state, tf)
+    await poll_candles_once(rest_client, state, tf, instrument_id)
 
     while True:
         await asyncio.sleep(tf.poll_interval_seconds)
-        await poll_candles_once(rest_client, state, tf)
+        await poll_candles_once(rest_client, state, tf, instrument_id)
 
 
 async def run_all_candle_pollers(
     rest_client: CoinbaseRESTClient,
     state: IngestionState,
+    instrument_id: str = "ETH-PERP",
 ) -> None:
     """Launch candle pollers for all configured timeframes.
 
@@ -109,7 +113,8 @@ async def run_all_candle_pollers(
     Args:
         rest_client: Coinbase INTX REST client.
         state: Shared ingestion state.
+        instrument_id: Instrument to fetch candles for.
     """
     async with asyncio.TaskGroup() as tg:
         for tf in TIMEFRAMES:
-            tg.create_task(run_candle_poller(rest_client, state, tf))
+            tg.create_task(run_candle_poller(rest_client, state, tf, instrument_id))

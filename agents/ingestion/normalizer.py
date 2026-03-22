@@ -11,7 +11,6 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from libs.common.constants import INSTRUMENT_ID
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.utils import utc_now
 
@@ -62,7 +61,7 @@ def build_snapshot(state: IngestionState) -> MarketSnapshot | None:
 
     return MarketSnapshot(
         timestamp=now,
-        instrument=INSTRUMENT_ID,
+        instrument=state.instrument_id,
         mark_price=mark_price,
         index_price=index_price,
         last_price=state.last_price,

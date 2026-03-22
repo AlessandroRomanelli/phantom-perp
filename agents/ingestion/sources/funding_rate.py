@@ -14,7 +14,6 @@ import asyncio
 from typing import Any
 
 from libs.coinbase.rest_client import CoinbaseRESTClient
-from libs.common.constants import INSTRUMENT_ID
 from libs.common.exceptions import CoinbaseAPIError, RateLimitExceededError
 from libs.common.logging import setup_logging
 from libs.common.utils import utc_now
@@ -32,6 +31,7 @@ async def poll_funding_once(
     rest_client: CoinbaseRESTClient,
     state: IngestionState,
     publisher: Publisher | None = None,
+    instrument_id: str = "ETH-PERP",
 ) -> None:
     """Fetch the current funding rate and update state.
 
@@ -39,9 +39,10 @@ async def poll_funding_once(
         rest_client: Coinbase INTX REST client.
         state: Shared ingestion state.
         publisher: Optional publisher to emit FundingRate updates.
+        instrument_id: Instrument to fetch funding rate for.
     """
     try:
-        resp = await rest_client.get_funding_rate(instrument_id=INSTRUMENT_ID)
+        resp = await rest_client.get_funding_rate(instrument_id=instrument_id)
 
         state.funding_rate = resp.funding_rate
         state.next_funding_time = resp.event_time
@@ -63,7 +64,7 @@ async def poll_funding_once(
         )
 
         if publisher is not None:
-            await _publish_funding_update(publisher, resp)
+            await _publish_funding_update(publisher, resp, instrument_id)
 
     except RateLimitExceededError:
         logger.warning("funding_poll_rate_limited")
@@ -76,12 +77,13 @@ async def poll_funding_once(
 async def _publish_funding_update(
     publisher: Publisher,
     resp: Any,
+    instrument_id: str = "ETH-PERP",
 ) -> None:
     """Publish a funding rate update to the funding_updates stream."""
     now = utc_now()
     payload = {
         "timestamp": now.isoformat(),
-        "instrument": INSTRUMENT_ID,
+        "instrument": instrument_id,
         "rate": str(resp.funding_rate),
         "next_settlement_time": resp.event_time.isoformat(),
         "mark_price": str(resp.mark_price),
@@ -93,6 +95,7 @@ async def run_funding_poller(
     rest_client: CoinbaseRESTClient,
     state: IngestionState,
     publisher: Publisher | None = None,
+    instrument_id: str = "ETH-PERP",
 ) -> None:
     """Continuously poll the funding rate.
 
@@ -100,10 +103,11 @@ async def run_funding_poller(
         rest_client: Coinbase INTX REST client.
         state: Shared ingestion state.
         publisher: Optional publisher for funding update stream.
+        instrument_id: Instrument to fetch funding rate for.
     """
     # Initial fetch
-    await poll_funding_once(rest_client, state, publisher)
+    await poll_funding_once(rest_client, state, publisher, instrument_id)
 
     while True:
         await asyncio.sleep(FUNDING_POLL_INTERVAL_SECONDS)
-        await poll_funding_once(rest_client, state, publisher)
+        await poll_funding_once(rest_client, state, publisher, instrument_id)

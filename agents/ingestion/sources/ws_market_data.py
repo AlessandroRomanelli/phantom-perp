@@ -20,10 +20,6 @@ from libs.common.utils import utc_now
 
 from agents.ingestion.state import BookLevel, IngestionState
 
-# Advanced Trade WS uses ETH-PERP-INTX; INTX REST API uses ETH-PERP
-WS_PRODUCT_ID = "ETH-PERP-INTX"
-
-
 def _to_decimal(value: Any) -> Decimal | None:
     """Safely convert a value to Decimal, returning None on failure."""
     if value is None:
@@ -34,7 +30,11 @@ def _to_decimal(value: Any) -> Decimal | None:
         return None
 
 
-def parse_market_data(message: dict[str, Any], state: IngestionState) -> bool:
+def parse_market_data(
+    message: dict[str, Any],
+    state: IngestionState,
+    ws_product_id: str = "ETH-PERP-INTX",
+) -> bool:
     """Parse an Advanced Trade WebSocket message and update shared state.
 
     Advanced Trade messages wrap data in an events array:
@@ -61,11 +61,11 @@ def parse_market_data(message: dict[str, Any], state: IngestionState) -> bool:
 
     for event in events:
         if channel == "ticker":
-            updated |= _update_ticker(event, state)
+            updated |= _update_ticker(event, state, ws_product_id)
         elif channel == "l2_data":
-            updated |= _update_orderbook(event, state)
+            updated |= _update_orderbook(event, state, ws_product_id)
         elif channel == "market_trades":
-            updated |= _update_trades(event, state)
+            updated |= _update_trades(event, state, ws_product_id)
 
     if updated:
         state.last_ws_update = utc_now()
@@ -73,7 +73,7 @@ def parse_market_data(message: dict[str, Any], state: IngestionState) -> bool:
     return updated
 
 
-def _update_ticker(event: dict[str, Any], state: IngestionState) -> bool:
+def _update_ticker(event: dict[str, Any], state: IngestionState, ws_product_id: str) -> bool:
     """Extract top-of-book and ticker fields from a ticker event.
 
     Ticker event format:
@@ -84,7 +84,7 @@ def _update_ticker(event: dict[str, Any], state: IngestionState) -> bool:
 
     for ticker in tickers:
         product_id = ticker.get("product_id", "")
-        if product_id != WS_PRODUCT_ID:
+        if product_id != ws_product_id:
             continue
 
         for ws_key, attr in [
@@ -103,7 +103,7 @@ def _update_ticker(event: dict[str, Any], state: IngestionState) -> bool:
     return changed
 
 
-def _update_trades(event: dict[str, Any], state: IngestionState) -> bool:
+def _update_trades(event: dict[str, Any], state: IngestionState, ws_product_id: str) -> bool:
     """Extract last trade price from a market_trades event.
 
     Trade event format:
@@ -114,7 +114,7 @@ def _update_trades(event: dict[str, Any], state: IngestionState) -> bool:
 
     for trade in trades:
         product_id = trade.get("product_id", "")
-        if product_id != WS_PRODUCT_ID:
+        if product_id != ws_product_id:
             continue
 
         price = _to_decimal(trade.get("price"))
@@ -125,7 +125,7 @@ def _update_trades(event: dict[str, Any], state: IngestionState) -> bool:
     return changed
 
 
-def _update_orderbook(event: dict[str, Any], state: IngestionState) -> bool:
+def _update_orderbook(event: dict[str, Any], state: IngestionState, ws_product_id: str) -> bool:
     """Extract L2 book data from a level2 event.
 
     Level2 event format:
@@ -133,7 +133,7 @@ def _update_orderbook(event: dict[str, Any], state: IngestionState) -> bool:
        "updates": [{"side": "bid", "price_level": "...", "new_quantity": "..."}]}
     """
     product_id = event.get("product_id", "")
-    if product_id != WS_PRODUCT_ID:
+    if product_id != ws_product_id:
         return False
 
     updates = event.get("updates", [])
@@ -207,24 +207,26 @@ async def run_ws_market_data(
     ws_client: CoinbaseWSClient,
     state: IngestionState,
     on_update: Any = None,
+    ws_product_id: str = "ETH-PERP-INTX",
 ) -> None:
     """Run the WebSocket market data listener.
 
     Connects to the Coinbase Advanced Trade market data feed, subscribes to
-    ticker, level2, and market_trades channels for ETH-PERP-INTX, and
+    ticker, level2, and market_trades channels for the given product, and
     continuously updates shared state.
 
     Args:
         ws_client: Configured CoinbaseWSClient for market data URL.
         state: Shared ingestion state to update.
         on_update: Optional async callback invoked after each state update.
+        ws_product_id: WebSocket product ID (e.g., "ETH-PERP-INTX").
     """
     await ws_client.subscribe(
         channels=["ticker", "level2", "market_trades"],
-        product_ids=[WS_PRODUCT_ID],
+        product_ids=[ws_product_id],
     )
 
     async for message in ws_client.listen():
-        if parse_market_data(message, state):
+        if parse_market_data(message, state, ws_product_id):
             if on_update is not None:
                 await on_update()

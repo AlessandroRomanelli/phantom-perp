@@ -19,6 +19,7 @@ from libs.coinbase.rate_limiter import RateLimiter
 from libs.coinbase.rest_client import CoinbaseRESTClient
 from libs.coinbase.ws_client import CoinbaseWSClient
 from libs.common.config import get_settings
+from libs.common.instruments import get_all_instruments
 from libs.common.logging import setup_logging
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisPublisher
@@ -36,8 +37,13 @@ async def run_agent() -> None:
     """Main entrypoint for the ingestion agent."""
     settings = get_settings()
 
-    # Shared state across all sources
-    state = IngestionState()
+    # Per-instrument shared state
+    # Phase 6: per-instrument states created; Phase 7/8 will use all of them
+    instruments = get_all_instruments()
+    states: dict[str, IngestionState] = {
+        inst.id: IngestionState(instrument_id=inst.id)
+        for inst in instruments
+    }
 
     # Auth — ingestion only uses public endpoints (market data, candles,
     # funding rate), so any portfolio's API key works. We use Portfolio A's.
@@ -69,7 +75,7 @@ async def run_agent() -> None:
     async def on_ws_update() -> None:
         """Called on every WS state update — build and publish a snapshot."""
         nonlocal snapshot_count
-        snapshot = build_snapshot(state)
+        snapshot = build_snapshot(states["ETH-PERP"])
         if snapshot is None:
             return
 
@@ -92,15 +98,25 @@ async def run_agent() -> None:
         async with asyncio.TaskGroup() as tg:
             # 1. WebSocket market data (real-time)
             tg.create_task(
-                run_ws_market_data(ws_client, state, on_update=on_ws_update),
+                run_ws_market_data(
+                    ws_client,
+                    states["ETH-PERP"],
+                    on_update=on_ws_update,
+                    ws_product_id=instruments[0].ws_product_id,
+                ),
             )
             # 2. REST candle pollers (all timeframes)
             tg.create_task(
-                run_all_candle_pollers(rest_client, state),
+                run_all_candle_pollers(
+                    rest_client, states["ETH-PERP"], instrument_id="ETH-PERP",
+                ),
             )
             # 3. REST funding rate poller
             tg.create_task(
-                run_funding_poller(rest_client, state, publisher),
+                run_funding_poller(
+                    rest_client, states["ETH-PERP"], publisher,
+                    instrument_id="ETH-PERP",
+                ),
             )
     except* Exception as eg:
         for exc in eg.exceptions:

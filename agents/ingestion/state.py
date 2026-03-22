@@ -34,6 +34,10 @@ class IngestionState:
       - funding_rate: funding_rate, next_funding_time, funding_mark_price
     """
 
+    # ── Identity ───────────────────────────────────────────────────────
+
+    instrument_id: str
+
     # ── WebSocket-sourced fields ────────────────────────────────────────
 
     best_bid: Decimal | None = None
