@@ -30,11 +30,12 @@ Better signal quality and broader market coverage — the bot should trade smart
 - ✓ Momentum strategy — volume confirmation, adaptive conviction, swing stops, Portfolio A routing — Validated in Phase 2
 - ✓ Mean reversion strategy — multi-factor trend rejection, adaptive bands, extended targets, Portfolio A routing — Validated in Phase 2
 
+- ✓ Liquidation cascade strategy — graduated tiers, volume surge confirmation, aggressive Tier 3 — Validated in Phase 3
+- ✓ Correlation strategy — multi-window basis (30/60/120), funding rate integration, Portfolio A routing — Validated in Phase 3
+- ✓ Regime trend strategy — adaptive ADX/ATR thresholds, trailing stop metadata — Validated in Phase 3
+
 ### Active
 
-- [ ] Improve liquidation cascade strategy — graduated response levels, volume confirmation, better timing
-- [ ] Improve correlation strategy — multi-window basis analysis, funding rate integration, stronger divergence detection
-- [ ] Improve regime trend strategy — adaptive filter thresholds, multi-timeframe confirmation, trailing stops
 - [ ] Funding rate arbitrage strategy — trade funding rate dislocations, carry trade logic, predicted vs actual rate divergence
 - [ ] Orderbook imbalance strategy — bid/ask depth analysis, absorption detection, sweep detection
 - [ ] VWAP strategy — deviation from session VWAP as mean reversion anchor, time-of-day awareness
@@ -98,4 +99,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-22 after Phase 2 completion*
+*Last updated: 2026-03-22 after Phase 3 completion*
