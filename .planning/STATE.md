@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Multi-Instrument Ingestion
 status: unknown
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-03-22T15:30:11.908Z"
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-22T17:46:18.993Z"
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 3
+  completed_plans: 3
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-22)
 
 **Core value:** Better signal quality and broader market coverage across all instruments and conditions
-**Current focus:** Phase 06 — config-state-foundation
+**Current focus:** Phase 07 — websocket-multi-instrument
 
 ## Current Position
 
-Phase: 7
-Plan: Not started
+Phase: 07 (websocket-multi-instrument) — COMPLETE
+Plan: 1 of 1 (DONE)
 
 ## Performance Metrics
 
@@ -44,6 +44,7 @@ Plan: Not started
 | Phase 04 | 3 | 16min | 5.3min |
 | Phase 05 | 3 | 12min | 4min |
 | Phase 06 | 1 | 4min | 4min |
+| Phase 07 | 1 | 3min | 3min |
 
 **Recent Trend:**
 
@@ -52,6 +53,7 @@ Plan: Not started
 
 *Updated after each plan completion*
 | Phase 06 P02 | 22min | 3 tasks | 44 files |
+| Phase 07 P01 | 3min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -65,6 +67,8 @@ Recent decisions affecting current work:
 - [06-01]: Load instruments from default.yaml directly since env-specific configs don't duplicate instruments list
 - [06-01]: Convert YAML floats to Decimal via Decimal(str(value)) to avoid precision loss
 - [Phase 06]: Strategy tick_size lookup via get_instrument(snapshot.instrument).tick_size at evaluate() entry point
+- [07-01]: Periodic staleness check every 30s in WS listen loop rather than event-driven after reconnect
+- [07-01]: Readiness flags set directly in candles.py/funding_rate.py source files rather than wrapper tasks in main.py
 
 ### Pending Todos
 
@@ -77,6 +81,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-22T15:25:54.765Z
-Stopped at: Completed 06-02-PLAN.md
+Last session: 2026-03-22T17:50:45Z
+Stopped at: Completed 07-01-PLAN.md
 Resume file: None

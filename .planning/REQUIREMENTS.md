@@ -12,8 +12,8 @@
 
 ### WebSocket Ingestion
 
-- [ ] **MWS-01**: WebSocket client subscribes to all active instruments via single connection with multi-product subscription
-- [ ] **MWS-02**: Incoming WS messages are routed to the correct per-instrument IngestionState by product ID
+- [x] **MWS-01**: WebSocket client subscribes to all active instruments via single connection with multi-product subscription
+- [x] **MWS-02**: Incoming WS messages are routed to the correct per-instrument IngestionState by product ID
 
 ### REST Polling
 
@@ -59,8 +59,8 @@
 |-------------|-------|--------|
 | MCFG-01 | Phase 6 | Complete |
 | MCFG-02 | Phase 6 | Complete |
-| MWS-01 | Phase 7 | Pending |
-| MWS-02 | Phase 7 | Pending |
+| MWS-01 | Phase 7 | Complete |
+| MWS-02 | Phase 7 | Complete |
 | MPOL-01 | Phase 8 | Pending |
 | MPOL-02 | Phase 8 | Pending |
 | MSTA-01 | Phase 6 | Complete |

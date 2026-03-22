@@ -25,7 +25,7 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`
 **Milestone Goal:** Enable all 5 perpetual contracts (ETH, BTC, SOL, QQQ, SPY) to flow through the ingestion pipeline so v1.0 strategy improvements evaluate across all instruments.
 
 - [ ] **Phase 6: Config and State Foundation** - Multi-instrument config structure and per-instrument state management
-- [ ] **Phase 7: WebSocket Multi-Instrument** - Single WS connection subscribing to all products with per-instrument routing
+- [x] **Phase 7: WebSocket Multi-Instrument** - Single WS connection subscribing to all products with per-instrument routing (completed 2026-03-22)
 - [ ] **Phase 8: REST Polling Multi-Instrument** - Candle and funding pollers loop over all instruments
 - [ ] **Phase 9: End-to-End Verification** - All 5 instruments produce snapshots that reach the signals agent
 
@@ -98,6 +98,6 @@ Phases execute in numeric order: 6 → 7 → 8 → 9 (note: 7 and 8 are independ
 | 4. New Strategies | v1.0 | 3/3 | Complete | 2026-03-22 |
 | 5. Cross-Cutting Quality | v1.0 | 3/3 | Complete | 2026-03-22 |
 | 6. Config and State Foundation | v1.1 | 0/2 | In progress | - |
-| 7. WebSocket Multi-Instrument | v1.1 | 0/1 | Not started | - |
+| 7. WebSocket Multi-Instrument | 1/1 | Complete   | 2026-03-22 | - |
 | 8. REST Polling Multi-Instrument | v1.1 | 0/0 | Not started | - |
 | 9. End-to-End Verification | v1.1 | 0/0 | Not started | - |
