@@ -3,11 +3,14 @@
 Signal logic:
   1. Track rolling open interest change rate over a short window.
   2. Detect OI drop rate exceeding threshold (mass liquidation event).
-  3. Combine with volatility spike and extreme orderbook imbalance.
-  4. Fade mode: after sharp OI drop + price dump -> LONG (expect bounce).
-  5. Follow mode: during accelerating OI drop + extreme imbalance -> SHORT.
-  6. Conviction scales with OI drop rate, volatility spike, imbalance.
-  7. Short time horizon (<=2h) -> routes to Portfolio A (autonomous).
+  3. Classify cascade into Tier 1/2/3 based on severity (LIQ-01).
+  4. Require volume surge confirmation to filter organic OI reduction (LIQ-02).
+  5. Combine with volatility spike and extreme orderbook imbalance.
+  6. Fade mode: after sharp OI drop + price dump -> LONG (expect bounce).
+  7. Follow mode: during accelerating OI drop + extreme imbalance -> SHORT.
+  8. Conviction scales with OI drop rate, volatility spike, imbalance, and tier.
+  9. Tier-specific stop/TP widths: Tier 3 gets widest stops and biggest targets.
+  10. Short time horizon (<=2h) -> routes to Portfolio A (autonomous).
 """
 
 from __future__ import annotations
@@ -35,18 +38,45 @@ class LiquidationCascadeParams:
     """Tunable parameters for the liquidation cascade strategy."""
 
     oi_lookback: int = 10
-    oi_drop_threshold_pct: float = 2.0
     imbalance_threshold: float = 0.3
     vol_spike_mult: float = 1.5
     atr_period: int = 14
-    stop_loss_atr_mult: float = 2.0
-    take_profit_atr_mult: float = 2.5
     min_conviction: float = 0.55
     cooldown_bars: int = 15
+
+    # Tier classification thresholds (LIQ-01)
+    tier1_min_oi_drop_pct: float = 2.0
+    tier2_min_oi_drop_pct: float = 4.0
+    tier3_min_oi_drop_pct: float = 8.0
+
+    # Tier-specific stop/TP ATR multipliers (LIQ-01)
+    tier1_stop_atr_mult: float = 1.5
+    tier1_tp_atr_mult: float = 2.0
+    tier2_stop_atr_mult: float = 2.0
+    tier2_tp_atr_mult: float = 3.0
+    tier3_stop_atr_mult: float = 3.0
+    tier3_tp_atr_mult: float = 4.5
+
+    # Volume surge confirmation (LIQ-02)
+    vol_lookback: int = 10
+    vol_surge_min_ratio: float = 1.5
+
+    # Backward compatibility aliases
+    @property
+    def oi_drop_threshold_pct(self) -> float:
+        """Alias for tier1_min_oi_drop_pct for backward compatibility."""
+        return self.tier1_min_oi_drop_pct
 
 
 class LiquidationCascadeStrategy(SignalStrategy):
     """Detects liquidation cascades via OI drops and fades or follows them.
+
+    Classifies cascades into 3 tiers based on severity:
+      - Tier 1 (2-4% OI drop): tighter stops, smaller targets
+      - Tier 2 (4-8% OI drop): moderate stops and targets
+      - Tier 3 (>8% OI drop): widest stops, biggest targets, conviction boost
+
+    Requires volume surge confirmation to filter organic OI reduction.
 
     Args:
         params: Strategy parameters. Uses defaults if None.
@@ -64,14 +94,48 @@ class LiquidationCascadeStrategy(SignalStrategy):
             p = config.get("parameters", {})
             self._params = LiquidationCascadeParams(
                 oi_lookback=p.get("oi_lookback", self._params.oi_lookback),
-                oi_drop_threshold_pct=p.get(
-                    "oi_drop_threshold_pct", self._params.oi_drop_threshold_pct,
-                ),
                 imbalance_threshold=p.get(
                     "imbalance_threshold", self._params.imbalance_threshold,
                 ),
                 vol_spike_mult=p.get("vol_spike_mult", self._params.vol_spike_mult),
+                atr_period=p.get("atr_period", self._params.atr_period),
                 min_conviction=p.get("min_conviction", self._params.min_conviction),
+                cooldown_bars=p.get("cooldown_bars", self._params.cooldown_bars),
+                # Tier thresholds
+                tier1_min_oi_drop_pct=p.get(
+                    "tier1_min_oi_drop_pct",
+                    p.get("oi_drop_threshold_pct", self._params.tier1_min_oi_drop_pct),
+                ),
+                tier2_min_oi_drop_pct=p.get(
+                    "tier2_min_oi_drop_pct", self._params.tier2_min_oi_drop_pct,
+                ),
+                tier3_min_oi_drop_pct=p.get(
+                    "tier3_min_oi_drop_pct", self._params.tier3_min_oi_drop_pct,
+                ),
+                # Tier stop/TP mults
+                tier1_stop_atr_mult=p.get(
+                    "tier1_stop_atr_mult", self._params.tier1_stop_atr_mult,
+                ),
+                tier1_tp_atr_mult=p.get(
+                    "tier1_tp_atr_mult", self._params.tier1_tp_atr_mult,
+                ),
+                tier2_stop_atr_mult=p.get(
+                    "tier2_stop_atr_mult", self._params.tier2_stop_atr_mult,
+                ),
+                tier2_tp_atr_mult=p.get(
+                    "tier2_tp_atr_mult", self._params.tier2_tp_atr_mult,
+                ),
+                tier3_stop_atr_mult=p.get(
+                    "tier3_stop_atr_mult", self._params.tier3_stop_atr_mult,
+                ),
+                tier3_tp_atr_mult=p.get(
+                    "tier3_tp_atr_mult", self._params.tier3_tp_atr_mult,
+                ),
+                # Volume surge
+                vol_lookback=p.get("vol_lookback", self._params.vol_lookback),
+                vol_surge_min_ratio=p.get(
+                    "vol_surge_min_ratio", self._params.vol_surge_min_ratio,
+                ),
             )
 
         self._enabled = True
@@ -88,6 +152,19 @@ class LiquidationCascadeStrategy(SignalStrategy):
     @property
     def min_history(self) -> int:
         return max(self._params.oi_lookback, self._params.atr_period) + 5
+
+    @staticmethod
+    def _classify_tier(abs_oi_drop_pct: float) -> int:
+        """Classify OI drop into tier.
+
+        Tier 1: [2%, 4%), Tier 2: [4%, 8%), Tier 3: [8%, inf).
+        """
+        if abs_oi_drop_pct >= 8.0:
+            return 3
+        elif abs_oi_drop_pct >= 4.0:
+            return 2
+        else:
+            return 1
 
     def evaluate(
         self,
@@ -115,8 +192,19 @@ class LiquidationCascadeStrategy(SignalStrategy):
             return []
 
         # Not a liquidation event if OI hasn't dropped enough
-        if oi_change_pct > -p.oi_drop_threshold_pct:
+        if oi_change_pct > -p.tier1_min_oi_drop_pct:
             return []
+
+        # Volume surge confirmation (LIQ-02)
+        bar_vols = store.bar_volumes
+        if len(bar_vols) < p.vol_lookback:
+            return []
+        recent_vols = np.abs(bar_vols[-p.vol_lookback:])
+        vol_avg = float(np.mean(recent_vols))
+        cur_vol = float(np.abs(bar_vols[-1]))
+        vol_surge_ratio = cur_vol / vol_avg if vol_avg > 0 else 0.0
+        if vol_surge_ratio < p.vol_surge_min_ratio:
+            return []  # No volume surge = likely organic OI reduction
 
         # Price change over same window
         price_change_pct = self._compute_price_change_pct(closes, p.oi_lookback)
@@ -132,6 +220,9 @@ class LiquidationCascadeStrategy(SignalStrategy):
         if np.isnan(cur_atr):
             return []
 
+        # Classify cascade tier (LIQ-01)
+        tier = self._classify_tier(abs(oi_change_pct))
+
         # Determine direction: fade or follow
         direction, mode = self._determine_direction(
             oi_change_pct, price_change_pct, cur_imbalance, p,
@@ -140,7 +231,8 @@ class LiquidationCascadeStrategy(SignalStrategy):
             return []
 
         conviction = self._compute_conviction(
-            oi_change_pct, price_change_pct, cur_imbalance, snapshot.volatility_1h, p,
+            oi_change_pct, price_change_pct, cur_imbalance,
+            snapshot.volatility_1h, p, tier=tier,
         )
         if conviction < p.min_conviction:
             return []
@@ -148,23 +240,27 @@ class LiquidationCascadeStrategy(SignalStrategy):
         entry = snapshot.last_price
         atr_d = Decimal(str(cur_atr))
 
+        # Tier-specific stop/TP widths (LIQ-01)
+        stop_mult: float = getattr(p, f"tier{tier}_stop_atr_mult")
+        tp_mult: float = getattr(p, f"tier{tier}_tp_atr_mult")
+
         if direction == PositionSide.LONG:
-            stop_loss = round_to_tick(entry - atr_d * Decimal(str(p.stop_loss_atr_mult)))
-            take_profit = round_to_tick(entry + atr_d * Decimal(str(p.take_profit_atr_mult)))
+            stop_loss = round_to_tick(entry - atr_d * Decimal(str(stop_mult)))
+            take_profit = round_to_tick(entry + atr_d * Decimal(str(tp_mult)))
         else:
-            stop_loss = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)))
-            take_profit = round_to_tick(entry - atr_d * Decimal(str(p.take_profit_atr_mult)))
+            stop_loss = round_to_tick(entry + atr_d * Decimal(str(stop_mult)))
+            take_profit = round_to_tick(entry - atr_d * Decimal(str(tp_mult)))
 
         reasoning = (
-            f"Liquidation cascade {mode}: OI dropped {oi_change_pct:.2f}% "
-            f"over {p.oi_lookback} bars, price {price_change_pct:+.2f}%, "
-            f"imbalance={cur_imbalance:+.2f}"
+            f"Liquidation cascade {mode} (Tier {tier}): OI dropped {oi_change_pct:.2f}% "
+            f"over {p.oi_lookback} bars, vol surge {vol_surge_ratio:.1f}x, "
+            f"price {price_change_pct:+.2f}%, imbalance={cur_imbalance:+.2f}"
         )
 
         signal = StandardSignal(
             signal_id=generate_id("sig"),
             timestamp=utc_now(),
-            instrument=INSTRUMENT_ID,
+            instrument=snapshot.instrument,
             direction=direction,
             conviction=conviction,
             source=SignalSource.LIQUIDATION_CASCADE,
@@ -175,9 +271,11 @@ class LiquidationCascadeStrategy(SignalStrategy):
             stop_loss=stop_loss,
             take_profit=take_profit,
             metadata={
+                "tier": tier,
                 "oi_change_pct": round(oi_change_pct, 3),
                 "price_change_pct": round(price_change_pct, 3),
                 "orderbook_imbalance": round(cur_imbalance, 3),
+                "vol_surge_ratio": round(vol_surge_ratio, 3),
                 "mode": mode,
                 "atr": round(cur_atr, 2),
             },
@@ -234,7 +332,7 @@ class LiquidationCascadeStrategy(SignalStrategy):
             return PositionSide.SHORT, "fade"
 
         # Follow: accelerating cascade with heavy sell imbalance
-        if oi_change_pct < -params.oi_drop_threshold_pct * 2 and imbalance < -0.5:
+        if oi_change_pct < -params.tier1_min_oi_drop_pct * 2 and imbalance < -0.5:
             return PositionSide.SHORT, "follow"
 
         return None, ""
@@ -246,12 +344,14 @@ class LiquidationCascadeStrategy(SignalStrategy):
         imbalance: float,
         volatility_1h: float,
         params: LiquidationCascadeParams,
+        tier: int = 1,
     ) -> float:
         """Compute conviction from cascade strength indicators.
 
         OI drop component (0-0.4): how severe the OI drop is.
         Imbalance component (0-0.3): how extreme the orderbook is.
         Volatility component (0-0.3): elevated vol confirms cascade.
+        Tier boost: T1=0.0, T2=0.05, T3=0.10 base conviction addition.
         """
         # OI component: bigger drop = higher conviction
         oi_score = min(abs(oi_change_pct) / 10.0, 0.4)
@@ -262,4 +362,7 @@ class LiquidationCascadeStrategy(SignalStrategy):
         # Volatility component: higher vol = more confidence it's a real event
         vol_score = min(volatility_1h / 1.0, 0.3)
 
-        return round(min(oi_score + imb_score + vol_score, 1.0), 3)
+        # Tier boost: higher tier = more conviction (LIQ-01)
+        tier_boost = {1: 0.0, 2: 0.05, 3: 0.10}[tier]
+
+        return round(min(oi_score + imb_score + vol_score + tier_boost, 1.0), 3)

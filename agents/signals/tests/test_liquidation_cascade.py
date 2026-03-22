@@ -61,8 +61,9 @@ def _build_cascade_store(
     First 2/3 of bars are calm, then the cascade hits hard in the final 1/3
     so that the lookback window sees the full impact.
 
-    Volume increases linearly during calm period (small increments) and surges
-    during cascade (large increments) to create bar_volume deltas.
+    Volume pattern: steady increments throughout, with the final bar having
+    a volume_surge_mult-sized spike relative to average bar volume.
+    This ensures bar_volumes[-1] / mean(bar_volumes[-vol_lookback:]) >= surge ratio.
     """
     store = FeatureStore(sample_interval=timedelta(seconds=0))
     base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
@@ -70,35 +71,39 @@ def _build_cascade_store(
     calm_bars = n_bars * 2 // 3
     cascade_bars = n_bars - calm_bars
 
-    # Calm period: stable OI and price, small volume increments
+    # Base volume increment per bar
+    base_vol_incr = 100.0
+
+    # Calm period: stable OI and price, steady volume increments
+    cumulative_vol = volume_base
     for i in range(calm_bars):
-        vol = volume_base + i * 100  # Small steady increments
+        cumulative_vol += base_vol_incr
         store.update(_snap(
             mark=price_start, oi=oi_start, imbalance=0.0,
             ts=base + timedelta(seconds=i),
-            volume_24h=vol,
+            volume_24h=cumulative_vol,
         ))
 
-    # Cascade period: sharp OI drop and price move, volume surges
+    # Cascade period: sharp OI drop and price move, steady volume
     for i in range(cascade_bars):
         t = (i + 1) / cascade_bars
         oi = oi_start + (oi_end - oi_start) * t
         price = price_start + (price_end - price_start) * t
-        # Volume surges during cascade
-        vol = volume_base + calm_bars * 100 + (i + 1) * 100 * volume_surge_mult
+        cumulative_vol += base_vol_incr
         store.update(_snap(
             mark=price, oi=oi, imbalance=imbalance * t,
             vol_1h=0.3 + 0.3 * t,
             ts=base + timedelta(seconds=calm_bars + i),
-            volume_24h=vol,
+            volume_24h=cumulative_vol,
         ))
 
-    final_vol = volume_base + calm_bars * 100 + (cascade_bars + 1) * 100 * volume_surge_mult
+    # Final bar: volume spike (volume_surge_mult * normal increment)
+    cumulative_vol += base_vol_incr * volume_surge_mult
     final = _snap(
         mark=price_end, oi=oi_end, imbalance=imbalance,
         vol_1h=0.6,
         ts=base + timedelta(seconds=n_bars),
-        volume_24h=final_vol,
+        volume_24h=cumulative_vol,
     )
     store.update(final)
     return store, final
@@ -109,7 +114,7 @@ class TestLiquidationCascadeStrategy:
         """Sharp OI drop + price dump -> fade with LONG."""
         params = LiquidationCascadeParams(
             oi_lookback=10,
-            oi_drop_threshold_pct=1.5,
+            tier1_min_oi_drop_pct=1.5,
             imbalance_threshold=0.2,
             min_conviction=0.0,
             cooldown_bars=0,
@@ -137,7 +142,7 @@ class TestLiquidationCascadeStrategy:
         """Sharp OI drop + price pump -> short squeeze exhaustion fade."""
         params = LiquidationCascadeParams(
             oi_lookback=10,
-            oi_drop_threshold_pct=1.5,
+            tier1_min_oi_drop_pct=1.5,
             imbalance_threshold=0.2,
             min_conviction=0.0,
             cooldown_bars=0,
@@ -160,7 +165,7 @@ class TestLiquidationCascadeStrategy:
         """Stable OI should produce no signal."""
         params = LiquidationCascadeParams(
             oi_lookback=10,
-            oi_drop_threshold_pct=2.0,
+            tier1_min_oi_drop_pct=2.0,
             min_conviction=0.0,
             cooldown_bars=0,
         )
@@ -189,7 +194,7 @@ class TestLiquidationCascadeStrategy:
     def test_cooldown_prevents_rapid_signals(self) -> None:
         params = LiquidationCascadeParams(
             oi_lookback=10,
-            oi_drop_threshold_pct=1.5,
+            tier1_min_oi_drop_pct=1.5,
             imbalance_threshold=0.2,
             min_conviction=0.0,
             cooldown_bars=100,
@@ -211,7 +216,7 @@ class TestLiquidationCascadeStrategy:
     def test_time_horizon_short(self) -> None:
         params = LiquidationCascadeParams(
             oi_lookback=10,
-            oi_drop_threshold_pct=1.5,
+            tier1_min_oi_drop_pct=1.5,
             imbalance_threshold=0.2,
             min_conviction=0.0,
             cooldown_bars=0,
@@ -231,7 +236,7 @@ class TestLiquidationCascadeStrategy:
     def test_signal_metadata(self) -> None:
         params = LiquidationCascadeParams(
             oi_lookback=10,
-            oi_drop_threshold_pct=1.5,
+            tier1_min_oi_drop_pct=1.5,
             imbalance_threshold=0.2,
             min_conviction=0.0,
             cooldown_bars=0,
