@@ -13,7 +13,7 @@ This milestone transforms Phantom Perp from a conservative, one-size-fits-all si
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Foundation and Per-Instrument Tuning** - Infrastructure prereqs, bug fixes, and per-instrument YAML configs for all 5 instruments
-- [ ] **Phase 2: Momentum and Mean Reversion Improvements** - Volume confirmation, adaptive conviction, trend-aware filtering, dynamic bands, and Portfolio A routing for the two core strategies
+- [x] **Phase 2: Momentum and Mean Reversion Improvements** - Volume confirmation, adaptive conviction, trend-aware filtering, dynamic bands, and Portfolio A routing for the two core strategies (completed 2026-03-22)
 - [ ] **Phase 3: Liquidation, Correlation, and Regime Improvements** - Graduated cascade response, multi-window basis analysis, funding integration, adaptive regime filters, and Portfolio A routing
 - [ ] **Phase 4: New Strategies** - Funding rate filter, orderbook imbalance strategy, and VWAP deviation strategy as new signal sources
 - [ ] **Phase 5: Cross-Cutting Quality** - Adaptive conviction utility, session classification, conviction normalization, and dynamic stop placement across all strategies
@@ -108,7 +108,7 @@ Phases execute in numeric order. Phases 2, 3, and 4 depend only on Phase 1 and c
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation and Per-Instrument Tuning | 2/3 | In Progress|  |
-| 2. Momentum and Mean Reversion Improvements | 1/2 | In Progress|  |
+| 2. Momentum and Mean Reversion Improvements | 2/2 | Complete   | 2026-03-22 |
 | 3. Liquidation, Correlation, and Regime Improvements | 0/? | Not started | - |
 | 4. New Strategies | 0/? | Not started | - |
 | 5. Cross-Cutting Quality | 0/? | Not started | - |

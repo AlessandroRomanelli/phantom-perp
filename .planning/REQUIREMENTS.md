@@ -32,10 +32,10 @@
 
 ### Mean Reversion Strategy Improvements
 
-- [ ] **MR-01**: Multi-factor trend rejection — EMA slope + consecutive closes + momentum strength, not just ADX threshold
-- [ ] **MR-02**: Adaptive band width — adjust Bollinger Band std multiplier based on volatility regime
-- [ ] **MR-03**: Improved take-profit targeting — partial targets at mean, extended targets beyond for strong reversions
-- [ ] **MR-04**: Portfolio A dual routing — extreme deviation (3+ sigma) signals eligible for autonomous execution
+- [x] **MR-01**: Multi-factor trend rejection — EMA slope + consecutive closes + momentum strength, not just ADX threshold
+- [x] **MR-02**: Adaptive band width — adjust Bollinger Band std multiplier based on volatility regime
+- [x] **MR-03**: Improved take-profit targeting — partial targets at mean, extended targets beyond for strong reversions
+- [x] **MR-04**: Portfolio A dual routing — extreme deviation (3+ sigma) signals eligible for autonomous execution
 
 ### Liquidation Cascade Strategy Improvements
 
@@ -139,10 +139,10 @@
 | MOM-02 | Phase 2 | Complete |
 | MOM-03 | Phase 2 | Complete |
 | MOM-04 | Phase 2 | Complete |
-| MR-01 | Phase 2 | Pending |
-| MR-02 | Phase 2 | Pending |
-| MR-03 | Phase 2 | Pending |
-| MR-04 | Phase 2 | Pending |
+| MR-01 | Phase 2 | Complete |
+| MR-02 | Phase 2 | Complete |
+| MR-03 | Phase 2 | Complete |
+| MR-04 | Phase 2 | Complete |
 | LIQ-01 | Phase 3 | Pending |
 | LIQ-02 | Phase 3 | Pending |
 | CORR-01 | Phase 3 | Pending |
