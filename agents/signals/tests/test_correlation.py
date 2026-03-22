@@ -42,7 +42,7 @@ def _snap(
 
 
 def _build_basis_store(
-    n_bars: int = 80,
+    n_bars: int = 140,
     normal_basis_bps: float = 2.0,
     final_basis_bps: float = 30.0,
 ) -> tuple[FeatureStore, MarketSnapshot]:
@@ -70,7 +70,7 @@ def _build_basis_store(
 def _build_oi_divergence_store(
     price_direction: float = 1.0,
     oi_direction: float = -1.0,
-    n_bars: int = 80,
+    n_bars: int = 140,
 ) -> tuple[FeatureStore, MarketSnapshot]:
     """Build a store with OI/price divergence.
 
@@ -115,7 +115,7 @@ class TestCorrelationStrategy:
     def test_extreme_positive_basis_signals_short(self) -> None:
         """Mark >> index (positive basis) -> SHORT."""
         params = CorrelationParams(
-            basis_lookback=60,
+            basis_short_lookback=30, basis_medium_lookback=60, basis_long_lookback=120,
             basis_zscore_threshold=2.0,
             min_conviction=0.0,
             cooldown_bars=0,
@@ -129,14 +129,15 @@ class TestCorrelationStrategy:
         sig = signals[0]
         assert sig.direction == PositionSide.SHORT
         assert sig.source == SignalSource.CORRELATION
-        assert sig.suggested_target == PortfolioTarget.B
+        # Routing depends on conviction vs portfolio_a_min_conviction
+        assert sig.suggested_target in (PortfolioTarget.A, PortfolioTarget.B)
         assert sig.stop_loss > sig.entry_price
         assert sig.take_profit < sig.entry_price
 
     def test_extreme_negative_basis_signals_long(self) -> None:
         """Mark << index (negative basis) -> LONG."""
         params = CorrelationParams(
-            basis_lookback=60,
+            basis_short_lookback=30, basis_medium_lookback=60, basis_long_lookback=120,
             basis_zscore_threshold=2.0,
             min_conviction=0.0,
             cooldown_bars=0,
@@ -152,7 +153,7 @@ class TestCorrelationStrategy:
     def test_normal_basis_no_signal(self) -> None:
         """Normal basis should not trigger."""
         params = CorrelationParams(
-            basis_lookback=60,
+            basis_short_lookback=30, basis_medium_lookback=60, basis_long_lookback=120,
             basis_zscore_threshold=2.0,
             min_conviction=0.0,
             cooldown_bars=0,
@@ -227,7 +228,7 @@ class TestCorrelationStrategy:
     def test_conflicting_signals_no_trade(self) -> None:
         """Basis says LONG but divergence says SHORT -> no trade."""
         params = CorrelationParams(
-            basis_lookback=60,
+            basis_short_lookback=30, basis_medium_lookback=60, basis_long_lookback=120,
             basis_zscore_threshold=2.0,
             oi_divergence_lookback=20,
             oi_divergence_threshold_pct=0.1,
@@ -240,17 +241,17 @@ class TestCorrelationStrategy:
         # OI is dropping while price rises (SHORT signal)
         store = FeatureStore(sample_interval=timedelta(seconds=0))
         base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
-        for i in range(80):
+        for i in range(140):
             mark = 2230.0 + i * 0.3
             index = mark + 0.5  # Mark below index (negative basis)
             oi = 80000 - i * 30  # OI dropping (bearish)
             store.update(_snap(mark=mark, index=index, oi=oi, ts=base + timedelta(seconds=i)))
 
         # Final bar with very negative basis
-        mark = 2230.0 + 80 * 0.3
+        mark = 2230.0 + 140 * 0.3
         index = mark + 5.0  # Extreme negative basis -> LONG
-        oi = 80000 - 80 * 30  # But OI dropped with price rising -> SHORT
-        snap = _snap(mark=mark, index=index, oi=oi, ts=base + timedelta(seconds=80))
+        oi = 80000 - 140 * 30  # But OI dropped with price rising -> SHORT
+        snap = _snap(mark=mark, index=index, oi=oi, ts=base + timedelta(seconds=140))
         store.update(snap)
 
         signals = strategy.evaluate(snap, store)
@@ -273,7 +274,7 @@ class TestCorrelationStrategy:
 
     def test_cooldown_prevents_rapid_signals(self) -> None:
         params = CorrelationParams(
-            basis_lookback=60,
+            basis_short_lookback=30, basis_medium_lookback=60, basis_long_lookback=120,
             basis_zscore_threshold=2.0,
             min_conviction=0.0,
             cooldown_bars=100,
@@ -289,7 +290,7 @@ class TestCorrelationStrategy:
 
     def test_signal_metadata(self) -> None:
         params = CorrelationParams(
-            basis_lookback=60,
+            basis_short_lookback=30, basis_medium_lookback=60, basis_long_lookback=120,
             basis_zscore_threshold=2.0,
             min_conviction=0.0,
             cooldown_bars=0,
@@ -301,13 +302,17 @@ class TestCorrelationStrategy:
         assert len(signals) == 1
         m = signals[0].metadata
         assert "basis_bps" in m
-        assert "basis_zscore" in m
+        assert "z_short" in m
+        assert "z_medium" in m
+        assert "z_long" in m
+        assert "windows_agreed" in m
+        assert "funding_confirms" in m
         assert "oi_divergence" in m
         assert "atr" in m
 
     def test_time_horizon(self) -> None:
         params = CorrelationParams(
-            basis_lookback=60,
+            basis_short_lookback=30, basis_medium_lookback=60, basis_long_lookback=120,
             basis_zscore_threshold=2.0,
             min_conviction=0.0,
             cooldown_bars=0,
@@ -323,7 +328,7 @@ class TestCorrelationStrategy:
         strategy = CorrelationStrategy()
         assert strategy.name == "correlation"
         assert strategy.enabled is True
-        assert strategy.min_history >= 60
+        assert strategy.min_history >= 120
 
 
 class TestBasisComputation:

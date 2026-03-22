@@ -1,14 +1,13 @@
-"""Correlation strategy — basis divergence and OI/price divergence.
+"""Correlation strategy — multi-window basis divergence with funding confirmation.
 
 Signal logic:
   1. Track mark-index basis in basis points over time.
-  2. Compute z-score of current basis vs rolling history.
-  3. Extreme positive basis (mark >> index) -> mark overpriced -> SHORT.
-  4. Extreme negative basis (mark << index) -> mark underpriced -> LONG.
-  5. OI/price divergence: if OI drops while price rises -> bearish.
-     If OI rises while price drops -> bullish (accumulation).
-  6. Conviction scales with basis z-score + divergence strength.
-  7. Medium time horizon (4-8h) -> routes to Portfolio B.
+  2. Compute z-scores at three lookback windows (short=30, medium=60, long=120).
+  3. 3/3 windows agree -> fire regardless of funding rate (D-06).
+  4. 2/3 windows agree -> require funding rate confirmation (D-05).
+  5. Funding rate alignment boosts conviction by configurable amount (D-07).
+  6. OI/price divergence as additional trigger (preserved from original).
+  7. High-conviction signals route to Portfolio A (D-10).
 """
 
 from __future__ import annotations
@@ -35,7 +34,10 @@ from agents.signals.strategies.base import SignalStrategy
 class CorrelationParams:
     """Tunable parameters for the correlation strategy."""
 
-    basis_lookback: int = 60
+    # Multi-window basis lookbacks (CORR-01)
+    basis_short_lookback: int = 30
+    basis_medium_lookback: int = 60
+    basis_long_lookback: int = 120
     basis_zscore_threshold: float = 2.0
     oi_divergence_lookback: int = 20
     oi_divergence_threshold_pct: float = 1.5
@@ -44,6 +46,10 @@ class CorrelationParams:
     take_profit_atr_mult: float = 3.0
     min_conviction: float = 0.5
     cooldown_bars: int = 15
+    # Funding rate integration (CORR-02)
+    funding_rate_boost: float = 0.10
+    # Portfolio A routing (CORR-03)
+    portfolio_a_min_conviction: float = 0.70
 
 
 class CorrelationStrategy(SignalStrategy):
@@ -64,7 +70,15 @@ class CorrelationStrategy(SignalStrategy):
         if config:
             p = config.get("parameters", {})
             self._params = CorrelationParams(
-                basis_lookback=p.get("basis_lookback", self._params.basis_lookback),
+                basis_short_lookback=p.get(
+                    "basis_short_lookback", self._params.basis_short_lookback,
+                ),
+                basis_medium_lookback=p.get(
+                    "basis_medium_lookback", self._params.basis_medium_lookback,
+                ),
+                basis_long_lookback=p.get(
+                    "basis_long_lookback", self._params.basis_long_lookback,
+                ),
                 basis_zscore_threshold=p.get(
                     "basis_zscore_threshold", self._params.basis_zscore_threshold,
                 ),
@@ -76,6 +90,13 @@ class CorrelationStrategy(SignalStrategy):
                     self._params.oi_divergence_threshold_pct,
                 ),
                 min_conviction=p.get("min_conviction", self._params.min_conviction),
+                funding_rate_boost=p.get(
+                    "funding_rate_boost", self._params.funding_rate_boost,
+                ),
+                portfolio_a_min_conviction=p.get(
+                    "portfolio_a_min_conviction",
+                    self._params.portfolio_a_min_conviction,
+                ),
             )
 
         self._enabled = True
@@ -92,17 +113,17 @@ class CorrelationStrategy(SignalStrategy):
     @property
     def min_history(self) -> int:
         return max(
-            self._params.basis_lookback,
+            self._params.basis_long_lookback,
             self._params.oi_divergence_lookback,
             self._params.atr_period,
-        ) + 5
+        ) + 10
 
     def evaluate(
         self,
         snapshot: MarketSnapshot,
         store: FeatureStore,
     ) -> list[StandardSignal]:
-        """Evaluate basis and OI/price divergence signals."""
+        """Evaluate multi-window basis and OI/price divergence signals."""
         self._bars_since_signal += 1
 
         if store.sample_count < self.min_history:
@@ -118,22 +139,64 @@ class CorrelationStrategy(SignalStrategy):
         index_prices = store.index_prices
         ois = store.open_interests
 
-        # 1. Basis analysis (mark vs index)
+        # 1. Multi-window basis analysis (CORR-01)
         basis_bps = self._compute_basis_series(closes, index_prices)
-        basis_zscore = self._compute_zscore(basis_bps[-1], basis_bps, p.basis_lookback)
+        z_short = self._compute_zscore(basis_bps[-1], basis_bps, p.basis_short_lookback)
+        z_medium = self._compute_zscore(basis_bps[-1], basis_bps, p.basis_medium_lookback)
+        z_long = self._compute_zscore(basis_bps[-1], basis_bps, p.basis_long_lookback)
+
+        threshold = p.basis_zscore_threshold
+        # Count windows that trigger (above threshold)
+        triggered: list[float] = []
+        for z in [z_short, z_medium, z_long]:
+            if abs(z) >= threshold:
+                triggered.append(z)
+
+        agreements = len(triggered)
 
         # 2. OI/price divergence
         oi_div = self._compute_oi_divergence(closes, ois, p.oi_divergence_lookback)
-
-        # Need at least one signal trigger
-        basis_trigger = abs(basis_zscore) >= p.basis_zscore_threshold
         div_trigger = oi_div is not None and abs(oi_div) >= p.oi_divergence_threshold_pct
+
+        # Determine basis direction from the triggered windows
+        basis_trigger = agreements >= 2
+        # Use median z-score of triggered windows for direction, or overall z_medium
+        basis_zscore = z_medium  # Primary z-score for direction/conviction
 
         if not basis_trigger and not div_trigger:
             return []
 
+        # 3. Funding rate confirmation (CORR-02, D-05, D-06)
+        funding_rates = store.funding_rates
+        funding_confirms = False
+        if basis_trigger and len(funding_rates) > 0:
+            cur_funding = float(funding_rates[-1])
+            # Positive basis -> SHORT direction; negative basis -> LONG direction
+            basis_direction = PositionSide.SHORT if basis_zscore > 0 else PositionSide.LONG
+            # Positive funding -> longs pay shorts -> bearish pressure
+            # Negative funding -> shorts pay longs -> bullish pressure
+            if basis_direction == PositionSide.LONG and cur_funding < 0:
+                funding_confirms = True
+            elif basis_direction == PositionSide.SHORT and cur_funding > 0:
+                funding_confirms = True
+
+        # Apply multi-window agreement rules
+        if basis_trigger:
+            if agreements == 3:
+                pass  # D-06: fire regardless of funding
+            elif agreements == 2:
+                if not funding_confirms:
+                    # D-05: 2/3 requires funding confirmation
+                    # Fall through to check if OI divergence alone triggers
+                    if not div_trigger:
+                        return []
+                    # OI divergence standalone -- proceed without basis
+                    basis_trigger = False
+
         # Determine direction
-        direction = self._determine_direction(basis_zscore, oi_div, basis_trigger, div_trigger)
+        direction = self._determine_direction(
+            basis_zscore, oi_div, basis_trigger, div_trigger,
+        )
         if direction is None:
             return []
 
@@ -143,9 +206,24 @@ class CorrelationStrategy(SignalStrategy):
         if np.isnan(cur_atr):
             return []
 
-        conviction = self._compute_conviction(basis_zscore, oi_div, basis_trigger, div_trigger)
+        conviction = self._compute_conviction(
+            basis_zscore, oi_div, basis_trigger, div_trigger,
+        )
+
+        # D-07: Funding rate boost
+        if funding_confirms:
+            conviction = min(conviction + p.funding_rate_boost, 1.0)
+            conviction = round(conviction, 3)
+
         if conviction < p.min_conviction:
             return []
+
+        # Portfolio A routing (CORR-03, D-10)
+        suggested_target = (
+            PortfolioTarget.A
+            if conviction >= p.portfolio_a_min_conviction
+            else PortfolioTarget.B
+        )
 
         entry = snapshot.last_price
         atr_d = Decimal(str(cur_atr))
@@ -159,28 +237,40 @@ class CorrelationStrategy(SignalStrategy):
 
         parts = []
         if basis_trigger:
-            parts.append(f"basis z={basis_zscore:+.2f} ({basis_bps[-1]:.1f} bps)")
+            parts.append(
+                f"basis z=[{z_short:+.2f},{z_medium:+.2f},{z_long:+.2f}] "
+                f"({basis_bps[-1]:.1f} bps, {agreements}/3 agree)"
+            )
         if div_trigger and oi_div is not None:
             parts.append(f"OI/price divergence={oi_div:+.2f}%")
+        if funding_confirms:
+            parts.append("funding confirms")
 
-        reasoning = f"Correlation {'long' if direction == PositionSide.LONG else 'short'}: " + ", ".join(parts)
+        reasoning = (
+            f"Correlation {'long' if direction == PositionSide.LONG else 'short'}: "
+            + ", ".join(parts)
+        )
 
         signal = StandardSignal(
             signal_id=generate_id("sig"),
             timestamp=utc_now(),
-            instrument=INSTRUMENT_ID,
+            instrument=snapshot.instrument,
             direction=direction,
             conviction=conviction,
             source=SignalSource.CORRELATION,
             time_horizon=timedelta(hours=6),
             reasoning=reasoning,
-            suggested_target=PortfolioTarget.B,
+            suggested_target=suggested_target,
             entry_price=entry,
             stop_loss=stop_loss,
             take_profit=take_profit,
             metadata={
                 "basis_bps": round(float(basis_bps[-1]), 2),
-                "basis_zscore": round(basis_zscore, 3),
+                "z_short": round(z_short, 3),
+                "z_medium": round(z_medium, 3),
+                "z_long": round(z_long, 3),
+                "windows_agreed": agreements,
+                "funding_confirms": funding_confirms,
                 "oi_divergence": round(oi_div, 3) if oi_div is not None else None,
                 "atr": round(cur_atr, 2),
             },
