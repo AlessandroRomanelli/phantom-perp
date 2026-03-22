@@ -109,6 +109,12 @@ Recent decisions affecting current work:
 
 None yet.
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260322-ja5 | Update dashboard for v1.0 strategy enhancements | 2026-03-22 | 1d46bd6 | [260322-ja5](./quick/260322-ja5-update-dashboard-for-v1-0-strategy-enhan/) |
+
 ### Blockers/Concerns
 
 - Research flags alpha combiner as "untouched" but Phase 5 cross-cutting quality may need to coordinate with it -- confirm scope before Phase 5 planning
