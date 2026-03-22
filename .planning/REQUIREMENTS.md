@@ -7,8 +7,8 @@
 
 ### Multi-Instrument Config
 
-- [ ] **MCFG-01**: default.yaml supports a list of active instruments with per-instrument metadata (tick_size, min_order_size, base_currency)
-- [ ] **MCFG-02**: Remove hardcoded single-instrument constants (INSTRUMENT_ID, BASE_CURRENCY, QUOTE_CURRENCY, TICK_SIZE, MIN_ORDER_SIZE) from constants.py — use config-driven values
+- [x] **MCFG-01**: default.yaml supports a list of active instruments with per-instrument metadata (tick_size, min_order_size, base_currency)
+- [x] **MCFG-02**: Remove hardcoded single-instrument constants (INSTRUMENT_ID, BASE_CURRENCY, QUOTE_CURRENCY, TICK_SIZE, MIN_ORDER_SIZE) from constants.py — use config-driven values
 
 ### WebSocket Ingestion
 
@@ -57,8 +57,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MCFG-01 | Phase 6 | Pending |
-| MCFG-02 | Phase 6 | Pending |
+| MCFG-01 | Phase 6 | Complete |
+| MCFG-02 | Phase 6 | Complete |
 | MWS-01 | Phase 7 | Pending |
 | MWS-02 | Phase 7 | Pending |
 | MPOL-01 | Phase 8 | Pending |
