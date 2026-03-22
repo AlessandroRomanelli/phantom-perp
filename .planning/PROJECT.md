@@ -8,6 +8,17 @@ A multi-strategy perpetual futures trading system on Coinbase INTX with 7 signal
 
 Better signal quality and broader market coverage — the bot trades smarter with volume-confirmed, volatility-adaptive signals and fires more often by capturing opportunities across funding rate dislocations, orderbook flow, and VWAP deviations.
 
+## Current Milestone: v1.1 Multi-Instrument Ingestion
+
+**Goal:** Enable all 5 perpetual contracts (ETH, BTC, SOL, QQQ, SPY) to flow through the ingestion pipeline so that the v1.0 strategy improvements evaluate across all instruments, not just ETH-PERP.
+
+**Target features:**
+- Multi-instrument WebSocket subscription (single connection, multiple products)
+- Per-instrument candle and funding rate polling
+- Multi-instrument config structure in default.yaml
+- Per-instrument IngestionState management
+- End-to-end verification: snapshots for all 5 instruments reach the signals agent
+
 ## Current State (v1.0 shipped 2026-03-22)
 
 - **7 strategies**: momentum, mean reversion, liquidation cascade, correlation, regime trend, orderbook imbalance, VWAP deviation
@@ -41,14 +52,24 @@ Better signal quality and broader market coverage — the bot trades smarter wit
 
 ### Active
 
-- [ ] Volume profile strategy — high-volume nodes as support/resistance, low-volume gaps as breakout targets (deferred from v1.0 — requires per-bar volume ingestion)
+- [ ] Multi-instrument WebSocket ingestion — subscribe to all 5 perp contracts via single WS connection
+- [ ] Multi-instrument candle polling — poll candles for each instrument separately
+- [ ] Multi-instrument funding rate polling — poll funding for each instrument separately
+- [ ] Multi-instrument config in default.yaml — replace single instrument block with instruments list
+- [ ] Per-instrument IngestionState management — Dict[str, IngestionState] keyed by instrument
+- [ ] Remove hardcoded INSTRUMENT_ID references from ingestion layer
+- [ ] End-to-end multi-instrument verification — all 5 instruments produce snapshots that reach signals agent
+
+### Deferred
+
+- [ ] Volume profile strategy — high-volume nodes as support/resistance (deferred from v1.0 — requires per-bar volume ingestion)
 
 ### Out of Scope
 
 - On-chain data integration — requires external data providers
 - Sentiment analysis — requires NLP/social data pipeline
 - New instrument onboarding — current 5 instruments are sufficient
-- Execution layer changes — strategy layer only; execution, risk, and alpha combiner are untouched
+- Execution layer changes — execution, risk, and alpha combiner are untouched
 - Backtesting framework — valuable but separate project
 - Machine learning / adaptive parameter optimization — proven quant patterns only
 - Trailing stop state management in execution layer — metadata emitted but no consumer yet (ADV-02)
@@ -56,7 +77,7 @@ Better signal quality and broader market coverage — the bot trades smarter wit
 ## Constraints
 
 - **Architecture**: Uses existing `SignalStrategy` base class and `StandardSignal` contract
-- **Data**: Limited to data in MarketSnapshot and FeatureStore — no new data sources
+- **Data**: Uses Coinbase INTX API for all 5 perpetual contracts — no external data providers
 - **Risk**: Risk guardrails untouched — risk agent and limits are unchanged
 - **Config**: All parameters configurable via YAML — no hardcoded magic numbers
 - **Routing**: Portfolio A routing via `suggested_target=PortfolioTarget.A` with unified 0.70 threshold
@@ -93,4 +114,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-22 after v1.0 milestone*
+*Last updated: 2026-03-22 after v1.1 milestone start*

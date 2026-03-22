@@ -1,30 +1,30 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: unknown
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-03-22T12:46:17.306Z"
+milestone: v1.1
+milestone_name: Multi-Instrument Ingestion
+status: defining_requirements
+stopped_at: null
+last_updated: "2026-03-22T13:00:00.000Z"
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 14
-  completed_plans: 14
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-21)
+See: .planning/PROJECT.md (updated 2026-03-22)
 
 **Core value:** Better signal quality and broader market coverage across all instruments and conditions
-**Current focus:** Phase 05 — Cross-Cutting Quality
+**Current focus:** Defining requirements for v1.1 Multi-Instrument Ingestion
 
 ## Current Position
 
-Phase: 05
-Plan: Not started
+Phase: Not started (defining requirements)
+Plan: —
 
 ## Performance Metrics
 
@@ -117,8 +117,8 @@ None yet.
 
 ### Blockers/Concerns
 
-- Research flags alpha combiner as "untouched" but Phase 5 cross-cutting quality may need to coordinate with it -- confirm scope before Phase 5 planning
-- VWAP volume-delta approximation validity is unknown until Phase 4 feasibility check
+- Coinbase INTX WebSocket product IDs for BTC, SOL, QQQ, SPY need verification (likely BTC-PERP-INTX, SOL-PERP-INTX, etc.)
+- Rate limiting across 5 instruments — candle/funding pollers will make 5x more API calls
 
 ## Session Continuity
 
