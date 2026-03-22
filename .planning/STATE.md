@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-03-22T12:33:09.907Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-03-22T12:37:30.969Z"
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 14
-  completed_plans: 13
+  completed_plans: 14
 ---
 
 # Project State
@@ -59,6 +59,7 @@ Plan: 3 of 3
 | Phase 04 P03 | 4min | 2 tasks | 5 files |
 | Phase 05 P01 | 3min | 2 tasks | 8 files |
 | Phase 05 P03 | 3min | 2 tasks | 3 files |
+| Phase 05 P02 | 6min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,8 @@ Recent decisions affecting current work:
 - [Phase 05]: Swing points extracted verbatim from momentum -- identical logic, no self parameter
 - [Phase 05]: PORTFOLIO_A_UNIFIED_THRESHOLD = 0.70 as single cross-strategy routing constant
 - [Phase 05]: Correlation per-instrument tuning limited to params actually loaded by __init__ (excludes cooldown_bars, ATR params)
+- [Phase 05]: Session overrides via temporary mutation pattern (save/restore around evaluate) for evaluate()-time params
+- [Phase 05]: Conviction normalization is post-processing overlay in main.py with unified Portfolio A routing at 0.70
 
 ### Pending Todos
 
@@ -113,6 +116,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-22T12:33:09.904Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-03-22T12:37:30.967Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None
