@@ -24,7 +24,7 @@ from libs.coinbase.models import (
     PositionResponse,
 )
 from libs.coinbase.rate_limiter import RateLimiter
-from libs.common.constants import DEFAULT_REST_BASE_URL, INSTRUMENT_ID
+from libs.common.constants import DEFAULT_REST_BASE_URL
 from libs.common.exceptions import (
     CoinbaseAPIError,
     InsufficientMarginError,
@@ -147,7 +147,7 @@ class CoinbaseRESTClient:
 
     async def get_orderbook(
         self,
-        instrument_id: str = INSTRUMENT_ID,
+        instrument_id: str,
         depth: int = 50,
     ) -> OrderBookResponse:
         """Get L2 order book for an instrument.
@@ -165,7 +165,7 @@ class CoinbaseRESTClient:
 
     async def get_candles(
         self,
-        instrument_id: str = INSTRUMENT_ID,
+        instrument_id: str,
         granularity: str = "ONE_HOUR",
         start: str | None = None,
         end: str | None = None,
@@ -197,7 +197,7 @@ class CoinbaseRESTClient:
 
     async def get_funding_rate(
         self,
-        instrument_id: str = INSTRUMENT_ID,
+        instrument_id: str,
     ) -> FundingRateResponse:
         """Get current funding rate for an instrument.
 

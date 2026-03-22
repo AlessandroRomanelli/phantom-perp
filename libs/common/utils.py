@@ -6,8 +6,6 @@ import uuid
 from datetime import UTC, datetime
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 
-from libs.common.constants import MIN_ORDER_SIZE, TICK_SIZE
-
 
 def utc_now() -> datetime:
     """Return the current UTC datetime (always timezone-aware)."""
@@ -27,7 +25,7 @@ def generate_id(prefix: str = "") -> str:
     return f"{prefix}-{uid}" if prefix else uid
 
 
-def round_to_tick(price: Decimal, tick_size: Decimal = TICK_SIZE) -> Decimal:
+def round_to_tick(price: Decimal, tick_size: Decimal) -> Decimal:
     """Round a price down to the nearest tick size.
 
     Args:
@@ -40,7 +38,7 @@ def round_to_tick(price: Decimal, tick_size: Decimal = TICK_SIZE) -> Decimal:
     return (price / tick_size).to_integral_value(rounding=ROUND_DOWN) * tick_size
 
 
-def round_size(size: Decimal, min_size: Decimal = MIN_ORDER_SIZE) -> Decimal:
+def round_size(size: Decimal, min_size: Decimal) -> Decimal:
     """Round an order size down to the nearest valid increment.
 
     Args:

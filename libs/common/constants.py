@@ -2,22 +2,6 @@
 
 from decimal import Decimal
 
-# ── Instrument ───────────────────────────────────────────────────────────
-
-INSTRUMENT_ID = "ETH-PERP"
-BASE_CURRENCY = "ETH"
-QUOTE_CURRENCY = "USDC"
-TICK_SIZE = Decimal("0.01")
-MIN_ORDER_SIZE = Decimal("0.0001")
-
-ACTIVE_INSTRUMENT_IDS: list[str] = [
-    "ETH-PERP",
-    "BTC-PERP",
-    "SOL-PERP",
-    "QQQ-PERP",
-    "SPY-PERP",
-]
-
 # ── Fee Schedule (VIP 1) ────────────────────────────────────────────────
 
 FEE_MAKER = Decimal("0.000125")  # 0.0125%
