@@ -11,6 +11,8 @@ import yaml
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from libs.common.instruments import load_instruments
+
 
 class CoinbaseSettings(BaseSettings):
     """Coinbase INTX API credentials and endpoints.
@@ -286,6 +288,12 @@ def get_settings() -> AppSettings:
     # Fall back to default if environment-specific config is empty
     if not yaml_config:
         yaml_config = load_yaml_config("default")
+
+    # Instruments are always defined in default.yaml (canonical source).
+    # Environment-specific configs (paper, live) override other settings
+    # but do not duplicate the instruments list.
+    default_config = load_yaml_config("default")
+    load_instruments(default_config)
 
     return AppSettings(
         coinbase=CoinbaseSettings(),
