@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-03-22T10:01:54.415Z"
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-03-22T10:07:58.527Z"
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 5
+  completed_plans: 8
 ---
 
 # Project State
@@ -51,7 +51,9 @@ Plan: 2 of 3
 | Phase 01 P03 | 3min | 3 tasks | 7 files |
 | Phase 02 P01 | 4min | 1 tasks | 4 files |
 | Phase 02 P02 | 5min | 1 tasks | 3 files |
+| Phase 03 P02 | 4min | 1 tasks | 3 files |
 | Phase 03 P03 | 4min | 1 tasks | 3 files |
+| Phase 03 P01 | 4min | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -79,6 +81,8 @@ Recent decisions affecting current work:
 - [Phase 03]: Regime trend adaptive ADX/ATR thresholds via percentileofscore (same pattern as momentum)
 - [Phase 03]: Trail metadata emitted as signal metadata keys for future execution layer consumption
 - [Phase 03]: QQQ/SPY trail disabled since Portfolio A already disabled for these instruments
+- [Phase 03]: Tiered cascade: T1 [2%,4%), T2 [4%,8%), T3 [8%+) with tier-specific stop/TP ATR mults and conviction boost
+- [Phase 03]: Volume surge gate uses store.bar_volumes with 1.5x average threshold to filter organic OI reduction
 
 ### Pending Todos
 
@@ -91,6 +95,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-22T09:33:20.506Z
-Stopped at: Completed 02-02-PLAN.md
+Last session: 2026-03-22T10:07:58.524Z
+Stopped at: Completed 03-01-PLAN.md
 Resume file: None

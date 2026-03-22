@@ -39,8 +39,8 @@
 
 ### Liquidation Cascade Strategy Improvements
 
-- [ ] **LIQ-01**: Graduated response levels — Tier 1 (mild OI drop 2-4%), Tier 2 (moderate 4-8%), Tier 3 (severe >8%) with different position sizing and stop widths
-- [ ] **LIQ-02**: Volume surge confirmation — require volume spike alongside OI drop to distinguish forced liquidation from organic OI reduction
+- [x] **LIQ-01**: Graduated response levels — Tier 1 (mild OI drop 2-4%), Tier 2 (moderate 4-8%), Tier 3 (severe >8%) with different position sizing and stop widths
+- [x] **LIQ-02**: Volume surge confirmation — require volume spike alongside OI drop to distinguish forced liquidation from organic OI reduction
 
 ### Correlation Strategy Improvements
 
@@ -143,8 +143,8 @@
 | MR-02 | Phase 2 | Complete |
 | MR-03 | Phase 2 | Complete |
 | MR-04 | Phase 2 | Complete |
-| LIQ-01 | Phase 3 | Pending |
-| LIQ-02 | Phase 3 | Pending |
+| LIQ-01 | Phase 3 | Complete |
+| LIQ-02 | Phase 3 | Complete |
 | CORR-01 | Phase 3 | Pending |
 | CORR-02 | Phase 3 | Pending |
 | CORR-03 | Phase 3 | Pending |
