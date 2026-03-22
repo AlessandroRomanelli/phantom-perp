@@ -68,10 +68,10 @@
 
 ### VWAP Deviation Strategy
 
-- [ ] **VWAP-01**: Feasibility validation — confirm volume-delta approximation from 24h rolling data produces usable VWAP values
-- [ ] **VWAP-02**: Session VWAP computation — VWAP with configurable session reset (00:00 UTC for crypto, 09:30 ET for equity)
-- [ ] **VWAP-03**: Deviation-based signals — extreme deviations from session VWAP as mean reversion triggers
-- [ ] **VWAP-04**: Time-of-session awareness — VWAP signals more reliable later in session when VWAP has stabilized
+- [x] **VWAP-01**: Feasibility validation — confirm volume-delta approximation from 24h rolling data produces usable VWAP values
+- [x] **VWAP-02**: Session VWAP computation — VWAP with configurable session reset (00:00 UTC for crypto, 09:30 ET for equity)
+- [x] **VWAP-03**: Deviation-based signals — extreme deviations from session VWAP as mean reversion triggers
+- [x] **VWAP-04**: Time-of-session awareness — VWAP signals more reliable later in session when VWAP has stabilized
 
 ### Cross-Cutting Quality
 
@@ -157,10 +157,10 @@
 | OBI-02 | Phase 4 | Complete |
 | OBI-03 | Phase 4 | Complete |
 | OBI-04 | Phase 4 | Complete |
-| VWAP-01 | Phase 4 | Pending |
-| VWAP-02 | Phase 4 | Pending |
-| VWAP-03 | Phase 4 | Pending |
-| VWAP-04 | Phase 4 | Pending |
+| VWAP-01 | Phase 4 | Complete |
+| VWAP-02 | Phase 4 | Complete |
+| VWAP-03 | Phase 4 | Complete |
+| VWAP-04 | Phase 4 | Complete |
 | XQ-01 | Phase 5 | Pending |
 | XQ-02 | Phase 5 | Pending |
 | XQ-03 | Phase 5 | Pending |
