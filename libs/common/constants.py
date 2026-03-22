@@ -13,6 +13,9 @@ MAX_LEVERAGE_GLOBAL = Decimal("5.0")
 MAX_LEVERAGE_PORTFOLIO_B = Decimal("3.0")
 
 STALE_DATA_HALT_SECONDS = 30
+REST_CANDLE_STALE_SECONDS = 600    # 10 min -- candle pollers poll every 60-1800s
+REST_FUNDING_STALE_SECONDS = 900   # 15 min -- funding poller polls every 300s
+REST_POLLER_STAGGER_SECONDS = 2.0  # Delay between instrument starts to avoid burst
 
 FUNDING_RATE_CIRCUIT_BREAKER_PCT = Decimal("0.0005")  # 0.05% absolute hourly rate
 

@@ -2,8 +2,8 @@
 
 Runs three concurrent data sources:
   1. WebSocket MARKET_DATA listener (real-time ticks for all instruments)
-  2. REST candle pollers (1m, 5m, 15m, 1h, 6h) -- currently ETH-PERP only
-  3. REST funding rate poller (every 5 minutes) -- currently ETH-PERP only
+  2. REST candle pollers (1m, 5m, 15m, 1h, 6h) -- all active instruments
+  3. REST funding rate pollers (every 5 minutes) -- all active instruments
 
 On every WebSocket tick that updates state, a per-instrument MarketSnapshot
 is built (if the instrument is ready) and published to stream:market_snapshots,
@@ -19,12 +19,20 @@ from __future__ import annotations
 import asyncio
 import sys
 import time
+from collections.abc import Coroutine
+from datetime import UTC, datetime
+from typing import Any
 
 from libs.coinbase.auth import CoinbaseAuth
 from libs.coinbase.rate_limiter import RateLimiter
 from libs.coinbase.rest_client import CoinbaseRESTClient
 from libs.coinbase.ws_client import CoinbaseWSClient
 from libs.common.config import get_settings
+from libs.common.constants import (
+    REST_CANDLE_STALE_SECONDS,
+    REST_FUNDING_STALE_SECONDS,
+    REST_POLLER_STAGGER_SECONDS,
+)
 from libs.common.instruments import get_all_instruments
 from libs.common.logging import setup_logging
 from libs.messaging.channels import Channel
@@ -37,6 +45,49 @@ from agents.ingestion.sources.ws_market_data import run_ws_market_data
 from agents.ingestion.state import IngestionState
 
 logger = setup_logging("ingestion", json_output=False)
+
+
+async def _run_rest_poller_isolated(
+    coro: Coroutine[Any, Any, None],
+    instrument_id: str,
+    poller_name: str,
+) -> None:
+    """Wrap a REST poller to prevent TaskGroup teardown on unexpected crash (D-05)."""
+    try:
+        await coro
+    except Exception as e:
+        logger.error(
+            "rest_poller_crashed",
+            instrument=instrument_id,
+            poller=poller_name,
+            error=str(e),
+            exc_type=type(e).__name__,
+        )
+        # Do NOT re-raise -- other instruments keep running
+
+
+def _mark_stale_rest_data(states: dict[str, IngestionState]) -> None:
+    """Reset readiness flags if REST data hasn't been updated within thresholds (D-07)."""
+    now = datetime.now(UTC)
+    for instrument_id, state in states.items():
+        if state.has_candles and state.last_candle_update is not None:
+            elapsed = (now - state.last_candle_update).total_seconds()
+            if elapsed > REST_CANDLE_STALE_SECONDS:
+                state.has_candles = False
+                logger.warning(
+                    "instrument_candles_stale",
+                    instrument=instrument_id,
+                    elapsed_seconds=round(elapsed, 1),
+                )
+        if state.has_funding and state.last_funding_update is not None:
+            elapsed = (now - state.last_funding_update).total_seconds()
+            if elapsed > REST_FUNDING_STALE_SECONDS:
+                state.has_funding = False
+                logger.warning(
+                    "instrument_funding_stale",
+                    instrument=instrument_id,
+                    elapsed_seconds=round(elapsed, 1),
+                )
 
 
 async def run_agent() -> None:
@@ -64,12 +115,17 @@ async def run_agent() -> None:
         passphrase=settings.coinbase.passphrase_a,
     )
 
-    # REST client (with its own rate limiter)
-    rest_client = CoinbaseRESTClient(
-        auth=auth,
-        base_url=settings.coinbase.rest_url,
-        rate_limiter=RateLimiter(),
-    )
+    # Shared rate limiter for all REST clients (D-04, D-09)
+    rate_limiter = RateLimiter()
+
+    # Per-instrument REST clients with isolated HTTP connection pools (D-08)
+    rest_clients: dict[str, CoinbaseRESTClient] = {}
+    for inst in instruments:
+        rest_clients[inst.id] = CoinbaseRESTClient(
+            auth=auth,
+            base_url=settings.coinbase.rest_url,
+            rate_limiter=rate_limiter,
+        )
 
     # WebSocket client -- Advanced Trade market data is public, no auth needed
     ws_client = CoinbaseWSClient(
@@ -138,26 +194,53 @@ async def run_agent() -> None:
                     on_update=on_ws_update,
                 ),
             )
-            # 2. REST candle pollers (all timeframes) -- currently ETH-PERP only
-            tg.create_task(
-                run_all_candle_pollers(
-                    rest_client, states["ETH-PERP"], instrument_id="ETH-PERP",
-                ),
-            )
-            # 3. REST funding rate poller -- currently ETH-PERP only
-            tg.create_task(
-                run_funding_poller(
-                    rest_client, states["ETH-PERP"], publisher,
-                    instrument_id="ETH-PERP",
-                ),
-            )
+
+            # 2. REST candle pollers -- per-instrument with staggered starts (MPOL-01)
+            for i, inst in enumerate(instruments):
+                async def _launch_candles(
+                    inst_id: str = inst.id,
+                    delay: float = i * REST_POLLER_STAGGER_SECONDS,
+                ) -> None:
+                    await asyncio.sleep(delay)
+                    await run_all_candle_pollers(
+                        rest_clients[inst_id], states[inst_id], instrument_id=inst_id,
+                    )
+
+                tg.create_task(
+                    _run_rest_poller_isolated(_launch_candles(), inst.id, "candle_poller"),
+                )
+
+            # 3. REST funding rate pollers -- per-instrument with staggered starts (MPOL-02)
+            for i, inst in enumerate(instruments):
+                async def _launch_funding(
+                    inst_id: str = inst.id,
+                    delay: float = i * REST_POLLER_STAGGER_SECONDS,
+                ) -> None:
+                    await asyncio.sleep(delay)
+                    await run_funding_poller(
+                        rest_clients[inst_id], states[inst_id], publisher,
+                        instrument_id=inst_id,
+                    )
+
+                tg.create_task(
+                    _run_rest_poller_isolated(_launch_funding(), inst.id, "funding_poller"),
+                )
+
+            # 4. REST staleness checker -- periodic, analogous to WS staleness (D-07)
+            async def _rest_staleness_loop() -> None:
+                while True:
+                    await asyncio.sleep(30)  # Check every 30s
+                    _mark_stale_rest_data(states)
+
+            tg.create_task(_rest_staleness_loop())
     except* Exception as eg:
         for exc in eg.exceptions:
             logger.error("ingestion_task_failed", error=str(exc), exc_type=type(exc).__name__)
         raise
     finally:
         await ws_client.close()
-        await rest_client.close()
+        for client in rest_clients.values():
+            await client.close()
         await publisher.close()
         logger.info("ingestion_stopped", snapshots_published=snapshot_count)
 
