@@ -34,11 +34,12 @@ Better signal quality and broader market coverage — the bot should trade smart
 - ✓ Correlation strategy — multi-window basis (30/60/120), funding rate integration, Portfolio A routing — Validated in Phase 3
 - ✓ Regime trend strategy — adaptive ADX/ATR thresholds, trailing stop metadata — Validated in Phase 3
 
+- ✓ Funding rate filter utility — shared boost utility with z-score and time-to-settlement decay — Validated in Phase 4
+- ✓ Orderbook imbalance strategy — time-weighted depth imbalance, spread depth gate, Portfolio A routing — Validated in Phase 4
+- ✓ VWAP deviation strategy — session-aware VWAP with feasibility validation, deviation signals — Validated in Phase 4
+
 ### Active
 
-- [ ] Funding rate arbitrage strategy — trade funding rate dislocations, carry trade logic, predicted vs actual rate divergence
-- [ ] Orderbook imbalance strategy — bid/ask depth analysis, absorption detection, sweep detection
-- [ ] VWAP strategy — deviation from session VWAP as mean reversion anchor, time-of-day awareness
 - [ ] Volume profile strategy — high-volume nodes as support/resistance, low-volume gaps as breakout targets
 - [ ] Dual portfolio routing for all strategies — high-conviction fast signals → Portfolio A, all else → Portfolio B
 - [ ] Cross-strategy signal quality — conviction models that account for instrument-specific volatility and liquidity
@@ -99,4 +100,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-22 after Phase 3 completion*
+*Last updated: 2026-03-22 after Phase 4 completion*
