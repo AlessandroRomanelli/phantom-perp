@@ -406,3 +406,241 @@ class TestRegimeTrendStrategy:
         # Unset params keep defaults
         assert strategy._params.atr_period == 14
         assert strategy._params.portfolio_a_enabled is True
+
+
+class TestAdaptiveThresholds:
+    """Tests for RT-01: adaptive ADX/ATR expansion thresholds."""
+
+    def test_low_vol_reduces_adx_threshold(self) -> None:
+        """In low volatility (~20th percentile), ADX threshold is reduced."""
+        # Create ATR history where current ATR is at ~20th percentile
+        atr_vals = np.array([10.0 + i * 0.5 for i in range(50)])  # 10.0 to 34.5
+        cur_atr = 14.0  # Near the low end (~20th percentile)
+        p = RegimeTrendParams(adx_threshold=22.0)
+
+        adaptive_adx, _ = RegimeTrendStrategy._compute_adaptive_thresholds(
+            atr_vals, cur_atr, p,
+        )
+        # Low vol -> multiplier ~0.8 -> threshold ~17.6 (lower than 22.0)
+        assert adaptive_adx < p.adx_threshold
+
+    def test_high_vol_increases_adx_threshold(self) -> None:
+        """In high volatility (~80th percentile), ADX threshold is increased."""
+        atr_vals = np.array([10.0 + i * 0.5 for i in range(50)])  # 10.0 to 34.5
+        cur_atr = 30.0  # Near the high end (~80th percentile)
+        p = RegimeTrendParams(adx_threshold=22.0)
+
+        adaptive_adx, _ = RegimeTrendStrategy._compute_adaptive_thresholds(
+            atr_vals, cur_atr, p,
+        )
+        # High vol -> multiplier ~1.2 -> threshold ~26.4 (higher than 22.0)
+        assert adaptive_adx > p.adx_threshold
+
+    def test_low_vol_reduces_atr_expansion_threshold(self) -> None:
+        """In low volatility, ATR expansion threshold is reduced."""
+        atr_vals = np.array([10.0 + i * 0.5 for i in range(50)])
+        cur_atr = 14.0  # Low percentile
+        p = RegimeTrendParams(atr_expansion_threshold=1.1)
+
+        _, adaptive_atr_exp = RegimeTrendStrategy._compute_adaptive_thresholds(
+            atr_vals, cur_atr, p,
+        )
+        # Low vol -> multiplier ~0.85 -> threshold ~0.935 (lower than 1.1)
+        assert adaptive_atr_exp < p.atr_expansion_threshold
+
+    def test_high_vol_increases_atr_expansion_threshold(self) -> None:
+        """In high volatility, ATR expansion threshold is increased."""
+        atr_vals = np.array([10.0 + i * 0.5 for i in range(50)])
+        cur_atr = 30.0  # High percentile
+        p = RegimeTrendParams(atr_expansion_threshold=1.1)
+
+        _, adaptive_atr_exp = RegimeTrendStrategy._compute_adaptive_thresholds(
+            atr_vals, cur_atr, p,
+        )
+        # High vol -> multiplier ~1.15 -> threshold ~1.265 (higher than 1.1)
+        assert adaptive_atr_exp > p.atr_expansion_threshold
+
+    def test_adx_threshold_clamped_min(self) -> None:
+        """Adaptive ADX threshold is clamped at minimum 15.0."""
+        # Very low volatility percentile with a low base threshold
+        atr_vals = np.array([10.0 + i * 0.5 for i in range(50)])
+        cur_atr = 10.0  # At 0th percentile
+        p = RegimeTrendParams(
+            adx_threshold=18.0,
+            adx_adapt_low_mult=0.8,
+            adx_adapt_min=15.0,
+            adx_adapt_max=35.0,
+        )
+
+        adaptive_adx, _ = RegimeTrendStrategy._compute_adaptive_thresholds(
+            atr_vals, cur_atr, p,
+        )
+        assert adaptive_adx >= 15.0
+
+    def test_adx_threshold_clamped_max(self) -> None:
+        """Adaptive ADX threshold is clamped at maximum 35.0."""
+        atr_vals = np.array([10.0 + i * 0.5 for i in range(50)])
+        cur_atr = 34.5  # At 100th percentile
+        p = RegimeTrendParams(
+            adx_threshold=30.0,  # High base
+            adx_adapt_high_mult=1.2,
+            adx_adapt_min=15.0,
+            adx_adapt_max=35.0,
+        )
+
+        adaptive_adx, _ = RegimeTrendStrategy._compute_adaptive_thresholds(
+            atr_vals, cur_atr, p,
+        )
+        assert adaptive_adx <= 35.0
+
+    def test_atr_expansion_clamped_between_bounds(self) -> None:
+        """Adaptive ATR expansion threshold is clamped between 0.8 and 1.5."""
+        # Test min clamp: very low vol, low base threshold
+        atr_vals = np.array([10.0 + i * 0.5 for i in range(50)])
+        cur_atr = 10.0
+        p = RegimeTrendParams(
+            atr_expansion_threshold=0.9,
+            atr_expand_adapt_low_mult=0.85,
+            atr_expand_adapt_min=0.8,
+            atr_expand_adapt_max=1.5,
+        )
+
+        _, adaptive_atr_exp = RegimeTrendStrategy._compute_adaptive_thresholds(
+            atr_vals, cur_atr, p,
+        )
+        assert adaptive_atr_exp >= 0.8
+        assert adaptive_atr_exp <= 1.5
+
+    def test_adaptive_disabled_preserves_thresholds(self) -> None:
+        """When adx_adapt_enabled=False, thresholds should be unchanged."""
+        params = _relaxed_params()
+        params.adx_adapt_enabled = False
+        params.adx_threshold = 22.0
+        params.atr_expansion_threshold = 1.1
+        strategy = RegimeTrendStrategy(params=params)
+        prices, index_prices = _strong_uptrend(120)
+
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        signals: list = []
+        base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+        for i in range(len(prices)):
+            s = _snap(prices[i], ts=base + timedelta(seconds=i), index=index_prices[i])
+            store.update(s)
+            result = strategy.evaluate(s, store)
+            signals.extend(result)
+
+        # When adaptive is disabled, metadata should show original thresholds
+        if signals:
+            sig = signals[0]
+            assert sig.metadata.get("adaptive_adx_threshold") == 22.0
+            assert sig.metadata.get("adaptive_atr_expansion") == 1.1
+
+
+class TestTrailingStopMetadata:
+    """Tests for RT-02: trailing stop metadata in signals."""
+
+    def test_signal_contains_trail_metadata_keys(self) -> None:
+        """Signal metadata contains trail_enabled, trail_activation_pct, trail_distance_atr."""
+        params = _relaxed_params()
+        params.trail_enabled = True
+        params.trail_activation_pct = 1.0
+        params.trail_distance_atr = 1.5
+        params.initial_stop_atr_mult = 1.8
+        params.portfolio_a_enabled = False
+        strategy = RegimeTrendStrategy(params=params)
+        prices, index_prices = _strong_uptrend(120)
+
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        signals: list = []
+        base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+        for i in range(len(prices)):
+            s = _snap(prices[i], ts=base + timedelta(seconds=i), index=index_prices[i])
+            store.update(s)
+            result = strategy.evaluate(s, store)
+            signals.extend(result)
+
+        assert len(signals) >= 1
+        sig = signals[0]
+        assert "trail_enabled" in sig.metadata
+        assert sig.metadata["trail_enabled"] is True
+        assert "trail_activation_pct" in sig.metadata
+        assert sig.metadata["trail_activation_pct"] == 1.0
+        assert "trail_distance_atr" in sig.metadata
+        assert sig.metadata["trail_distance_atr"] == 1.5
+
+    def test_tighter_initial_stop_when_trail_enabled(self) -> None:
+        """Portfolio B stop_loss uses tighter initial_stop_atr_mult (1.8) when trail enabled."""
+        params = _relaxed_params()
+        params.trail_enabled = True
+        params.initial_stop_atr_mult = 1.8
+        params.stop_loss_atr_mult = 2.5
+        params.portfolio_a_enabled = False
+        strategy = RegimeTrendStrategy(params=params)
+        prices, index_prices = _strong_uptrend(120)
+
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        signals: list = []
+        base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+        for i in range(len(prices)):
+            s = _snap(prices[i], ts=base + timedelta(seconds=i), index=index_prices[i])
+            store.update(s)
+            result = strategy.evaluate(s, store)
+            signals.extend(result)
+
+        assert len(signals) >= 1
+        sig = signals[0]
+        assert sig.direction == PositionSide.LONG
+
+        # With trail enabled, stop should be at 1.8 ATR distance (tighter than 2.5)
+        # The stop distance = entry - stop_loss for LONG
+        entry = sig.entry_price
+        sl = sig.stop_loss
+        assert entry is not None and sl is not None
+        stop_dist = float(entry - sl)
+
+        # Now compare with a non-trail version
+        params_no_trail = _relaxed_params()
+        params_no_trail.trail_enabled = False
+        params_no_trail.initial_stop_atr_mult = 1.8
+        params_no_trail.stop_loss_atr_mult = 2.5
+        params_no_trail.portfolio_a_enabled = False
+        strategy_no_trail = RegimeTrendStrategy(params=params_no_trail)
+
+        store2 = FeatureStore(sample_interval=timedelta(seconds=0))
+        signals2: list = []
+        for i in range(len(prices)):
+            s = _snap(prices[i], ts=base + timedelta(seconds=i), index=index_prices[i])
+            store2.update(s)
+            result = strategy_no_trail.evaluate(s, store2)
+            signals2.extend(result)
+
+        assert len(signals2) >= 1
+        sig2 = signals2[0]
+        stop_dist2 = float(sig2.entry_price - sig2.stop_loss)
+
+        # Trail version should have tighter stop (smaller distance)
+        assert stop_dist < stop_dist2
+
+    def test_adaptive_threshold_values_in_metadata(self) -> None:
+        """Adaptive threshold values appear in signal metadata."""
+        params = _relaxed_params()
+        params.adx_adapt_enabled = True
+        params.portfolio_a_enabled = False
+        strategy = RegimeTrendStrategy(params=params)
+        prices, index_prices = _strong_uptrend(120)
+
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        signals: list = []
+        base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+        for i in range(len(prices)):
+            s = _snap(prices[i], ts=base + timedelta(seconds=i), index=index_prices[i])
+            store.update(s)
+            result = strategy.evaluate(s, store)
+            signals.extend(result)
+
+        assert len(signals) >= 1
+        sig = signals[0]
+        assert "adaptive_adx_threshold" in sig.metadata
+        assert "adaptive_atr_expansion" in sig.metadata
+        assert isinstance(sig.metadata["adaptive_adx_threshold"], float)
+        assert isinstance(sig.metadata["adaptive_atr_expansion"], float)
