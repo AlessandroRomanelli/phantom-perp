@@ -82,13 +82,13 @@ class TestLiquidationCascadeDisabledForEquity:
         )
 
 
-class TestMomentumDisabledGlobally:
-    """Momentum stays disabled until Phase 2 (D-09)."""
+class TestMomentumEnabledGlobally:
+    """Momentum re-enabled in Phase 2 after improvements."""
 
-    def test_momentum_disabled_globally(self) -> None:
+    def test_momentum_enabled_globally(self) -> None:
         config = load_strategy_config("momentum")
-        assert config["strategy"]["enabled"] is False, (
-            "momentum should be globally disabled"
+        assert config["strategy"]["enabled"] is True, (
+            "momentum should be globally enabled after Phase 2 improvements"
         )
 
 
