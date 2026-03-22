@@ -22,8 +22,8 @@
 
 ### State Management
 
-- [ ] **MSTA-01**: IngestionState is managed per-instrument via Dict[str, IngestionState] in main.py
-- [ ] **MSTA-02**: Normalizer builds MarketSnapshot with correct instrument ID from parameter (not hardcoded INSTRUMENT_ID constant)
+- [x] **MSTA-01**: IngestionState is managed per-instrument via Dict[str, IngestionState] in main.py
+- [x] **MSTA-02**: Normalizer builds MarketSnapshot with correct instrument ID from parameter (not hardcoded INSTRUMENT_ID constant)
 
 ### End-to-End Verification
 
@@ -63,8 +63,8 @@
 | MWS-02 | Phase 7 | Pending |
 | MPOL-01 | Phase 8 | Pending |
 | MPOL-02 | Phase 8 | Pending |
-| MSTA-01 | Phase 6 | Pending |
-| MSTA-02 | Phase 6 | Pending |
+| MSTA-01 | Phase 6 | Complete |
+| MSTA-02 | Phase 6 | Complete |
 | ME2E-01 | Phase 9 | Pending |
 | ME2E-02 | Phase 9 | Pending |
 
