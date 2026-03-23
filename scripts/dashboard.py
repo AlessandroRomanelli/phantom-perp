@@ -191,6 +191,36 @@ async def _get_equity_history(
         return []
 
 
+async def _get_per_instrument_snapshots(
+    r: aioredis.Redis, count: int = 100,
+) -> dict[str, dict[str, Any]]:
+    """Group recent snapshots by instrument, keeping latest for each."""
+    try:
+        entries = await r.xrevrange("stream:market_snapshots", "+", "-", count=count)
+        by_instrument: dict[str, dict[str, Any]] = {}
+        for entry_id, fields in entries:
+            parsed = _parse_entry(fields)
+            if parsed and parsed.get("instrument") and parsed["instrument"] not in by_instrument:
+                eid = entry_id.decode() if isinstance(entry_id, bytes) else entry_id
+                parsed["_entry_id"] = eid
+                by_instrument[parsed["instrument"]] = parsed
+        return by_instrument
+    except Exception:
+        return {}
+
+
+async def _get_feature_store_status(r: aioredis.Redis) -> dict[str, int]:
+    """Read per-instrument sample counts from Redis hash."""
+    try:
+        data = await r.hgetall("phantom:feature_store_status")
+        return {
+            (k.decode() if isinstance(k, bytes) else k): int(v)
+            for k, v in data.items()
+        }
+    except Exception:
+        return {}
+
+
 # ---------------------------------------------------------------------------
 # Section renderers
 # ---------------------------------------------------------------------------
@@ -235,6 +265,74 @@ def _format_strategy_overview() -> list[str]:
         f"  |  Bands: {DIM}L{RESET}<0.50 {YELLOW}M{RESET}<0.70 {GREEN}H{RESET}>=0.70"
     )
 
+    return lines
+
+
+def _format_instrument_snapshots(
+    per_instrument: dict[str, dict[str, Any]],
+) -> list[str]:
+    """Show per-instrument snapshot status table."""
+    lines: list[str] = []
+    lines.append(
+        f"  {DIM}{'Instrument':<12} {'Mark Price':>12} {'Spread':>8}"
+        f" {'Funding':>10} {'Age':>8} {'Status':>8}{RESET}"
+    )
+    lines.append(
+        f"  {DIM}{'---':.<12} {'---':.<12} {'---':.<8}"
+        f" {'---':.<10} {'---':.<8} {'---':.<8}{RESET}"
+    )
+
+    ordered = ["ETH-PERP", "BTC-PERP", "SOL-PERP", "QQQ-PERP", "SPY-PERP"]
+    for iid in ordered:
+        snap = per_instrument.get(iid)
+        if not snap:
+            lines.append(
+                f"  {DIM}{iid:<12} {'--':>12} {'--':>8}"
+                f" {'--':>10} {'--':>8} {RED}{'NONE':>8}{RESET}"
+            )
+            continue
+        mark = snap.get("mark_price", "?")
+        spread = snap.get("spread_bps")
+        funding = snap.get("funding_rate", "?")
+        ts_str = snap.get("timestamp")
+        age_str = _ts_age(ts_str)
+
+        # Determine status from age
+        try:
+            ts = datetime.fromisoformat(ts_str) if ts_str else None
+            if ts and ts.tzinfo is None:
+                ts = ts.replace(tzinfo=UTC)
+            secs = (datetime.now(UTC) - ts).total_seconds() if ts else 999
+        except (ValueError, TypeError):
+            secs = 999
+        if secs < 30:
+            status = f"{GREEN}{'OK':>8}{RESET}"
+        elif secs < 120:
+            status = f"{YELLOW}{'STALE':>8}{RESET}"
+        else:
+            status = f"{RED}{'DOWN':>8}{RESET}"
+
+        spread_str = f"{spread:.1f}" if spread is not None else "--"
+        lines.append(
+            f"  {WHITE}{iid:<12}{RESET} {BOLD}${mark:>11}{RESET}"
+            f" {spread_str:>8} {funding:>10} {age_str:>8} {status}"
+        )
+    return lines
+
+
+def _format_feature_store_status(store_status: dict[str, int]) -> list[str]:
+    """Show per-instrument FeatureStore sample counts."""
+    lines: list[str] = []
+    ordered = ["ETH-PERP", "BTC-PERP", "SOL-PERP", "QQQ-PERP", "SPY-PERP"]
+    if not store_status:
+        lines.append(f"  {DIM}Awaiting signals agent data{RESET}")
+        return lines
+    lines.append(f"  {DIM}{'Instrument':<12} {'Samples':>8}{RESET}")
+    lines.append(f"  {DIM}{'---':.<12} {'---':.<8}{RESET}")
+    for iid in ordered:
+        count = store_status.get(iid, 0)
+        color = GREEN if count > 0 else RED
+        lines.append(f"  {WHITE}{iid:<12}{RESET} {color}{count:>8}{RESET}")
     return lines
 
 
@@ -620,6 +718,8 @@ def _render(
     recent_signals: list[dict[str, Any]],
     equity_a: list[dict[str, Any]],
     equity_b: list[dict[str, Any]],
+    per_instrument: dict[str, dict[str, Any]],
+    store_status: dict[str, int],
     term_width: int,
 ) -> str:
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -643,6 +743,14 @@ def _render(
 
     parts.append(f" {BOLD}Market Data{RESET}")
     parts.extend(_format_market(info, snapshots))
+    parts.append("")
+
+    parts.append(f" {BOLD}Instruments{RESET}")
+    parts.extend(_format_instrument_snapshots(per_instrument))
+    parts.append("")
+
+    parts.append(f" {BOLD}Feature Stores{RESET}")
+    parts.extend(_format_feature_store_status(store_status))
     parts.append("")
 
     parts.append(f" {BOLD}Funding{RESET}")
@@ -722,17 +830,22 @@ async def run_dashboard(redis_url: str, refresh: float) -> None:
             term_width = term.columns
             term_height = term.lines
 
-            info, snapshots, recent_signals, equity_a, equity_b = await asyncio.gather(
+            (
+                info, snapshots, recent_signals, equity_a, equity_b,
+                per_instrument, store_status,
+            ) = await asyncio.gather(
                 _get_stream_info(r),
                 _get_recent_snapshots(r, count=60),
                 _get_recent_signals(r, count=10),
                 _get_equity_history(r, "a", count=30),
                 _get_equity_history(r, "b", count=30),
+                _get_per_instrument_snapshots(r),
+                _get_feature_store_status(r),
             )
 
             output = _render(
                 info, prev_lengths, snapshots, recent_signals,
-                equity_a, equity_b, term_width,
+                equity_a, equity_b, per_instrument, store_status, term_width,
             )
 
             prev_lengths = {
