@@ -17,11 +17,12 @@ def _snap(
     ts: datetime,
     mark: float = 2230.0,
     funding: float = 0.0001,
+    instrument: str = TEST_INSTRUMENT_ID,
 ) -> MarketSnapshot:
     """Create a minimal MarketSnapshot for testing."""
     return MarketSnapshot(
         timestamp=ts,
-        instrument=TEST_INSTRUMENT_ID,
+        instrument=instrument,
         mark_price=Decimal(str(mark)),
         index_price=Decimal(str(mark - 0.5)),
         last_price=Decimal(str(mark)),

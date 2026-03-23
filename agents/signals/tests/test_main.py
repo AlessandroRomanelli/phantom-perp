@@ -6,7 +6,11 @@ from decimal import Decimal
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.signal import StandardSignal
 
+from agents.signals.feature_store import FeatureStore
 from agents.signals.main import deserialize_snapshot, signal_to_dict
+from agents.signals.tests.test_feature_store import _snap
+
+ALL_INSTRUMENTS = ["ETH-PERP", "BTC-PERP", "SOL-PERP", "QQQ-PERP", "SPY-PERP"]
 
 TEST_INSTRUMENT_ID = "ETH-PERP"
 
@@ -89,3 +93,62 @@ class TestSignalToDict:
         assert d["entry_price"] is None
         assert d["stop_loss"] is None
         assert d["take_profit"] is None
+
+
+class TestMultiInstrumentRouting:
+    """Verify FeatureStore routing mirrors signals agent per-instrument dispatch."""
+
+    def _make_stores(self) -> dict[str, FeatureStore]:
+        return {
+            iid: FeatureStore(sample_interval=timedelta(seconds=0))
+            for iid in ALL_INSTRUMENTS
+        }
+
+    def test_all_instruments_route_to_correct_store(self) -> None:
+        stores = self._make_stores()
+        ts = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
+        for iid in ALL_INSTRUMENTS:
+            snapshot = _snap(ts, instrument=iid)
+            store = stores.get(snapshot.instrument)
+            assert store is not None
+            store.update(snapshot)
+
+        for iid in ALL_INSTRUMENTS:
+            assert stores[iid].sample_count == 1, f"{iid} should have 1 sample"
+
+    def test_snapshot_only_updates_matching_store(self) -> None:
+        stores = self._make_stores()
+        ts = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
+        snapshot = _snap(ts, instrument="ETH-PERP")
+        store = stores.get(snapshot.instrument)
+        assert store is not None
+        store.update(snapshot)
+
+        assert stores["ETH-PERP"].sample_count == 1
+        for iid in ALL_INSTRUMENTS:
+            if iid != "ETH-PERP":
+                assert stores[iid].sample_count == 0, f"{iid} should be empty"
+
+    def test_unknown_instrument_skipped(self) -> None:
+        stores = self._make_stores()
+        ts = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
+        snapshot = _snap(ts, instrument="UNKNOWN-PERP")
+        store = stores.get(snapshot.instrument)
+        assert store is None
+
+        for iid in ALL_INSTRUMENTS:
+            assert stores[iid].sample_count == 0
+
+    def test_multiple_snapshots_accumulate_per_instrument(self) -> None:
+        stores = self._make_stores()
+        base = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
+        for i in range(3):
+            ts = base + timedelta(seconds=i)
+            for iid in ALL_INSTRUMENTS:
+                snapshot = _snap(ts, mark=2230.0 + i, instrument=iid)
+                store = stores.get(snapshot.instrument)
+                assert store is not None
+                store.update(snapshot)
+
+        for iid in ALL_INSTRUMENTS:
+            assert stores[iid].sample_count == 3, f"{iid} should have 3 samples"
