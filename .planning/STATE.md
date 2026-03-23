@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Multi-Instrument Ingestion
 status: unknown
-stopped_at: Completed 09-02-PLAN.md
-last_updated: "2026-03-23T10:43:15.986Z"
+stopped_at: Completed 09.1-01-PLAN.md
+last_updated: "2026-03-23T14:12:02.751Z"
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 4
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 10
+  completed_plans: 7
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-22)
 
 **Core value:** Better signal quality and broader market coverage across all instruments and conditions
-**Current focus:** Phase 09 — end-to-end-verification
+**Current focus:** Phase 09.1 — coinbase-advanced-api-migration
 
 ## Current Position
 
-Phase: 09
-Plan: Not started
+Phase: 09.1 (coinbase-advanced-api-migration) — EXECUTING
+Plan: 2 of 4
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Plan: Not started
 | Phase 08 P01 | 4min | 3 tasks | 8 files |
 | Phase 09 P01 | 3min | 2 tasks | 4 files |
 | Phase 09 P02 | 3min | 2 tasks | 3 files |
+| Phase 09.1 P01 | 2min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -76,10 +77,15 @@ Recent decisions affecting current work:
 - [Phase 08]: Error isolation via _run_rest_poller_isolated wrapper prevents one instrument crash from tearing down TaskGroup
 - [Phase 09]: Optional instrument_id param with default None preserves backward compatibility in build_snapshot()
 - [Phase 09]: _snap helper gets optional instrument param with backward-compatible default
+- [Phase 09.1]: PEM newline normalization via replace handles env var escaping
 
 ### Pending Todos
 
 None yet.
+
+### Roadmap Evolution
+
+- Phase 09.1 inserted after Phase 09: Coinbase Advanced API Migration (URGENT)
 
 ### Blockers/Concerns
 
@@ -88,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-23T10:39:46.770Z
-Stopped at: Completed 09-02-PLAN.md
+Last session: 2026-03-23T14:12:02.749Z
+Stopped at: Completed 09.1-01-PLAN.md
 Resume file: None
