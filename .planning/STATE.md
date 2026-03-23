@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Multi-Instrument Ingestion
 status: unknown
-stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-03-22T20:02:39.470Z"
+stopped_at: Completed 09-02-PLAN.md
+last_updated: "2026-03-23T10:39:46.772Z"
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 4
-  completed_plans: 4
+  completed_phases: 4
+  total_plans: 6
+  completed_plans: 6
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-22)
 
 **Core value:** Better signal quality and broader market coverage across all instruments and conditions
-**Current focus:** Phase 08 — rest-polling-multi-instrument
+**Current focus:** Phase 09 — end-to-end-verification
 
 ## Current Position
 
-Phase: 9
-Plan: Not started
+Phase: 09 (end-to-end-verification) — EXECUTING
+Plan: 1 of 2
 
 ## Performance Metrics
 
@@ -55,6 +55,8 @@ Plan: Not started
 | Phase 06 P02 | 22min | 3 tasks | 44 files |
 | Phase 07 P01 | 3min | 2 tasks | 6 files |
 | Phase 08 P01 | 4min | 3 tasks | 8 files |
+| Phase 09 P01 | 3min | 2 tasks | 4 files |
+| Phase 09 P02 | 3min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -72,6 +74,8 @@ Recent decisions affecting current work:
 - [07-01]: Readiness flags set directly in candles.py/funding_rate.py source files rather than wrapper tasks in main.py
 - [Phase 08]: Per-instrument REST clients with shared RateLimiter rather than one shared client
 - [Phase 08]: Error isolation via _run_rest_poller_isolated wrapper prevents one instrument crash from tearing down TaskGroup
+- [Phase 09]: Optional instrument_id param with default None preserves backward compatibility in build_snapshot()
+- [Phase 09]: _snap helper gets optional instrument param with backward-compatible default
 
 ### Pending Todos
 
@@ -84,6 +88,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-22T19:59:35.301Z
-Stopped at: Completed 08-01-PLAN.md
+Last session: 2026-03-23T10:39:46.770Z
+Stopped at: Completed 09-02-PLAN.md
 Resume file: None

@@ -27,7 +27,7 @@
 
 ### End-to-End Verification
 
-- [ ] **ME2E-01**: All active instruments produce MarketSnapshots published to stream:market_snapshots with correct instrument field
+- [x] **ME2E-01**: All active instruments produce MarketSnapshots published to stream:market_snapshots with correct instrument field
 - [ ] **ME2E-02**: Signals agent FeatureStores receive samples for all active instruments (store_samples shows non-zero for all 5)
 
 ## v2 Requirements
@@ -65,7 +65,7 @@
 | MPOL-02 | Phase 8 | Complete |
 | MSTA-01 | Phase 6 | Complete |
 | MSTA-02 | Phase 6 | Complete |
-| ME2E-01 | Phase 9 | Pending |
+| ME2E-01 | Phase 9 | Complete |
 | ME2E-02 | Phase 9 | Pending |
 
 **Coverage:**
