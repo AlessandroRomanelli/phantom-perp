@@ -1,14 +1,15 @@
-"""Tests for config schema validation and diff logging."""
+"""Tests for config schema validation, diff logging, and CoinbaseSettings env binding."""
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any
 from unittest.mock import patch
 
 import pytest
 
-from libs.common.config import log_config_diff, validate_strategy_config
+from libs.common.config import CoinbaseSettings, log_config_diff, validate_strategy_config
 
 
 @dataclass
@@ -113,3 +114,48 @@ class TestLogConfigDiff:
                 strategy="momentum",
                 instrument="BTC-PERP",
             )
+
+
+class TestCoinbaseSettingsEnvPrefix:
+    """Tests for CoinbaseSettings env var binding (MIG-05)."""
+
+    def test_coinbase_settings_reads_adv_env_prefix(self) -> None:
+        """CoinbaseSettings binds to COINBASE_ADV_ prefixed env vars."""
+        env = {
+            "COINBASE_ADV_API_KEY_A": "test-key-a-uuid",
+            "COINBASE_ADV_API_SECRET_A": "test-secret-a-pem",
+            "COINBASE_ADV_API_KEY_B": "test-key-b-uuid",
+            "COINBASE_ADV_API_SECRET_B": "test-secret-b-pem",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            settings = CoinbaseSettings()
+            assert settings.api_key_a == "test-key-a-uuid"
+            assert settings.api_secret_a == "test-secret-a-pem"
+            assert settings.api_key_b == "test-key-b-uuid"
+            assert settings.api_secret_b == "test-secret-b-pem"
+
+    def test_old_intx_prefix_not_read(self) -> None:
+        """Old COINBASE_INTX_ prefixed vars are NOT picked up."""
+        env = {
+            "COINBASE_INTX_API_KEY_A": "old-intx-key",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            settings = CoinbaseSettings()
+            assert settings.api_key_a != "old-intx-key"
+
+    def test_passphrase_field_does_not_exist(self) -> None:
+        """passphrase_a and passphrase_b attributes removed per D-09."""
+        settings = CoinbaseSettings()
+        assert not hasattr(settings, "passphrase_a"), \
+            "passphrase_a should not exist on CoinbaseSettings"
+        assert not hasattr(settings, "passphrase_b"), \
+            "passphrase_b should not exist on CoinbaseSettings"
+
+    def test_env_prefix_is_coinbase_adv(self) -> None:
+        """model_config env_prefix is exactly COINBASE_ADV_."""
+        assert CoinbaseSettings.model_config.get("env_prefix") == "COINBASE_ADV_"
+
+    def test_rest_url_default(self) -> None:
+        """Default rest_url points to api.coinbase.com."""
+        settings = CoinbaseSettings()
+        assert settings.rest_url == "https://api.coinbase.com"
