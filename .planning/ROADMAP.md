@@ -108,9 +108,10 @@ Phases execute in numeric order: 6 → 7 → 8 → 9 (note: 7 and 8 are independ
 **Goal:** Migrate all REST API calls from Coinbase INTX to Coinbase Advanced Trade API -- rewrite auth (HMAC to JWT), all 10 endpoint paths, and response models to match new API shapes
 **Requirements**: MIG-01, MIG-02, MIG-03, MIG-04, MIG-05, MIG-06, MIG-07
 **Depends on:** Phase 9
-**Plans:** 3 plans
+**Plans:** 4 plans
 
 Plans:
 - [ ] 09.1-01-PLAN.md — JWT auth rewrite, dependency additions, config env prefix migration, URL updates
 - [ ] 09.1-02-PLAN.md — Response model rewrite, all 10 REST endpoint path migration, client_pool portfolio UUID
 - [ ] 09.1-03-PLAN.md — Comprehensive test suite (auth, endpoints, models), instruments product_id property
+- [ ] 09.1-04-PLAN.md — Dynamic product ID discovery function, tests, ingestion startup wiring (D-14 through D-17)
