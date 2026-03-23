@@ -19,7 +19,7 @@ Better signal quality and broader market coverage — the bot trades smarter wit
 - Per-instrument IngestionState management
 - End-to-end verification: snapshots for all 5 instruments reach the signals agent
 
-## Current State (Phase 8 complete 2026-03-22)
+## Current State (Phase 9 complete 2026-03-23)
 
 - **7 strategies**: momentum, mean reversion, liquidation cascade, correlation, regime trend, orderbook imbalance, VWAP deviation
 - **Shared utilities**: funding rate filter, adaptive conviction, swing points, session classifier, conviction normalizer
@@ -30,7 +30,8 @@ Better signal quality and broader market coverage — the bot trades smarter wit
 - **Multi-instrument WebSocket**: single WS connection subscribes to all 5 perps, per-instrument dispatch, readiness gating, 100ms throttle, staleness detection
 - **Multi-instrument REST polling**: candle and funding rate pollers fetch all 5 instruments concurrently with staggered startup, shared rate limiter, error isolation, and staleness detection
 - **Instrument registry**: config-driven InstrumentConfig with per-instrument specs (tick size, lot size, max leverage) — zero hardcoded instrument constants
-- **Test suite**: 743+ tests, all passing
+- **End-to-end verification**: runtime instrument ID assertions in ingestion pipeline, integration tests for all 5 instruments through snapshot→FeatureStore flow, per-instrument dashboard sections
+- **Test suite**: 356+ tests across ingestion/signals, all passing
 - **Codebase**: ~13k LOC Python in signals/libs
 
 ## Requirements
@@ -61,7 +62,7 @@ Better signal quality and broader market coverage — the bot trades smarter wit
 - ✓ Multi-instrument WebSocket ingestion — subscribe to all 5 perp contracts via single WS connection. Validated in Phase 7: websocket-multi-instrument
 - ✓ Multi-instrument candle polling — concurrent per-instrument candle fetching with staleness tracking. Validated in Phase 8: rest-polling-multi-instrument
 - ✓ Multi-instrument funding rate polling — concurrent per-instrument funding fetching with failure counters. Validated in Phase 8: rest-polling-multi-instrument
-- [ ] End-to-end multi-instrument verification — all 5 instruments produce snapshots that reach signals agent
+- ✓ End-to-end multi-instrument verification — all 5 instruments produce snapshots that reach signals agent. Validated in Phase 9: end-to-end-verification
 
 ### Deferred
 
@@ -118,4 +119,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-22 after Phase 8 completion*
+*Last updated: 2026-03-23 after Phase 9 completion*
