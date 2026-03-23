@@ -33,6 +33,7 @@ from libs.common.constants import (
     REST_FUNDING_STALE_SECONDS,
     REST_POLLER_STAGGER_SECONDS,
 )
+from libs.coinbase.product_discovery import discover_and_update_registry
 from libs.common.instruments import get_all_instruments
 from libs.common.logging import setup_logging
 from libs.messaging.channels import Channel
@@ -94,29 +95,37 @@ async def run_agent() -> None:
     """Main entrypoint for the ingestion agent."""
     settings = get_settings()
 
-    # Per-instrument shared state
+    # Auth -- ingestion only uses public endpoints (market data, candles,
+    # funding rate), so any portfolio's API key works. We use Portfolio A's.
+    auth = CoinbaseAuth(
+        api_key=settings.coinbase.api_key_a,
+        api_secret=settings.coinbase.api_secret_a,
+    )
+
+    # Shared rate limiter for all REST clients (D-04, D-09)
+    rate_limiter = RateLimiter()
+
+    # D-14: Discover product IDs dynamically at startup
+    discovery_client = CoinbaseRESTClient(
+        auth=auth,
+        base_url=settings.coinbase.rest_url,
+        rate_limiter=rate_limiter,
+    )
+    product_id_map = await discover_and_update_registry(discovery_client)
+    logger.info("product_ids_resolved", mapping=product_id_map)
+
+    # Per-instrument shared state (AFTER discovery so product IDs are resolved)
     instruments = get_all_instruments()
     states: dict[str, IngestionState] = {
         inst.id: IngestionState(instrument_id=inst.id)
         for inst in instruments
     }
 
-    # Product ID -> instrument ID mapping for WS dispatch (D-02)
+    # Product ID -> instrument ID mapping for WS dispatch (D-02, D-17)
     product_to_instrument: dict[str, str] = {
-        inst.ws_product_id: inst.id for inst in instruments
+        inst.product_id: inst.id for inst in instruments
     }
     # e.g. {"ETH-PERP-INTX": "ETH-PERP", "BTC-PERP-INTX": "BTC-PERP", ...}
-
-    # Auth -- ingestion only uses public endpoints (market data, candles,
-    # funding rate), so any portfolio's API key works. We use Portfolio A's.
-    auth = CoinbaseAuth(
-        api_key=settings.coinbase.api_key_a,
-        api_secret=settings.coinbase.api_secret_a,
-        passphrase=settings.coinbase.passphrase_a,
-    )
-
-    # Shared rate limiter for all REST clients (D-04, D-09)
-    rate_limiter = RateLimiter()
 
     # Per-instrument REST clients with isolated HTTP connection pools (D-08)
     rest_clients: dict[str, CoinbaseRESTClient] = {}
