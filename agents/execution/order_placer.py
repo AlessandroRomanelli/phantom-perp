@@ -85,7 +85,10 @@ def build_result_from_response(
     Also builds protective orders if the primary order is filled.
     """
     status = _map_exchange_status(response.status)
-    filled = response.filled_size
+    filled = Decimal(response.filled_size) if response.filled_size else Decimal("0")
+    avg_price_str = response.average_filled_price
+    avg_price = Decimal(avg_price_str) if avg_price_str and avg_price_str != "0" else None
+    fee = Decimal(response.total_fees) if response.total_fees else Decimal("0")
 
     protective = None
     if filled > 0 and (stop_loss or take_profit):
@@ -102,8 +105,8 @@ def build_result_from_response(
         exchange_order_id=response.order_id,
         status=status,
         filled_size=filled,
-        average_price=response.average_filled_price,
-        fee_usdc=response.fee,
+        average_price=avg_price,
+        fee_usdc=fee,
         is_maker=is_maker,
         protective_orders=protective,
     )
@@ -117,18 +120,22 @@ def build_fill_from_response(
     now: datetime | None = None,
 ) -> Fill | None:
     """Build a Fill from an exchange OrderResponse, if any quantity was filled."""
-    if response.filled_size <= 0 or response.average_filled_price is None:
+    filled = Decimal(response.filled_size) if response.filled_size else Decimal("0")
+    avg_price_str = response.average_filled_price
+    avg_price = Decimal(avg_price_str) if avg_price_str and avg_price_str != "0" else None
+    if filled <= 0 or avg_price is None:
         return None
     now = now or utc_now()
+    fee = Decimal(response.total_fees) if response.total_fees else Decimal("0")
     return Fill(
         fill_id=f"fill-{response.order_id}",
         order_id=order_id,
         portfolio_target=portfolio_target,
-        instrument=response.instrument_id,
+        instrument=response.product_id,
         side=OrderSide(response.side),
-        size=response.filled_size,
-        price=response.average_filled_price,
-        fee_usdc=response.fee,
+        size=filled,
+        price=avg_price,
+        fee_usdc=fee,
         is_maker=is_maker,
         filled_at=now,
         trade_id=response.order_id,

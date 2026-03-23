@@ -58,9 +58,10 @@ def reconcile_positions(
     discrepancies: list[PositionDiscrepancy] = []
 
     for pos in exchange_positions:
-        instrument = pos.instrument_id
-        exchange_size = abs(pos.net_size)
-        exchange_side = _infer_side(pos.side, pos.net_size)
+        instrument = pos.product_id
+        net_size = Decimal(pos.net_size) if pos.net_size else Decimal("0")
+        exchange_size = abs(net_size)
+        exchange_side = _infer_side(pos.position_side, net_size)
 
         internal_size = internal_net.get(instrument, Decimal("0"))
         internal_side = (

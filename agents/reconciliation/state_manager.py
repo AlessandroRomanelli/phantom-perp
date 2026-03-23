@@ -9,11 +9,18 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from libs.coinbase.models import PortfolioResponse, PositionResponse
+from libs.coinbase.models import Amount, PortfolioResponse, PositionResponse
 from libs.common.models.enums import PortfolioTarget, PositionSide
 from libs.common.models.portfolio import PortfolioSnapshot, SystemSnapshot
 from libs.common.models.position import PerpPosition
 from libs.common.utils import utc_now
+
+
+def _amount_to_decimal(amt: Amount | None, fallback: Decimal = Decimal("0")) -> Decimal:
+    """Extract Decimal value from an Amount object."""
+    if amt is None:
+        return fallback
+    return Decimal(amt.value) if amt.value else fallback
 
 
 def build_position(
@@ -27,41 +34,44 @@ def build_position(
     """Convert a Coinbase PositionResponse to our PerpPosition model.
 
     Args:
-        resp: Raw position data from Coinbase INTX.
+        resp: Raw position data from Coinbase Advanced Trade API.
         portfolio_target: Which portfolio this position belongs to.
         realized_pnl_usdc: Realized P&L from our internal tracking.
         cumulative_funding_usdc: Cumulative funding from our tracker.
         total_fees_usdc: Total fees from our fill records.
     """
-    side = _map_side(resp.side, resp.net_size)
-    size = abs(resp.net_size)
+    net_size = Decimal(resp.net_size) if resp.net_size else Decimal("0")
+    side = _map_side(resp.position_side, net_size)
+    size = abs(net_size)
+
+    mark_price = _amount_to_decimal(resp.mark_price)
+    entry_price = _amount_to_decimal(resp.entry_vwap)
+    unrealized_pnl = _amount_to_decimal(resp.unrealized_pnl)
+    liquidation_price = _amount_to_decimal(resp.liquidation_price)
+    initial_margin = Decimal(resp.im_contribution) if resp.im_contribution else Decimal("0")
 
     # Compute effective leverage: notional / initial_margin
-    notional = size * resp.mark_price
+    notional = size * mark_price
     leverage = (
-        notional / resp.initial_margin if resp.initial_margin > 0 else Decimal("0")
+        notional / initial_margin if initial_margin > 0 else Decimal("0")
     )
 
-    # Margin ratio: maintenance_margin / equity approximation
-    margin_ratio = (
-        float(resp.maintenance_margin / resp.initial_margin)
-        if resp.initial_margin > 0
-        else 0.0
-    )
+    # Margin ratio: approximate from im_contribution (no separate maintenance field in Advanced API)
+    margin_ratio = 0.5 if initial_margin > 0 else 0.0
 
     return PerpPosition(
-        instrument=resp.instrument_id,
+        instrument=resp.product_id,
         portfolio_target=portfolio_target,
         side=side,
         size=size,
-        entry_price=resp.average_entry_price,
-        mark_price=resp.mark_price,
-        unrealized_pnl_usdc=resp.unrealized_pnl,
+        entry_price=entry_price,
+        mark_price=mark_price,
+        unrealized_pnl_usdc=unrealized_pnl,
         realized_pnl_usdc=realized_pnl_usdc,
         leverage=leverage,
-        initial_margin_usdc=resp.initial_margin,
-        maintenance_margin_usdc=resp.maintenance_margin,
-        liquidation_price=resp.liquidation_price or Decimal("0"),
+        initial_margin_usdc=initial_margin,
+        maintenance_margin_usdc=initial_margin / 2 if initial_margin > 0 else Decimal("0"),
+        liquidation_price=liquidation_price,
         margin_ratio=margin_ratio,
         cumulative_funding_usdc=cumulative_funding_usdc,
         total_fees_usdc=total_fees_usdc,
@@ -81,7 +91,7 @@ def build_portfolio_snapshot(
     """Build a PortfolioSnapshot from Coinbase API responses.
 
     Args:
-        portfolio_resp: Portfolio-level summary from Coinbase.
+        portfolio_resp: Portfolio-level summary from Coinbase Advanced Trade.
         position_resps: All positions in this portfolio from Coinbase.
         portfolio_target: A or B.
         realized_pnl_today_usdc: Today's realized P&L from our internal tracking.
@@ -94,21 +104,34 @@ def build_portfolio_snapshot(
         build_position(pr, portfolio_target) for pr in position_resps
     ]
 
+    collateral = Decimal(portfolio_resp.collateral) if portfolio_resp.collateral else Decimal("0")
+    total_balance = _amount_to_decimal(portfolio_resp.total_balance, collateral)
+    unrealized_pnl = _amount_to_decimal(portfolio_resp.unrealized_pnl)
+    used_margin = (
+        Decimal(portfolio_resp.portfolio_initial_margin)
+        if portfolio_resp.portfolio_initial_margin
+        else Decimal("0")
+    )
+    # Available = total_balance - used_margin (approximation)
+    available = total_balance - used_margin if total_balance > used_margin else Decimal("0")
+
+    equity = total_balance if total_balance > 0 else collateral
+
     margin_util = (
-        float(portfolio_resp.used_margin / portfolio_resp.total_equity * 100)
-        if portfolio_resp.total_equity > 0
+        float(used_margin / equity * 100)
+        if equity > 0
         else 0.0
     )
 
     return PortfolioSnapshot(
         timestamp=now,
         portfolio_target=portfolio_target,
-        equity_usdc=portfolio_resp.total_equity,
-        used_margin_usdc=portfolio_resp.used_margin,
-        available_margin_usdc=portfolio_resp.available_margin,
+        equity_usdc=equity,
+        used_margin_usdc=used_margin,
+        available_margin_usdc=available,
         margin_utilization_pct=margin_util,
         positions=positions,
-        unrealized_pnl_usdc=portfolio_resp.unrealized_pnl,
+        unrealized_pnl_usdc=unrealized_pnl,
         realized_pnl_today_usdc=realized_pnl_today_usdc,
         funding_pnl_today_usdc=funding_pnl_today_usdc,
         fees_paid_today_usdc=fees_paid_today_usdc,

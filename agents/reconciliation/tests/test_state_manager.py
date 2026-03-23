@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from libs.coinbase.models import PortfolioResponse, PositionResponse
+from libs.coinbase.models import Amount, PortfolioResponse, PositionResponse
 from libs.common.models.enums import PortfolioTarget, PositionSide
 
 from agents.reconciliation.state_manager import (
@@ -15,6 +15,10 @@ from agents.reconciliation.state_manager import (
 T0 = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
 
 
+def _amount(value: Decimal | str, currency: str = "USD") -> Amount:
+    return Amount(value=str(value), currency=currency)
+
+
 def _position_resp(
     side: str = "LONG",
     net_size: Decimal = Decimal("2.5"),
@@ -22,20 +26,18 @@ def _position_resp(
     mark: Decimal = Decimal("2250"),
     unrealized: Decimal = Decimal("125"),
     liq: Decimal | None = Decimal("1890"),
-    initial_margin: Decimal = Decimal("1100"),
-    maint_margin: Decimal = Decimal("550"),
+    im_contribution: str = "1100",
 ) -> PositionResponse:
     return PositionResponse(
-        instrument_id="ETH-PERP",
-        portfolio_id="test-portfolio-id",
-        side=side,
-        net_size=net_size,
-        average_entry_price=entry,
-        mark_price=mark,
-        unrealized_pnl=unrealized,
-        liquidation_price=liq,
-        initial_margin=initial_margin,
-        maintenance_margin=maint_margin,
+        product_id="ETH-PERP",
+        portfolio_uuid="test-portfolio-id",
+        position_side=side,
+        net_size=str(net_size),
+        entry_vwap=_amount(entry),
+        mark_price=_amount(mark),
+        unrealized_pnl=_amount(unrealized),
+        liquidation_price=_amount(liq) if liq is not None else None,
+        im_contribution=im_contribution,
     )
 
 
@@ -46,12 +48,11 @@ def _portfolio_resp(
     unrealized: Decimal = Decimal("125"),
 ) -> PortfolioResponse:
     return PortfolioResponse(
-        portfolio_id="test-portfolio-id",
-        name="Test Portfolio",
-        total_equity=equity,
-        available_margin=available,
-        used_margin=used,
-        unrealized_pnl=unrealized,
+        portfolio_uuid="test-portfolio-id",
+        collateral=str(equity),
+        total_balance=_amount(equity),
+        portfolio_initial_margin=str(used),
+        unrealized_pnl=_amount(unrealized),
     )
 
 
@@ -83,7 +84,7 @@ class TestBuildPosition:
         assert pos.is_open is False
 
     def test_leverage_computed(self) -> None:
-        # notional = 2.5 * 2250 = 5625, initial_margin = 1100
+        # notional = 2.5 * 2250 = 5625, im_contribution = 1100
         # leverage = 5625 / 1100 ≈ 5.11
         pos = build_position(_position_resp(), PortfolioTarget.A)
         assert pos.leverage > Decimal("5")
@@ -94,7 +95,7 @@ class TestBuildPosition:
         assert pos.liquidation_price == Decimal("0")
 
     def test_margin_ratio(self) -> None:
-        # maint / initial = 550 / 1100 = 0.5
+        # With Advanced API, margin_ratio is approximated as 0.5 when im > 0
         pos = build_position(_position_resp(), PortfolioTarget.A)
         assert pos.margin_ratio == 0.5
 

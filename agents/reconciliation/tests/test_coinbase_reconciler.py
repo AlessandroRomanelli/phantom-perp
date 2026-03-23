@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from libs.coinbase.models import OrderResponse, PositionResponse
+from libs.coinbase.models import Amount, OrderResponse, PositionResponse
 from libs.common.models.enums import OrderSide, PortfolioTarget
 from libs.common.models.order import Fill
 
@@ -13,6 +13,10 @@ from agents.reconciliation.coinbase_reconciler import (
 )
 
 T0 = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
+
+
+def _amount(value: Decimal | str, currency: str = "USD") -> Amount:
+    return Amount(value=str(value), currency=currency)
 
 
 def _fill(
@@ -42,13 +46,13 @@ def _position_resp(
     net_size: Decimal = Decimal("2.0"),
 ) -> PositionResponse:
     return PositionResponse(
-        instrument_id="ETH-PERP",
-        portfolio_id="test-pid",
-        side=side,
-        net_size=net_size,
-        average_entry_price=Decimal("2200"),
-        mark_price=Decimal("2250"),
-        unrealized_pnl=Decimal("100"),
+        product_id="ETH-PERP",
+        portfolio_uuid="test-pid",
+        position_side=side,
+        net_size=str(net_size),
+        entry_vwap=_amount(Decimal("2200")),
+        mark_price=_amount(Decimal("2250")),
+        unrealized_pnl=_amount(Decimal("100")),
     )
 
 
@@ -121,11 +125,10 @@ class TestFindOrphanedOrders:
             OrderResponse(
                 order_id="exch-1",
                 client_order_id="ord-1",
-                instrument_id="ETH-PERP",
-                portfolio_id="test",
+                product_id="ETH-PERP",
                 side="BUY",
-                type="LIMIT",
-                size=Decimal("1"),
+                order_type="LIMIT",
+                base_size="1",
                 status="OPEN",
             ),
         ]
@@ -138,21 +141,19 @@ class TestFindOrphanedOrders:
             OrderResponse(
                 order_id="exch-1",
                 client_order_id="ord-1",
-                instrument_id="ETH-PERP",
-                portfolio_id="test",
+                product_id="ETH-PERP",
                 side="BUY",
-                type="LIMIT",
-                size=Decimal("1"),
+                order_type="LIMIT",
+                base_size="1",
                 status="OPEN",
             ),
             OrderResponse(
                 order_id="exch-2",
                 client_order_id="unknown-ord",
-                instrument_id="ETH-PERP",
-                portfolio_id="test",
+                product_id="ETH-PERP",
                 side="SELL",
-                type="LIMIT",
-                size=Decimal("0.5"),
+                order_type="LIMIT",
+                base_size="0.5",
                 status="OPEN",
             ),
         ]

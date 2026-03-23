@@ -77,17 +77,16 @@ def _exchange_response(
     return OrderResponse(
         order_id="exch-ord-001",
         client_order_id="ord-001",
-        instrument_id="ETH-PERP",
-        portfolio_id="75b5eaf1-53a6-483a-8ac0-d1da897dff2c",
+        product_id="ETH-PERP",
         side="BUY",
-        type="LIMIT",
-        size=Decimal("2.5"),
-        price=Decimal("2200"),
+        order_type="LIMIT",
+        base_size=str(Decimal("2.5")),
+        limit_price=str(Decimal("2200")),
         status=status,
-        filled_size=filled_size,
-        filled_value=filled_size * (avg_price or Decimal("0")),
-        average_filled_price=avg_price,
-        fee=fee,
+        filled_size=str(filled_size),
+        filled_value=str(filled_size * (avg_price or Decimal("0"))),
+        average_filled_price=str(avg_price) if avg_price is not None else "0",
+        total_fees=str(fee),
     )
 
 
