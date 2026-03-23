@@ -25,7 +25,10 @@ from agents.ingestion.state import IngestionState
 _ZERO = Decimal("0")
 
 
-def build_snapshot(state: IngestionState) -> MarketSnapshot | None:
+def build_snapshot(
+    state: IngestionState,
+    instrument_id: str | None = None,
+) -> MarketSnapshot | None:
     """Build a MarketSnapshot from the current ingestion state.
 
     Returns None if the state does not have enough data (e.g., before
@@ -33,12 +36,21 @@ def build_snapshot(state: IngestionState) -> MarketSnapshot | None:
 
     Args:
         state: Current shared ingestion state.
+        instrument_id: Optional cross-check parameter. When provided,
+            asserts that state.instrument_id matches, catching ID
+            corruption bugs early (D-12).
 
     Returns:
         A frozen MarketSnapshot, or None if data is insufficient.
     """
     if not state.has_minimum_data():
         return None
+
+    if instrument_id is not None:
+        assert state.instrument_id == instrument_id, (
+            f"Instrument ID mismatch in build_snapshot: "
+            f"state={state.instrument_id!r}, param={instrument_id!r}"
+        )
 
     assert state.best_bid is not None
     assert state.best_ask is not None

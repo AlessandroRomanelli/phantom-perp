@@ -155,6 +155,12 @@ async def run_agent() -> None:
 
         state = states[instrument_id]
 
+        # D-11: Validate instrument ID consistency before snapshot creation
+        assert state.instrument_id == instrument_id, (
+            f"Instrument ID mismatch: state has {state.instrument_id!r}, "
+            f"callback received {instrument_id!r}"
+        )
+
         # Readiness gate: all data sources must have delivered (D-08, D-09)
         # Also gates instruments marked stale after reconnect (D-10) --
         # has_ws_tick is reset to False by _mark_stale_instruments, so
@@ -162,7 +168,7 @@ async def run_agent() -> None:
         if not state.is_ready():
             return
 
-        snapshot = build_snapshot(state)
+        snapshot = build_snapshot(state, instrument_id=instrument_id)
         if snapshot is None:
             return
 
