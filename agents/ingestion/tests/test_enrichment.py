@@ -76,15 +76,15 @@ class TestComputeOrderbookImbalance:
 
 class TestComputeVolatility:
     def _make_candles(self, closes: list[float]) -> list[CandleResponse]:
-        base = datetime(2025, 1, 1, tzinfo=UTC)
+        base_ts = 1735689600  # 2025-01-01T00:00:00Z
         return [
             CandleResponse(
-                start=base + timedelta(minutes=i),
-                open=Decimal(str(c)),
-                high=Decimal(str(c + 1)),
-                low=Decimal(str(c - 1)),
-                close=Decimal(str(c)),
-                volume=Decimal("100"),
+                start=str(base_ts + i * 60),
+                open=str(c),
+                high=str(c + 1),
+                low=str(c - 1),
+                close=str(c),
+                volume="100",
             )
             for i, c in enumerate(closes)
         ]

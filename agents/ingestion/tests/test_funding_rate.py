@@ -1,6 +1,5 @@
 """Tests for the funding rate poller."""
 
-from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock
 
@@ -20,10 +19,9 @@ def state() -> IngestionState:
 
 def _make_funding_response() -> FundingRateResponse:
     return FundingRateResponse(
-        instrument_id="ETH-PERP",
+        product_id="ETH-PERP-INTX",
         funding_rate=Decimal("0.0001"),
         mark_price=Decimal("2230.60"),
-        event_time=datetime(2025, 6, 15, 15, 0, 0, tzinfo=UTC),
     )
 
 
@@ -36,7 +34,7 @@ class TestPollFundingOnce:
         await poll_funding_once(mock_client, state)
 
         assert state.funding_rate == Decimal("0.0001")
-        assert state.next_funding_time == datetime(2025, 6, 15, 15, 0, 0, tzinfo=UTC)
+        assert state.next_funding_time is None  # Advanced Trade has no event_time
         assert state.funding_mark_price == Decimal("2230.60")
         assert state.last_funding_update is not None
 

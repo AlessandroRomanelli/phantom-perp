@@ -29,15 +29,29 @@ class InstrumentConfig:
     quote_currency: str
     tick_size: Decimal
     min_order_size: Decimal
+    resolved_product_id: str = ""
+
+    @property
+    def product_id(self) -> str:
+        """Advanced Trade API product ID for this instrument.
+
+        Returns the dynamically-resolved product ID if available (set by
+        discover_product_ids at startup per D-14). Falls back to
+        '{id}-INTX' convention if discovery hasn't run yet.
+
+        Returns:
+            String like 'ETH-PERP-INTX'.
+        """
+        return self.resolved_product_id or f"{self.id}-INTX"
 
     @property
     def ws_product_id(self) -> str:
-        """WebSocket product ID used by Coinbase INTX feeds.
+        """WebSocket product ID (same as product_id for Advanced Trade).
 
         Returns:
-            String like "ETH-PERP-INTX".
+            String like 'ETH-PERP-INTX'.
         """
-        return f"{self.id}-INTX"
+        return self.product_id
 
 
 _registry: dict[str, InstrumentConfig] = {}
@@ -96,3 +110,27 @@ def get_active_instrument_ids() -> list[str]:
         List of instrument ID strings currently in the registry.
     """
     return list(_registry.keys())
+
+
+def update_registry_product_ids(product_id_map: dict[str, str]) -> None:
+    """Update registry with dynamically discovered product IDs.
+
+    Creates new InstrumentConfig instances with resolved_product_id set.
+    Called at startup after discover_product_ids() resolves symbols to
+    actual Advanced Trade product IDs (D-14, D-16).
+
+    Args:
+        product_id_map: Mapping of base_currency symbol to product_id
+                       (e.g., {"ETH": "ETH-PERP-INTX", "BTC": "BTC-PERP-INTX"}).
+    """
+    for inst_id, config in list(_registry.items()):
+        resolved_id = product_id_map.get(config.base_currency)
+        if resolved_id:
+            _registry[inst_id] = InstrumentConfig(
+                id=config.id,
+                base_currency=config.base_currency,
+                quote_currency=config.quote_currency,
+                tick_size=config.tick_size,
+                min_order_size=config.min_order_size,
+                resolved_product_id=resolved_id,
+            )

@@ -31,14 +31,13 @@ def tf() -> TimeframeConfig:
 
 
 def _make_candle_response(close: str = "2230.00") -> CandleResponse:
-    from datetime import UTC, datetime
     return CandleResponse(
-        start=datetime(2025, 1, 1, tzinfo=UTC),
-        open=Decimal("2225.00"),
-        high=Decimal("2240.00"),
-        low=Decimal("2220.00"),
-        close=Decimal(close),
-        volume=Decimal("100"),
+        start="1735689600",
+        open="2225.00",
+        high="2240.00",
+        low="2220.00",
+        close=close,
+        volume="100",
     )
 
 

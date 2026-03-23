@@ -45,7 +45,7 @@ async def poll_funding_once(
         resp = await rest_client.get_funding_rate(instrument_id=instrument_id)
 
         state.funding_rate = resp.funding_rate
-        state.next_funding_time = resp.event_time
+        state.next_funding_time = None  # Advanced Trade has no event_time
         state.funding_mark_price = resp.mark_price
         state.funding_index_price = None  # Not in the response; use WS index
         state.last_funding_update = utc_now()
@@ -62,7 +62,6 @@ async def poll_funding_once(
             "funding_fetched",
             instrument=instrument_id,
             rate=str(resp.funding_rate),
-            event_time=resp.event_time.isoformat(),
             mark_price=str(resp.mark_price),
         )
 
@@ -88,7 +87,6 @@ async def _publish_funding_update(
         "timestamp": now.isoformat(),
         "instrument": instrument_id,
         "rate": str(resp.funding_rate),
-        "next_settlement_time": resp.event_time.isoformat(),
         "mark_price": str(resp.mark_price),
     }
     await publisher.publish(Channel.FUNDING_UPDATES, payload)

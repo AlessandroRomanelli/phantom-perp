@@ -101,14 +101,15 @@ class TestBuildSnapshot:
     def test_volatility_with_candles(self) -> None:
         state = _populated_state()
         prices = [2000.0 + i * 0.5 for i in range(60)]
+        base_ts = 1735689600  # 2025-01-01T00:00:00Z
         state.candles_by_granularity["ONE_MINUTE"] = [
             CandleResponse(
-                start=datetime(2025, 1, 1, 0, i, tzinfo=UTC),
-                open=Decimal(str(p)),
-                high=Decimal(str(p + 1)),
-                low=Decimal(str(p - 1)),
-                close=Decimal(str(p)),
-                volume=Decimal("100"),
+                start=str(base_ts + i * 60),
+                open=str(p),
+                high=str(p + 1),
+                low=str(p - 1),
+                close=str(p),
+                volume="100",
             )
             for i, p in enumerate(prices)
         ]
