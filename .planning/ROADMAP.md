@@ -80,10 +80,11 @@ Plans:
   1. All 5 active instruments produce MarketSnapshots published to stream:market_snapshots with correct instrument field values
   2. Signals agent FeatureStores show non-zero store_samples for all 5 instruments
   3. No snapshot contains a stale or wrong instrument ID (each snapshot's instrument matches its source data)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 09-01: TBD
+- [ ] 09-01-PLAN.md — Runtime instrument ID assertions in ingestion pipeline, E2E multi-instrument snapshot tests
+- [ ] 09-02-PLAN.md — Multi-instrument FeatureStore routing tests, per-instrument dashboard sections
 
 ## Progress
 
@@ -100,4 +101,4 @@ Phases execute in numeric order: 6 → 7 → 8 → 9 (note: 7 and 8 are independ
 | 6. Config and State Foundation | v1.1 | 0/2 | In progress | - |
 | 7. WebSocket Multi-Instrument | 1/1 | Complete   | 2026-03-22 | - |
 | 8. REST Polling Multi-Instrument | v1.1 | 0/1 | Not started | - |
-| 9. End-to-End Verification | v1.1 | 0/0 | Not started | - |
+| 9. End-to-End Verification | v1.1 | 0/2 | Not started | - |
