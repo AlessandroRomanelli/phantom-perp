@@ -421,14 +421,14 @@ async def run_agent() -> None:
         auth_a=CoinbaseAuth(
             settings.coinbase.api_key_a,
             settings.coinbase.api_secret_a,
-            settings.coinbase.passphrase_a,
         ),
         auth_b=CoinbaseAuth(
             settings.coinbase.api_key_b,
             settings.coinbase.api_secret_b,
-            settings.coinbase.passphrase_b,
         ),
         base_url=settings.coinbase.rest_url,
+        portfolio_uuid_a=settings.portfolios.portfolio_a_id,
+        portfolio_uuid_b=settings.portfolios.portfolio_b_id,
     )
     fetcher = PortfolioStateFetcher(client_pool)
 

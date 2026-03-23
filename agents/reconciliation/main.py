@@ -252,7 +252,6 @@ async def run_agent() -> None:
     auth_a = CoinbaseAuth(
         api_key=settings.coinbase.api_key_a,
         api_secret=settings.coinbase.api_secret_a,
-        passphrase=settings.coinbase.passphrase_a,
     )
 
     client_a = CoinbaseRESTClient(
@@ -283,7 +282,6 @@ async def run_agent() -> None:
                     auth_b = CoinbaseAuth(
                         api_key=settings.coinbase.api_key_b,
                         api_secret=settings.coinbase.api_secret_b,
-                        passphrase=settings.coinbase.passphrase_b,
                     )
                     client_b = CoinbaseRESTClient(
                         auth=auth_b,
