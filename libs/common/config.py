@@ -15,25 +15,22 @@ from libs.common.instruments import load_instruments
 
 
 class CoinbaseSettings(BaseSettings):
-    """Coinbase INTX API credentials and endpoints.
+    """Coinbase Advanced Trade API credentials and endpoints.
 
-    API keys on Coinbase INTX are portfolio-scoped: each key is created
-    under a specific portfolio and can only operate on that portfolio.
-    Therefore we need separate credentials for Portfolio A and Portfolio B.
+    Cloud API Keys use a key name (UUID) and PEM-encoded EC private key.
+    Keys are portfolio-scoped: each portfolio needs separate credentials.
     """
 
-    model_config = SettingsConfigDict(env_prefix="COINBASE_INTX_")
+    model_config = SettingsConfigDict(env_prefix="COINBASE_ADV_")
 
-    # Per-portfolio credentials (keys are portfolio-scoped on Coinbase INTX)
+    # Per-portfolio credentials (Cloud API Keys)
     api_key_a: str = ""
     api_secret_a: str = ""
-    passphrase_a: str = ""
     api_key_b: str = ""
     api_secret_b: str = ""
-    passphrase_b: str = ""
 
-    # Shared endpoints (same for both portfolios)
-    rest_url: str = "https://api.international.coinbase.com"
+    # Shared endpoints
+    rest_url: str = "https://api.coinbase.com"
     ws_market_url: str = "wss://advanced-trade-ws.coinbase.com"
     ws_user_url: str = "wss://advanced-trade-ws-user.coinbase.com"
 

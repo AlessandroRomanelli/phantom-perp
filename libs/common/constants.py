@@ -36,8 +36,6 @@ PORTFOLIO_B_AUTO_APPROVE_MAX_NOTIONAL_USDC = Decimal("2000")
 FUNDING_SETTLEMENTS_PER_DAY = 24
 FUNDING_SETTLEMENT_INTERVAL_HOURS = 1
 
-# ── Coinbase INTX URLs (defaults, overridable via env) ──────────────────
+# ── Coinbase Advanced Trade URLs (defaults, overridable via env) ─────────
 
-DEFAULT_REST_BASE_URL = "https://api.international.coinbase.com"
-DEFAULT_WS_MARKET_URL = "wss://ws-md.international.coinbase.com"
-DEFAULT_WS_USER_URL = "wss://ws.international.coinbase.com"
+DEFAULT_REST_BASE_URL = "https://api.coinbase.com"

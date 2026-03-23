@@ -26,9 +26,7 @@ instruments:
     min_order_size: 0.001
 
 coinbase:
-  rest_base_url: "https://api.international.coinbase.com/api/v1"
-  ws_market_data_url: "wss://ws-md.international.coinbase.com"
-  ws_user_data_url: "wss://ws.international.coinbase.com"
+  rest_base_url: "https://api.coinbase.com"
   rate_limit_buffer_pct: 20
 
 fees:
