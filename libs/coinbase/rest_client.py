@@ -1,8 +1,11 @@
-"""Async REST client for Coinbase Advanced API.
+"""Async REST client for Coinbase Advanced Trade API.
 
 Each client instance is bound to a single API key, which is scoped to
 one portfolio by Coinbase. Portfolio routing is handled by
-CoinbaseClientPool — no portfolio_id is needed in API calls.
+CoinbaseClientPool -- no portfolio_id is needed in API calls.
+
+Portfolio-scoped endpoints (positions, portfolio summary) use
+portfolio_uuid injected at construction time.
 """
 
 from __future__ import annotations
@@ -17,11 +20,11 @@ from libs.coinbase.models import (
     CandleResponse,
     FillResponse,
     FundingRateResponse,
-    InstrumentResponse,
     OrderBookResponse,
     OrderResponse,
     PortfolioResponse,
     PositionResponse,
+    ProductResponse,
 )
 from libs.coinbase.rate_limiter import RateLimiter
 from libs.common.constants import DEFAULT_REST_BASE_URL
@@ -34,7 +37,7 @@ from libs.common.exceptions import (
 
 
 class CoinbaseRESTClient:
-    """Async HTTP client for Coinbase Advanced REST API.
+    """Async HTTP client for Coinbase Advanced Trade REST API.
 
     Each instance is authenticated with a single API key that is scoped
     to one Coinbase portfolio. Use CoinbaseClientPool to route requests
@@ -44,6 +47,7 @@ class CoinbaseRESTClient:
         auth: CoinbaseAuth instance for request signing.
         base_url: REST API base URL.
         rate_limiter: Shared rate limiter instance.
+        portfolio_uuid: Portfolio UUID for portfolio-scoped endpoints.
     """
 
     def __init__(
@@ -51,10 +55,12 @@ class CoinbaseRESTClient:
         auth: CoinbaseAuth,
         base_url: str = DEFAULT_REST_BASE_URL,
         rate_limiter: RateLimiter | None = None,
+        portfolio_uuid: str = "",
     ) -> None:
         self._auth = auth
         self._base_url = base_url.rstrip("/")
         self._rate_limiter = rate_limiter or RateLimiter()
+        self._portfolio_uuid = portfolio_uuid
         self._client = httpx.AsyncClient(
             base_url=self._base_url,
             timeout=httpx.Timeout(10.0, connect=5.0),
@@ -77,11 +83,11 @@ class CoinbaseRESTClient:
         body: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
     ) -> Any:
-        """Execute an authenticated request against the Coinbase INTX API.
+        """Execute an authenticated request against the Coinbase Advanced Trade API.
 
         Args:
             method: HTTP method.
-            path: API path (e.g., '/api/v1/orders').
+            path: API path (e.g., '/api/v3/brokerage/orders').
             body: JSON body for POST/PUT requests.
             params: Query parameters for GET requests.
 
@@ -137,109 +143,139 @@ class CoinbaseRESTClient:
 
         return response.json()
 
-    # ── Public (non-portfolio-scoped) endpoints ─────────────────────────
+    # -- Public (non-portfolio-scoped) endpoints ----------------------------
 
-    async def get_instruments(self) -> list[InstrumentResponse]:
-        """List all available instruments."""
-        data = await self._request("GET", "/api/v1/instruments")
-        items = data if isinstance(data, list) else data.get("results", data)
-        return [InstrumentResponse.model_validate(item) for item in items]
+    async def get_products(
+        self,
+        product_type: str | None = None,
+        contract_expiry_type: str | None = None,
+    ) -> list[ProductResponse]:
+        """List available products, optionally filtered.
+
+        Args:
+            product_type: Filter by product type (e.g., 'FUTURE').
+            contract_expiry_type: Filter by expiry type (e.g., 'PERPETUAL').
+        """
+        params: dict[str, Any] = {}
+        if product_type:
+            params["product_type"] = product_type
+        if contract_expiry_type:
+            params["contract_expiry_type"] = contract_expiry_type
+        data = await self._request("GET", "/api/v3/brokerage/products", params=params)
+        items = data.get("products", []) if isinstance(data, dict) else data
+        return [ProductResponse.model_validate(item) for item in items]
+
+    async def get_instruments(self) -> list[ProductResponse]:
+        """Alias for get_products() for backward compatibility."""
+        return await self.get_products()
 
     async def get_orderbook(
         self,
-        instrument_id: str,
-        depth: int = 50,
+        product_id: str,
+        limit: int = 50,
     ) -> OrderBookResponse:
-        """Get L2 order book for an instrument.
+        """Get L2 order book for a product.
 
         Args:
-            instrument_id: Instrument identifier.
-            depth: Number of levels per side.
+            product_id: Product identifier (e.g., 'ETH-PERP-INTX').
+            limit: Number of levels per side.
         """
         data = await self._request(
             "GET",
-            f"/api/v1/instruments/{instrument_id}/book",
-            params={"depth": depth},
+            "/api/v3/brokerage/product_book",
+            params={"product_id": product_id, "limit": limit},
         )
-        return OrderBookResponse.model_validate(data)
+        pricebook = data.get("pricebook", data) if isinstance(data, dict) else data
+        return OrderBookResponse.model_validate(pricebook)
 
     async def get_candles(
         self,
-        instrument_id: str,
+        product_id: str,
         granularity: str = "ONE_HOUR",
         start: str | None = None,
         end: str | None = None,
     ) -> list[CandleResponse]:
-        """Get OHLCV candles for an instrument.
+        """Get OHLCV candles for a product.
 
         Args:
-            instrument_id: Instrument identifier.
-            granularity: Candle granularity (ONE_MINUTE, FIVE_MINUTE, ONE_HOUR, etc.).
-            start: ISO 8601 start time.
-            end: ISO 8601 end time.
+            product_id: Product identifier (e.g., 'ETH-PERP-INTX').
+            granularity: ONE_MINUTE, FIVE_MINUTE, FIFTEEN_MINUTE, ONE_HOUR, etc.
+            start: UNIX timestamp string for start time.
+            end: UNIX timestamp string for end time.
         """
         params: dict[str, Any] = {"granularity": granularity}
         if start:
             params["start"] = start
         if end:
             params["end"] = end
-
         data = await self._request(
             "GET",
-            f"/api/v1/instruments/{instrument_id}/candles",
+            f"/api/v3/brokerage/products/{product_id}/candles",
             params=params,
         )
-        if isinstance(data, dict):
-            items = data.get("aggregations", data.get("results", []))
-        else:
-            items = data
+        items = data.get("candles", []) if isinstance(data, dict) else data
         return [CandleResponse.model_validate(item) for item in items]
 
     async def get_funding_rate(
         self,
-        instrument_id: str,
+        product_id: str,
     ) -> FundingRateResponse:
-        """Get current funding rate for an instrument.
+        """Get current funding rate for a perpetual contract.
 
-        The API returns a paginated response: {"pagination": {...}, "results": [...]}.
-        We extract the most recent entry from the results array.
+        Advanced Trade has no dedicated funding endpoint. Funding rate
+        is embedded in the product details response under
+        future_product_details.perpetual_details.
 
         Args:
-            instrument_id: Instrument identifier.
+            product_id: Product identifier (e.g., 'ETH-PERP-INTX').
         """
         data = await self._request(
             "GET",
-            f"/api/v1/instruments/{instrument_id}/funding",
+            f"/api/v3/brokerage/products/{product_id}",
         )
-        results = data.get("results", [data]) if isinstance(data, dict) else [data]
-        if not results:
-            raise CoinbaseAPIError(200, "Empty funding rate response", f"/api/v1/instruments/{instrument_id}/funding")
-        return FundingRateResponse.model_validate(results[0])
+        future_details = (data.get("future_product_details") or {})
+        perp_details = future_details.get("perpetual_details") or {}
+        funding_rate = perp_details.get("funding_rate", "0")
+        mark_price_str = data.get("price", "0")
+        return FundingRateResponse(
+            product_id=product_id,
+            funding_rate=Decimal(str(funding_rate)),
+            mark_price=Decimal(str(mark_price_str)),
+        )
 
-    # ── Portfolio-scoped endpoints ──────────────────────────────────────
+    # -- Portfolio-scoped endpoints -----------------------------------------
 
     async def get_portfolio(self) -> PortfolioResponse:
-        """Get portfolio/account summary for this client's portfolio."""
-        data = await self._request("GET", "/api/v1/portfolios")
-        return PortfolioResponse.model_validate(data)
+        """Get portfolio summary for this client's portfolio."""
+        data = await self._request(
+            "GET",
+            f"/api/v3/brokerage/intx/portfolio/{self._portfolio_uuid}",
+        )
+        summary = data.get("summary", data) if isinstance(data, dict) else data
+        return PortfolioResponse.model_validate(summary)
 
     async def get_positions(self) -> list[PositionResponse]:
         """Get all positions for this client's portfolio."""
-        data = await self._request("GET", "/api/v1/positions")
-        return [PositionResponse.model_validate(item) for item in data]
-
-    async def get_open_orders(self) -> list[OrderResponse]:
-        """List all open orders for this client's portfolio."""
         data = await self._request(
             "GET",
-            "/api/v1/orders",
-            params={"status": "OPEN"},
+            f"/api/v3/brokerage/intx/positions/{self._portfolio_uuid}",
         )
-        return [OrderResponse.model_validate(item) for item in data]
+        items = data.get("positions", []) if isinstance(data, dict) else data
+        return [PositionResponse.model_validate(item) for item in items]
+
+    async def get_open_orders(self) -> list[OrderResponse]:
+        """List all open orders."""
+        data = await self._request(
+            "GET",
+            "/api/v3/brokerage/orders/historical/batch",
+            params={"order_status": "OPEN"},
+        )
+        items = data.get("orders", []) if isinstance(data, dict) else data
+        return [OrderResponse.model_validate(item) for item in items]
 
     async def create_order(
         self,
-        instrument_id: str,
+        product_id: str,
         side: str,
         size: Decimal,
         order_type: str = "LIMIT",
@@ -248,62 +284,110 @@ class CoinbaseRESTClient:
         client_order_id: str = "",
         reduce_only: bool = False,
     ) -> OrderResponse:
-        """Place a new order on this client's portfolio.
+        """Place a new order.
 
         Args:
-            instrument_id: Instrument to trade.
+            product_id: Product to trade (e.g., 'ETH-PERP-INTX').
             side: BUY or SELL.
-            size: Order size in base currency (ETH).
+            size: Order size in base currency.
             order_type: MARKET, LIMIT, STOP_LIMIT.
             limit_price: Required for LIMIT and STOP_LIMIT orders.
             stop_price: Required for STOP_LIMIT orders.
-            client_order_id: Optional client-generated order ID.
+            client_order_id: Client-generated order ID (required by Advanced Trade).
             reduce_only: If True, order can only reduce an existing position.
         """
-        body: dict[str, Any] = {
-            "instrument_id": instrument_id,
-            "side": side,
-            "type": order_type,
-            "size": str(size),
-        }
-        if limit_price is not None:
-            body["price"] = str(limit_price)
-        if stop_price is not None:
-            body["stop_price"] = str(stop_price)
-        if client_order_id:
-            body["client_order_id"] = client_order_id
-        if reduce_only:
-            body["reduce_only"] = True
+        import uuid as uuid_mod
 
-        data = await self._request("POST", "/api/v1/orders", body=body)
-        return OrderResponse.model_validate(data)
+        order_config: dict[str, Any] = {}
+        if order_type == "MARKET":
+            order_config["market_market_ioc"] = {"base_size": str(size)}
+        elif order_type == "LIMIT":
+            order_config["limit_limit_gtc"] = {
+                "base_size": str(size),
+                "limit_price": str(limit_price) if limit_price else "0",
+            }
+        elif order_type == "STOP_LIMIT":
+            order_config["stop_limit_stop_limit_gtc"] = {
+                "base_size": str(size),
+                "limit_price": str(limit_price) if limit_price else "0",
+                "stop_price": str(stop_price) if stop_price else "0",
+            }
+
+        body: dict[str, Any] = {
+            "product_id": product_id,
+            "side": side,
+            "client_order_id": client_order_id or str(uuid_mod.uuid4()),
+            "order_configuration": order_config,
+        }
+        if reduce_only:
+            body["leverage"] = "1"  # Advanced Trade reduce-only via leverage
+
+        data = await self._request("POST", "/api/v3/brokerage/orders", body=body)
+
+        # Advanced Trade wraps success in {"success": true, "success_response": {...}}
+        if isinstance(data, dict) and "success" in data:
+            if not data.get("success"):
+                error_resp = data.get("error_response", {})
+                error_msg = error_resp.get("message", "Unknown order error")
+                failure_reason = error_resp.get("new_order_failure_reason", "")
+                raise OrderRejectedError(
+                    400,
+                    f"{error_msg} (reason: {failure_reason})",
+                    "/api/v3/brokerage/orders",
+                )
+            order_data = data.get("success_response", data)
+        else:
+            order_data = data
+
+        return OrderResponse.model_validate(order_data)
 
     async def cancel_order(self, order_id: str) -> None:
         """Cancel an open order.
 
+        Advanced Trade uses POST /orders/batch_cancel with a body
+        instead of DELETE /orders/{id}.
+
         Args:
             order_id: Exchange order ID to cancel.
         """
-        await self._request("DELETE", f"/api/v1/orders/{order_id}")
+        data = await self._request(
+            "POST",
+            "/api/v3/brokerage/orders/batch_cancel",
+            body={"order_ids": [order_id]},
+        )
+        # Check for failure in results
+        if isinstance(data, dict):
+            results = data.get("results", [])
+            for result in results:
+                if not result.get("success", True):
+                    raise CoinbaseAPIError(
+                        400,
+                        result.get("failure_reason", "Cancel failed"),
+                        "/api/v3/brokerage/orders/batch_cancel",
+                    )
 
     async def get_fills(
         self,
-        instrument_id: str | None = None,
+        product_id: str | None = None,
         order_id: str | None = None,
         limit: int = 100,
     ) -> list[FillResponse]:
-        """Get fill history for this client's portfolio.
+        """Get fill history.
 
         Args:
-            instrument_id: Filter by instrument.
+            product_id: Filter by product (was instrument_id).
             order_id: Filter by order.
             limit: Maximum number of fills to return.
         """
         params: dict[str, Any] = {"limit": limit}
-        if instrument_id:
-            params["instrument_id"] = instrument_id
+        if product_id:
+            params["product_ids"] = product_id
         if order_id:
-            params["order_id"] = order_id
-
-        data = await self._request("GET", "/api/v1/fills", params=params)
-        return [FillResponse.model_validate(item) for item in data]
+            params["order_ids"] = order_id
+        data = await self._request(
+            "GET",
+            "/api/v3/brokerage/orders/historical/fills",
+            params=params,
+        )
+        items = data.get("fills", []) if isinstance(data, dict) else data
+        return [FillResponse.model_validate(item) for item in items]
