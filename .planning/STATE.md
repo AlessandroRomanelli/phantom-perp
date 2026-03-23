@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Multi-Instrument Ingestion
 status: unknown
-stopped_at: Completed 09.1-03-PLAN.md
-last_updated: "2026-03-23T14:26:41.211Z"
+stopped_at: Completed 09.1-04-PLAN.md (Phase 09.1 complete)
+last_updated: "2026-03-23T14:30:55Z"
 progress:
   total_phases: 5
   completed_phases: 4
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-03-22)
 
 ## Current Position
 
-Phase: 09.1 (coinbase-advanced-api-migration) — EXECUTING
-Plan: 4 of 4
+Phase: 09.1 (coinbase-advanced-api-migration) — COMPLETE
+Plan: 4 of 4 (all complete)
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Plan: 4 of 4
 | Phase 09.1 P01 | 2min | 2 tasks | 6 files |
 | Phase 09.1 P02 | 4min | 2 tasks | 3 files |
 | Phase 09.1 P03 | 6min | 3 tasks | 12 files |
+| Phase 09.1 P04 | 3min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,8 @@ Recent decisions affecting current work:
 - [Phase 09.1]: PEM newline normalization via replace handles env var escaping
 - [Phase 09.1]: Kept get_instruments() as alias to get_products() for backward compat
 - [Phase 09.1]: Generate fresh EC keys in conftest fixtures rather than hardcoded test keys
+- [Phase 09.1 P04]: Discovery client reuses same auth and rate_limiter as per-instrument REST clients
+- [Phase 09.1 P04]: Added portfolio_uuid_a/b to CoinbaseClientPool in risk agent for portfolio-scoped endpoints
 
 ### Pending Todos
 
@@ -98,6 +101,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-23T14:26:41.207Z
-Stopped at: Completed 09.1-03-PLAN.md
+Last session: 2026-03-23T14:30:55Z
+Stopped at: Completed 09.1-04-PLAN.md (Phase 09.1 complete)
 Resume file: None
