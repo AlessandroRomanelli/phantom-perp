@@ -165,23 +165,36 @@ class LatestMarket:
     last_price: Decimal | None = None
 
 
-async def fetch_latest_market(redis: aioredis.Redis) -> LatestMarket:
-    """Read the latest entry from stream:market_snapshots via XREVRANGE."""
+async def fetch_latest_market(
+    redis: aioredis.Redis,
+    instrument: str = "",
+) -> LatestMarket:
+    """Read the latest market snapshot for a specific instrument.
+
+    Scans recent entries in stream:market_snapshots and returns the first
+    matching the requested instrument. Falls back to the absolute latest
+    entry if instrument is empty.
+    """
     market = LatestMarket()
-    entries = await redis.xrevrange(Channel.MARKET_SNAPSHOTS, count=1)
+    # Scan enough entries to find the target instrument (snapshots cycle through 5 instruments)
+    count = 1 if not instrument else 20
+    entries = await redis.xrevrange(Channel.MARKET_SNAPSHOTS, count=count)
     if not entries:
         return market
-    _, fields = entries[0]
-    raw = fields.get(b"data")
-    if raw is None:
+    for _, fields in entries:
+        raw = fields.get(b"data")
+        if raw is None:
+            continue
+        data = orjson.loads(raw)
+        if instrument and data.get("instrument") != instrument:
+            continue
+        if data.get("best_bid"):
+            market.best_bid = Decimal(data["best_bid"])
+        if data.get("best_ask"):
+            market.best_ask = Decimal(data["best_ask"])
+        if data.get("last_price"):
+            market.last_price = Decimal(data["last_price"])
         return market
-    data = orjson.loads(raw)
-    if data.get("best_bid"):
-        market.best_bid = Decimal(data["best_bid"])
-    if data.get("best_ask"):
-        market.best_ask = Decimal(data["best_ask"])
-    if data.get("last_price"):
-        market.last_price = Decimal(data["last_price"])
     return market
 
 
@@ -223,15 +236,13 @@ class PaperBroker:
             return OrderResponse(
                 order_id=oid,
                 client_order_id=client_order_id,
-                instrument_id=instrument_id,
-                portfolio_id="paper",
+                product_id=instrument_id,
                 side=side,
-                type=order_type,
-                size=size,
-                price=limit_price,
-                stop_price=stop_price,
+                order_type=order_type,
+                base_size=str(size),
+                limit_price=str(limit_price) if limit_price else "0",
                 status="OPEN",
-                created_at=utc_now(),
+                created_time=utc_now().isoformat(),
             )
 
         # Fill price and fee rate
@@ -248,18 +259,17 @@ class PaperBroker:
         return OrderResponse(
             order_id=oid,
             client_order_id=client_order_id,
-            instrument_id=instrument_id,
-            portfolio_id="paper",
+            product_id=instrument_id,
             side=side,
-            type=order_type,
-            size=size,
-            price=limit_price,
+            order_type=order_type,
+            base_size=str(size),
+            limit_price=str(limit_price) if limit_price else "0",
             status="FILLED",
-            filled_size=size,
-            filled_value=notional,
-            average_filled_price=fill_price,
-            fee=fee,
-            created_at=utc_now(),
+            filled_size=str(size),
+            filled_value=str(notional),
+            average_filled_price=str(fill_price),
+            total_fees=str(fee),
+            created_time=utc_now().isoformat(),
         )
 
     async def cancel_order(self, order_id: str) -> None:
@@ -588,7 +598,7 @@ async def run_agent() -> None:
                 # -----------------------------------------------------------
                 # 3. Fetch latest market data for limit price computation
                 # -----------------------------------------------------------
-                market = await fetch_latest_market(redis)
+                market = await fetch_latest_market(redis, instrument)
                 if market.last_price is None:
                     logger.warning(
                         "no_market_data_skipping",
@@ -662,8 +672,11 @@ async def run_agent() -> None:
                 )
 
                 if fill:
-                    events_channel = Channel.exchange_events(portfolio_target)
-                    await publisher.publish(events_channel, fill_to_dict(fill))
+                    # In paper mode, the reconciliation paper simulator publishes
+                    # fills — skip here to avoid duplicates in exchange_events.
+                    if not is_paper:
+                        events_channel = Channel.exchange_events(portfolio_target)
+                        await publisher.publish(events_channel, fill_to_dict(fill))
                     fill_count += 1
 
                     logger.info(

@@ -40,6 +40,9 @@ services:
   ingestion:
     image: phantom-perp-ingestion:amd64
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://phantom:${POSTGRES_PASSWORD:-phantom_dev}@postgres:5432/phantom_perp
     depends_on:
       redis:
         condition: service_healthy
@@ -50,6 +53,8 @@ services:
   signals:
     image: phantom-perp-signals:amd64
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
     depends_on:
       redis:
         condition: service_healthy
@@ -58,6 +63,8 @@ services:
   alpha:
     image: phantom-perp-alpha:amd64
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
     depends_on:
       redis:
         condition: service_healthy
@@ -66,6 +73,8 @@ services:
   risk:
     image: phantom-perp-risk:amd64
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
     depends_on:
       redis:
         condition: service_healthy
@@ -74,6 +83,8 @@ services:
   confirmation:
     image: phantom-perp-confirmation:amd64
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
     depends_on:
       redis:
         condition: service_healthy
@@ -82,6 +93,8 @@ services:
   execution:
     image: phantom-perp-execution:amd64
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
     depends_on:
       redis:
         condition: service_healthy
@@ -90,6 +103,9 @@ services:
   reconciliation:
     image: phantom-perp-reconciliation:amd64
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://phantom:${POSTGRES_PASSWORD:-phantom_dev}@postgres:5432/phantom_perp
     depends_on:
       redis:
         condition: service_healthy
@@ -100,6 +116,9 @@ services:
   monitoring:
     image: phantom-perp-monitoring:amd64
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://phantom:${POSTGRES_PASSWORD:-phantom_dev}@postgres:5432/phantom_perp
     depends_on:
       redis:
         condition: service_healthy

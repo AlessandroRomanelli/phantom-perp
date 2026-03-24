@@ -61,7 +61,7 @@ class AlphaCombiner:
         self._window = combination_window
         self._cooldown = cooldown
         self._buffer: deque[_BufferedSignal] = deque(maxlen=200)
-        self._recent_ideas: deque[tuple[datetime, PositionSide]] = deque(maxlen=50)
+        self._recent_ideas: deque[tuple[datetime, PositionSide, str]] = deque(maxlen=50)
 
     def add_signal(
         self,
@@ -81,12 +81,15 @@ class AlphaCombiner:
         self._prune_buffer(now)
         self._buffer.append(_BufferedSignal(signal=signal, received_at=now))
 
-        # Skip if we recently emitted an idea in this direction
-        if self._in_cooldown(signal.direction, now):
+        # Skip if we recently emitted an idea in this direction for this instrument
+        if self._in_cooldown(signal.direction, signal.instrument, now):
             return []
 
-        # Gather unconsumed signals
-        active = [b for b in self._buffer if not b.consumed]
+        # Gather unconsumed signals for this instrument only
+        active = [
+            b for b in self._buffer
+            if not b.consumed and b.signal.instrument == signal.instrument
+        ]
         if not active:
             return []
 
@@ -98,15 +101,16 @@ class AlphaCombiner:
         )
 
         if resolved is None:
-            # Signals cancelled out — mark all as consumed
+            # Signals cancelled out — mark same-instrument signals as consumed
             for b in active:
                 b.consumed = True
             return []
 
-        # Collect contributing signals (same direction as resolved)
+        # Collect contributing signals (same direction AND same instrument)
         contributing = [
             b.signal for b in active
             if b.signal.direction == resolved.direction
+            and b.signal.instrument == signal.instrument
         ]
 
         # Use the best entry/SL/TP and median horizon from contributors
@@ -140,10 +144,11 @@ class AlphaCombiner:
 
         # Mark contributing signals as consumed
         for b in active:
-            if b.signal.direction == resolved.direction:
+            if (b.signal.direction == resolved.direction
+                    and b.signal.instrument == signal.instrument):
                 b.consumed = True
 
-        self._recent_ideas.append((now, resolved.direction))
+        self._recent_ideas.append((now, resolved.direction, signal.instrument))
         return [idea]
 
     # ------------------------------------------------------------------
@@ -156,12 +161,14 @@ class AlphaCombiner:
         while self._buffer and self._buffer[0].received_at < cutoff:
             self._buffer.popleft()
 
-    def _in_cooldown(self, direction: PositionSide, now: datetime) -> bool:
-        """True if we recently emitted an idea in this direction."""
+    def _in_cooldown(
+        self, direction: PositionSide, instrument: str, now: datetime,
+    ) -> bool:
+        """True if we recently emitted an idea in this direction for this instrument."""
         cutoff = now - self._cooldown
         return any(
-            ts > cutoff and d == direction
-            for ts, d in self._recent_ideas
+            ts > cutoff and d == direction and inst == instrument
+            for ts, d, inst in self._recent_ideas
         )
 
     @staticmethod

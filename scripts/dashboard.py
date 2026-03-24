@@ -140,21 +140,6 @@ async def _get_stream_info(r: aioredis.Redis) -> dict[str, dict[str, Any]]:
     return info
 
 
-async def _get_recent_snapshots(
-    r: aioredis.Redis, count: int = 60,
-) -> list[dict[str, Any]]:
-    """Read recent market snapshots for price history."""
-    try:
-        entries = await r.xrevrange("stream:market_snapshots", "+", "-", count=count)
-        results = []
-        for _, fields in entries:
-            parsed = _parse_entry(fields)
-            if parsed:
-                results.append(parsed)
-        return list(reversed(results))  # oldest first
-    except Exception:
-        return []
-
 
 async def _get_recent_signals(
     r: aioredis.Redis, count: int = 10,
@@ -335,62 +320,6 @@ def _format_feature_store_status(store_status: dict[str, int]) -> list[str]:
         lines.append(f"  {WHITE}{iid:<12}{RESET} {color}{count:>8}{RESET}")
     return lines
 
-
-def _format_market(info: dict[str, dict[str, Any]], snapshots: list[dict[str, Any]]) -> list[str]:
-    lines: list[str] = []
-    data = info.get("stream:market_snapshots", {})
-    snap = data.get("latest")
-
-    if not snap:
-        lines.append(f"  {DIM}No market data yet{RESET}")
-        return lines
-
-    mark = snap.get("mark_price", "?")
-    index = snap.get("index_price", "?")
-    last = snap.get("last_price", "?")
-    bid = snap.get("best_bid", "?")
-    ask = snap.get("best_ask", "?")
-    spread = snap.get("spread_bps")
-    vol = snap.get("volume_24h", "?")
-    oi = snap.get("open_interest", "?")
-    funding = snap.get("funding_rate", "?")
-    vol_1h = snap.get("volatility_1h")
-    imb = snap.get("orderbook_imbalance")
-    ts = snap.get("timestamp")
-
-    lines.append(f"  Mark: {BOLD}{WHITE}${mark}{RESET}  Index: ${index}  Last: ${last}")
-    if spread is not None:
-        lines.append(f"  Bid: ${bid}  Ask: ${ask}  Spread: {spread:.1f} bps")
-    else:
-        lines.append(f"  Bid: ${bid}  Ask: ${ask}")
-    lines.append(f"  Vol 24h: {vol}  OI: {oi}  Funding: {funding}")
-
-    extra = []
-    if vol_1h is not None:
-        extra.append(f"Vol 1h: {vol_1h:.4f}")
-    if imb is not None:
-        imb_color = GREEN if imb > 0 else RED if imb < 0 else WHITE
-        extra.append(f"Book Imb: {imb_color}{imb:+.3f}{RESET}")
-    if extra:
-        lines.append(f"  {' | '.join(extra)}")
-
-    # Price sparkline from recent snapshots
-    if len(snapshots) >= 2:
-        try:
-            prices = [float(s["mark_price"]) for s in snapshots if "mark_price" in s]
-            if len(prices) >= 2:
-                first = prices[0]
-                last_p = prices[-1]
-                change = last_p - first
-                pct = (change / first) * 100 if first else 0
-                clr = GREEN if change >= 0 else RED
-                spark = _sparkline(prices)
-                lines.append(f"  {DIM}Recent:{RESET} {spark}  {clr}{change:+.2f} ({pct:+.2f}%){RESET}")
-        except (ValueError, KeyError):
-            pass
-
-    lines.append(f"  {DIM}Updated: {_ts_age(ts)}{RESET}")
-    return lines
 
 
 def _sparkline(values: list[float], width: int = 20) -> str:
@@ -620,6 +549,32 @@ def _format_portfolio(
             except (ValueError, KeyError):
                 pass
 
+        # Open positions table
+        pos_list = snap.get("positions", [])
+        if pos_list:
+            lines.append(
+                f"    {DIM}{'Instrument':<12} {'Side':<6} {'Size':>10}"
+                f" {'Entry':>12} {'Mark':>12} {'P&L':>12}"
+                f" {'Lev':>5} {'Liq':>12}{RESET}"
+            )
+            for pos in pos_list:
+                p_side = pos.get("side", "?")
+                p_pnl = pos.get("unrealized_pnl_usdc", "0")
+                p_clr = _pnl_color(p_pnl)
+                side_clr = GREEN if p_side == "LONG" else RED
+                lines.append(
+                    f"    {WHITE}{pos.get('instrument', '?'):<12}{RESET}"
+                    f" {side_clr}{p_side:<6}{RESET}"
+                    f" {pos.get('size', '?'):>10}"
+                    f" ${pos.get('entry_price', '?'):>11}"
+                    f" ${pos.get('mark_price', '?'):>11}"
+                    f" {p_clr}${p_pnl:>11}{RESET}"
+                    f" {pos.get('leverage', '?'):>5}"
+                    f" ${pos.get('liquidation_price', '?'):>11}"
+                )
+        else:
+            lines.append(f"    {DIM}No open positions{RESET}")
+
         lines.append(f"    {DIM}Updated: {_ts_age(ts)}{RESET}")
         lines.append("")
 
@@ -714,7 +669,6 @@ def _format_stream_table(info: dict[str, dict[str, Any]], prev_lengths: dict[str
 def _render(
     info: dict[str, dict[str, Any]],
     prev_lengths: dict[str, int],
-    snapshots: list[dict[str, Any]],
     recent_signals: list[dict[str, Any]],
     equity_a: list[dict[str, Any]],
     equity_b: list[dict[str, Any]],
@@ -739,10 +693,6 @@ def _render(
 
     parts.append(f" {BOLD}Strategy Overview{RESET}")
     parts.extend(_format_strategy_overview())
-    parts.append("")
-
-    parts.append(f" {BOLD}Market Data{RESET}")
-    parts.extend(_format_market(info, snapshots))
     parts.append("")
 
     parts.append(f" {BOLD}Instruments{RESET}")
@@ -820,22 +770,20 @@ async def run_dashboard(redis_url: str, refresh: float) -> None:
     r = aioredis.from_url(redis_url, decode_responses=False)
     prev_lengths: dict[str, int] = {}
 
-    # Enter alternate screen buffer and hide cursor
-    sys.stdout.write("\033[?1049h\033[?25l")
+    # Hide cursor
+    sys.stdout.write("\033[?25l")
     sys.stdout.flush()
 
     try:
         while True:
             term = shutil.get_terminal_size((80, 24))
             term_width = term.columns
-            term_height = term.lines
 
             (
-                info, snapshots, recent_signals, equity_a, equity_b,
+                info, recent_signals, equity_a, equity_b,
                 per_instrument, store_status,
             ) = await asyncio.gather(
                 _get_stream_info(r),
-                _get_recent_snapshots(r, count=60),
                 _get_recent_signals(r, count=10),
                 _get_equity_history(r, "a", count=30),
                 _get_equity_history(r, "b", count=30),
@@ -844,7 +792,7 @@ async def run_dashboard(redis_url: str, refresh: float) -> None:
             )
 
             output = _render(
-                info, prev_lengths, snapshots, recent_signals,
+                info, prev_lengths, recent_signals,
                 equity_a, equity_b, per_instrument, store_status, term_width,
             )
 
@@ -852,18 +800,9 @@ async def run_dashboard(redis_url: str, refresh: float) -> None:
                 stream: data.get("length", 0) for stream, data in info.items()
             }
 
-            lines = output.split("\n")
-
-            # Truncate to terminal dimensions
-            buf: list[str] = []
-            for line in lines[:term_height]:
-                truncated = _truncate_visible(line, term_width)
-                buf.append(truncated + "\033[K")
-            # Clear any remaining rows from previous frame
-            while len(buf) < term_height:
-                buf.append("\033[K")
-
-            sys.stdout.write("\033[H" + "\n".join(buf))
+            # Clear screen and print from top — content is scrollable
+            sys.stdout.write("\033[2J\033[H")
+            sys.stdout.write(output)
             sys.stdout.flush()
 
             await asyncio.sleep(refresh)
@@ -871,8 +810,8 @@ async def run_dashboard(redis_url: str, refresh: float) -> None:
         pass
     finally:
         await r.aclose()
-        # Leave alternate screen buffer, show cursor
-        sys.stdout.write("\033[?1049l\033[?25h")
+        # Show cursor
+        sys.stdout.write("\033[?25h")
         sys.stdout.flush()
 
 

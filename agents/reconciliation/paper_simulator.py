@@ -136,7 +136,7 @@ class SimulatedPosition:
 
 
 class PaperPortfolio:
-    """Simulated portfolio that tracks positions, equity, and P&L."""
+    """Simulated portfolio that tracks per-instrument positions, equity, and P&L."""
 
     def __init__(
         self,
@@ -148,8 +148,19 @@ class PaperPortfolio:
         self.realized_pnl = Decimal("0")
         self.fees_paid = Decimal("0")
         self.funding_pnl = Decimal("0")
-        self.position: SimulatedPosition | None = None
+        self.positions: dict[str, SimulatedPosition] = {}
         self.fill_count = 0
+
+    @property
+    def position(self) -> SimulatedPosition | None:
+        """Legacy accessor — returns first open position or None.
+
+        Kept for backward compatibility with tests that check portfolio.position.
+        """
+        for pos in self.positions.values():
+            if pos.size > 0:
+                return pos
+        return None
 
     @property
     def base_equity(self) -> Decimal:
@@ -165,7 +176,7 @@ class PaperPortfolio:
         fill_price: Decimal,
         is_maker: bool,
     ) -> Fill:
-        """Simulate a fill and update position state."""
+        """Simulate a fill and update the instrument's position state."""
         fee_rate = FEE_MAKER if is_maker else FEE_TAKER
         notional = size * fill_price
         fee = (notional * fee_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -174,34 +185,34 @@ class PaperPortfolio:
 
         fill_side = PositionSide.LONG if side == OrderSide.BUY else PositionSide.SHORT
 
-        if self.position is None:
-            # Open new position
-            self.position = SimulatedPosition(
+        pos = self.positions.get(instrument)
+
+        if pos is None or pos.size == 0:
+            # Open new position for this instrument
+            self.positions[instrument] = SimulatedPosition(
                 instrument=instrument,
                 side=fill_side,
                 size=size,
                 entry_price=fill_price,
                 total_fees_usdc=fee,
             )
-        elif self.position.side == fill_side:
+        elif pos.side == fill_side:
             # Add to existing position — weighted average entry
-            total_size = self.position.size + size
-            avg_entry = (
-                self.position.entry_price * self.position.size + fill_price * size
-            ) / total_size
-            self.position.size = total_size
-            self.position.entry_price = avg_entry
-            self.position.total_fees_usdc += fee
+            total_size = pos.size + size
+            avg_entry = (pos.entry_price * pos.size + fill_price * size) / total_size
+            pos.size = total_size
+            pos.entry_price = avg_entry
+            pos.total_fees_usdc += fee
         else:
             # Reducing or closing/flipping
-            if size >= self.position.size:
+            if size >= pos.size:
                 # Close the full position
-                close_pnl = self.position.unrealized_pnl(fill_price)
+                close_pnl = pos.unrealized_pnl(fill_price)
                 self.realized_pnl += close_pnl
-                remaining = size - self.position.size
+                remaining = size - pos.size
                 if remaining > 0:
                     # Flip: open opposite position with the remainder
-                    self.position = SimulatedPosition(
+                    self.positions[instrument] = SimulatedPosition(
                         instrument=instrument,
                         side=fill_side,
                         size=remaining,
@@ -209,17 +220,17 @@ class PaperPortfolio:
                         total_fees_usdc=fee,
                     )
                 else:
-                    self.position = None
+                    del self.positions[instrument]
             else:
                 # Partial close
                 pnl_per_unit = (
-                    (fill_price - self.position.entry_price)
-                    if self.position.side == PositionSide.LONG
-                    else (self.position.entry_price - fill_price)
+                    (fill_price - pos.entry_price)
+                    if pos.side == PositionSide.LONG
+                    else (pos.entry_price - fill_price)
                 )
                 self.realized_pnl += pnl_per_unit * size
-                self.position.size -= size
-                self.position.total_fees_usdc += fee
+                pos.size -= size
+                pos.total_fees_usdc += fee
 
         return Fill(
             fill_id=generate_id("fill"),
@@ -235,46 +246,58 @@ class PaperPortfolio:
             trade_id=generate_id("trade"),
         )
 
-    def apply_funding(self, rate: Decimal, mark_price: Decimal) -> FundingPayment | None:
-        """Apply an hourly funding payment. Returns None if no position."""
-        if self.position is None or self.position.size == 0:
+    def apply_funding(
+        self,
+        instrument: str,
+        rate: Decimal,
+        mark_price: Decimal,
+    ) -> FundingPayment | None:
+        """Apply an hourly funding payment for a specific instrument."""
+        pos = self.positions.get(instrument)
+        if pos is None or pos.size == 0:
             return None
 
-        # payment = rate * notional
-        # Positive rate: longs pay shorts
-        notional = self.position.size * mark_price
+        notional = pos.size * mark_price
         raw_payment = rate * notional
 
-        if self.position.side == PositionSide.LONG:
+        if pos.side == PositionSide.LONG:
             payment = -raw_payment  # Longs pay when rate > 0
         else:
             payment = raw_payment  # Shorts receive when rate > 0
 
         payment = payment.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         self.funding_pnl += payment
-        self.position.cumulative_funding_usdc += payment
+        pos.cumulative_funding_usdc += payment
 
         return FundingPayment(
             timestamp=utc_now(),
-            instrument=self.position.instrument,
+            instrument=instrument,
             portfolio_target=self.target,
             rate=rate,
             payment_usdc=payment,
-            position_size=self.position.size,
-            position_side=self.position.side,
+            position_size=pos.size,
+            position_side=pos.side,
             cumulative_24h_usdc=self.funding_pnl,
         )
 
-    def build_snapshot(self, mark_price: Decimal) -> PortfolioSnapshot:
-        """Build a PortfolioSnapshot at the current mark price."""
-        positions: list[PerpPosition] = []
-        unrealized_pnl = Decimal("0")
-        used_margin = Decimal("0")
+    def build_snapshot(
+        self,
+        mark_prices: dict[str, Decimal],
+    ) -> PortfolioSnapshot:
+        """Build a PortfolioSnapshot using per-instrument mark prices."""
+        perp_positions: list[PerpPosition] = []
+        total_unrealized = Decimal("0")
+        total_used_margin = Decimal("0")
 
-        if self.position and self.position.size > 0:
-            unrealized = self.position.unrealized_pnl(mark_price)
-            unrealized_pnl = unrealized
-            notional = self.position.size * mark_price
+        for instrument, pos in self.positions.items():
+            if pos.size == 0:
+                continue
+            mark_price = mark_prices.get(instrument, Decimal("0"))
+            if mark_price == 0:
+                mark_price = pos.entry_price
+            unrealized = pos.unrealized_pnl(mark_price)
+            total_unrealized += unrealized
+            notional = pos.size * mark_price
             leverage = Decimal("3")
             initial_margin = (notional / leverage).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP,
@@ -282,21 +305,20 @@ class PaperPortfolio:
             maint_margin = (initial_margin / 2).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP,
             )
-            used_margin = initial_margin
+            total_used_margin += initial_margin
 
-            # Estimate liquidation price
-            if self.position.side == PositionSide.LONG:
-                liq_price = self.position.entry_price * (1 - Decimal("1") / leverage)
+            if pos.side == PositionSide.LONG:
+                liq_price = pos.entry_price * (1 - Decimal("1") / leverage)
             else:
-                liq_price = self.position.entry_price * (1 + Decimal("1") / leverage)
+                liq_price = pos.entry_price * (1 + Decimal("1") / leverage)
             liq_price = liq_price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-            positions.append(PerpPosition(
-                instrument=self.position.instrument,
+            perp_positions.append(PerpPosition(
+                instrument=instrument,
                 portfolio_target=self.target,
-                side=self.position.side,
-                size=self.position.size,
-                entry_price=self.position.entry_price,
+                side=pos.side,
+                size=pos.size,
+                entry_price=pos.entry_price,
                 mark_price=mark_price,
                 unrealized_pnl_usdc=unrealized,
                 realized_pnl_usdc=self.realized_pnl,
@@ -305,25 +327,25 @@ class PaperPortfolio:
                 maintenance_margin_usdc=maint_margin,
                 liquidation_price=liq_price,
                 margin_ratio=float(maint_margin / initial_margin) if initial_margin > 0 else 0.0,
-                cumulative_funding_usdc=self.position.cumulative_funding_usdc,
-                total_fees_usdc=self.position.total_fees_usdc,
+                cumulative_funding_usdc=pos.cumulative_funding_usdc,
+                total_fees_usdc=pos.total_fees_usdc,
             ))
 
-        equity = self.base_equity + unrealized_pnl
-        available_margin = max(equity - used_margin, Decimal("0"))
-        margin_util = float(used_margin / equity * 100) if equity > 0 else 0.0
+        equity = self.base_equity + total_unrealized
+        available_margin = max(equity - total_used_margin, Decimal("0"))
+        margin_util = float(total_used_margin / equity * 100) if equity > 0 else 0.0
 
         return PortfolioSnapshot(
             timestamp=utc_now(),
             portfolio_target=self.target,
             equity_usdc=equity.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
-            used_margin_usdc=used_margin,
+            used_margin_usdc=total_used_margin,
             available_margin_usdc=available_margin.quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP,
             ),
             margin_utilization_pct=round(margin_util, 1),
-            positions=positions,
-            unrealized_pnl_usdc=unrealized_pnl.quantize(
+            positions=perp_positions,
+            unrealized_pnl_usdc=total_unrealized.quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP,
             ),
             realized_pnl_today_usdc=self.realized_pnl.quantize(
@@ -336,6 +358,46 @@ class PaperPortfolio:
                 Decimal("0.01"), rounding=ROUND_HALF_UP,
             ),
         )
+
+
+# ---------------------------------------------------------------------------
+# Pending protective orders (SL/TP)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class PendingProtectiveOrder:
+    """A stop-loss or take-profit order waiting to be triggered."""
+
+    order_id: str
+    instrument: str
+    portfolio_target: PortfolioTarget
+    side: OrderSide  # Close side (opposite of position)
+    size: Decimal
+    trigger_price: Decimal  # Price at which the order activates
+    fill_price: Decimal  # Price to fill at (limit price)
+    is_stop_loss: bool  # True = SL, False = TP
+
+    def is_triggered(self, mark_price: Decimal) -> bool:
+        """Check if the current mark price triggers this order.
+
+        Stop-loss (closing a LONG): triggers when mark <= trigger
+        Stop-loss (closing a SHORT): triggers when mark >= trigger
+        Take-profit (closing a LONG): triggers when mark >= trigger
+        Take-profit (closing a SHORT): triggers when mark <= trigger
+        """
+        if self.is_stop_loss:
+            # SL closes position — BUY side means we're closing a SHORT (trigger on rise)
+            if self.side == OrderSide.BUY:
+                return mark_price >= self.trigger_price
+            else:
+                return mark_price <= self.trigger_price
+        else:
+            # TP closes position — BUY side means we're closing a SHORT (trigger on drop)
+            if self.side == OrderSide.BUY:
+                return mark_price <= self.trigger_price
+            else:
+                return mark_price >= self.trigger_price
 
 
 # ---------------------------------------------------------------------------
@@ -367,9 +429,13 @@ async def run_paper_simulator(
             initial_equity=PAPER_INITIAL_EQUITY,
         )
 
-    # Shared market data cache
-    latest_mark_price: Decimal | None = None
-    latest_funding_rate = Decimal("0")
+    # Per-instrument market data cache
+    mark_prices: dict[str, Decimal] = {}
+    funding_rates: dict[str, Decimal] = {}
+    has_market_data = False
+
+    # Pending SL/TP orders waiting to be triggered by price movement
+    pending_orders: list[PendingProtectiveOrder] = []
 
     # --- Consumer: market data ---
     market_consumer = RedisConsumer(redis_url=redis_url, block_ms=2000)
@@ -393,13 +459,16 @@ async def run_paper_simulator(
 
     # --- Task: cache latest market data ---
     async def market_data_reader() -> None:
-        nonlocal latest_mark_price, latest_funding_rate
+        nonlocal has_market_data
         async for channel, msg_id, payload in market_consumer.listen():
             try:
-                latest_mark_price = Decimal(payload["mark_price"])
-                fr = payload.get("funding_rate")
-                if fr is not None:
-                    latest_funding_rate = Decimal(str(fr))
+                instrument = payload.get("instrument", "")
+                if instrument:
+                    mark_prices[instrument] = Decimal(payload["mark_price"])
+                    fr = payload.get("funding_rate")
+                    if fr is not None:
+                        funding_rates[instrument] = Decimal(str(fr))
+                    has_market_data = True
             except Exception:
                 pass
             await market_consumer.ack(channel, "paper_sim_market", msg_id)
@@ -407,7 +476,7 @@ async def run_paper_simulator(
     # --- Task: process orders and simulate fills ---
     async def order_processor() -> None:
         async for channel, msg_id, payload in order_consumer.listen():
-            if latest_mark_price is None:
+            if not has_market_data:
                 logger.warning("paper_no_market_data", msg="skipping order, waiting for market data")
                 await order_consumer.ack(channel, "paper_sim_exec", msg_id)
                 continue
@@ -425,13 +494,19 @@ async def run_paper_simulator(
                 await order_consumer.ack(channel, "paper_sim_exec", msg_id)
                 continue
 
-            # Fill at limit price (if set and order is LIMIT), otherwise mark price
+            # Fill at limit price (if set and order is LIMIT), otherwise instrument mark price
+            instrument_mark = mark_prices.get(order.instrument, Decimal("0"))
             is_maker = order.order_type == OrderType.LIMIT
             fill_price = (
                 order.limit_price
                 if is_maker and order.limit_price
-                else latest_mark_price
+                else instrument_mark
             )
+
+            if fill_price == 0:
+                logger.warning("paper_no_instrument_price", instrument=order.instrument)
+                await order_consumer.ack(channel, "paper_sim_exec", msg_id)
+                continue
 
             fill = portfolio.apply_fill(
                 order_id=order.order_id,
@@ -447,13 +522,14 @@ async def run_paper_simulator(
             await publisher.publish(events_ch, fill_to_dict(fill))
 
             # Publish updated snapshot
-            snapshot = portfolio.build_snapshot(latest_mark_price)
+            snapshot = portfolio.build_snapshot(mark_prices)
             state_ch = Channel.portfolio_state(portfolio.target)
             await publisher.publish(state_ch, portfolio_snapshot_to_dict(snapshot))
 
             logger.info(
                 "paper_fill",
                 portfolio=portfolio.target.value,
+                instrument=order.instrument,
                 side=order.side.value,
                 size=str(fill.size),
                 price=str(fill.price),
@@ -462,16 +538,55 @@ async def run_paper_simulator(
                 positions=len(snapshot.open_positions),
             )
 
+            # Register SL/TP protective orders for this fill
+            close_side = (
+                OrderSide.SELL if order.side == OrderSide.BUY else OrderSide.BUY
+            )
+            if order.stop_loss is not None:
+                pending_orders.append(PendingProtectiveOrder(
+                    order_id=f"sl-{order.order_id}",
+                    instrument=order.instrument,
+                    portfolio_target=order.portfolio_target,
+                    side=close_side,
+                    size=order.size,
+                    trigger_price=order.stop_loss,
+                    fill_price=order.stop_loss,
+                    is_stop_loss=True,
+                ))
+                logger.info(
+                    "paper_sl_registered",
+                    order_id=order.order_id,
+                    instrument=order.instrument,
+                    trigger=str(order.stop_loss),
+                )
+            if order.take_profit is not None:
+                pending_orders.append(PendingProtectiveOrder(
+                    order_id=f"tp-{order.order_id}",
+                    instrument=order.instrument,
+                    portfolio_target=order.portfolio_target,
+                    side=close_side,
+                    size=order.size,
+                    trigger_price=order.take_profit,
+                    fill_price=order.take_profit,
+                    is_stop_loss=False,
+                ))
+                logger.info(
+                    "paper_tp_registered",
+                    order_id=order.order_id,
+                    instrument=order.instrument,
+                    trigger=str(order.take_profit),
+                )
+
             await order_consumer.ack(channel, "paper_sim_exec", msg_id)
 
     # --- Task: publish periodic snapshots ---
     async def periodic_snapshots() -> None:
         while True:
             await asyncio.sleep(SNAPSHOT_INTERVAL)
-            if latest_mark_price is None:
+            if not has_market_data:
                 continue
             for portfolio in portfolios.values():
-                snapshot = portfolio.build_snapshot(latest_mark_price)
+                snapshot = portfolio.build_snapshot(mark_prices)
                 ch = Channel.portfolio_state(portfolio.target)
                 await publisher.publish(ch, portfolio_snapshot_to_dict(snapshot))
                 logger.debug(
@@ -490,21 +605,113 @@ async def run_paper_simulator(
             wait = (next_hour - now).total_seconds()
             await asyncio.sleep(wait)
 
-            if latest_mark_price is None:
+            if not has_market_data:
                 continue
 
             for portfolio in portfolios.values():
-                payment = portfolio.apply_funding(latest_funding_rate, latest_mark_price)
-                if payment is not None:
-                    ch = Channel.funding_payments(portfolio.target)
-                    await publisher.publish(ch, funding_payment_to_dict(payment))
-                    logger.info(
-                        "paper_funding",
-                        portfolio=portfolio.target.value,
-                        rate=str(latest_funding_rate),
-                        payment=str(payment.payment_usdc),
-                        cumulative=str(payment.cumulative_24h_usdc),
-                    )
+                for instrument in list(portfolio.positions.keys()):
+                    rate = funding_rates.get(instrument, Decimal("0"))
+                    price = mark_prices.get(instrument, Decimal("0"))
+                    if price == 0:
+                        continue
+                    payment = portfolio.apply_funding(instrument, rate, price)
+                    if payment is not None:
+                        ch = Channel.funding_payments(portfolio.target)
+                        await publisher.publish(ch, funding_payment_to_dict(payment))
+                        logger.info(
+                            "paper_funding",
+                            portfolio=portfolio.target.value,
+                            instrument=instrument,
+                            rate=str(rate),
+                            payment=str(payment.payment_usdc),
+                            cumulative=str(payment.cumulative_24h_usdc),
+                        )
+
+    # --- Task: check pending SL/TP orders against mark prices ---
+    async def protective_order_monitor() -> None:
+        """Check pending stop-loss and take-profit orders every second.
+
+        When a mark price crosses a trigger, fill the protective order at its
+        limit price (not the current mark), then remove stale orders for the
+        same instrument/portfolio if the position was fully closed.
+        """
+        while True:
+            await asyncio.sleep(1)
+            if not has_market_data or not pending_orders:
+                continue
+
+            triggered: list[PendingProtectiveOrder] = []
+            for order in pending_orders:
+                price = mark_prices.get(order.instrument)
+                if price is not None and order.is_triggered(price):
+                    triggered.append(order)
+
+            if not triggered:
+                continue
+
+            # Remove all triggered orders upfront to avoid list mutation issues
+            triggered_set = set(id(o) for o in triggered)
+            pending_orders[:] = [
+                o for o in pending_orders if id(o) not in triggered_set
+            ]
+
+            # Process triggers — prefer TP over SL when both fire
+            # (sort SL=True last so TP executes first)
+            triggered.sort(key=lambda o: o.is_stop_loss)
+
+            for order in triggered:
+                portfolio = portfolios.get(order.portfolio_target)
+                if portfolio is None:
+                    continue
+
+                # Check if there's still a position to close
+                pos = portfolio.positions.get(order.instrument)
+                if pos is None or pos.size == 0:
+                    continue
+
+                # Close size is the smaller of order size and current position
+                close_size = min(order.size, pos.size)
+
+                fill = portfolio.apply_fill(
+                    order_id=order.order_id,
+                    instrument=order.instrument,
+                    side=order.side,
+                    size=close_size,
+                    fill_price=order.fill_price,
+                    is_maker=not order.is_stop_loss,
+                )
+
+                events_ch = Channel.exchange_events(portfolio.target)
+                await publisher.publish(events_ch, fill_to_dict(fill))
+
+                snapshot = portfolio.build_snapshot(mark_prices)
+                state_ch = Channel.portfolio_state(portfolio.target)
+                await publisher.publish(state_ch, portfolio_snapshot_to_dict(snapshot))
+
+                label = "SL" if order.is_stop_loss else "TP"
+                logger.info(
+                    f"paper_{label.lower()}_triggered",
+                    portfolio=portfolio.target.value,
+                    instrument=order.instrument,
+                    side=order.side.value,
+                    size=str(close_size),
+                    fill_price=str(order.fill_price),
+                    trigger_price=str(order.trigger_price),
+                    realized_pnl=str(portfolio.realized_pnl),
+                    equity=str(snapshot.equity_usdc),
+                )
+
+                # If position is now closed, cancel remaining pending
+                # SL/TP for this instrument+portfolio
+                remaining_pos = portfolio.positions.get(order.instrument)
+                if remaining_pos is None or remaining_pos.size == 0:
+                    pending_orders[:] = [
+                        o for o in pending_orders
+                        if not (
+                            o.instrument == order.instrument
+                            and o.portfolio_target == order.portfolio_target
+                        )
+                    ]
 
     # --- Start all tasks ---
     portfolio_labels = ", ".join(
@@ -519,6 +726,7 @@ async def run_paper_simulator(
             tg.create_task(order_processor())
             tg.create_task(periodic_snapshots())
             tg.create_task(funding_applier())
+            tg.create_task(protective_order_monitor())
     except* Exception as eg:
         for exc in eg.exceptions:
             logger.error("paper_simulator_error", error=str(exc), exc_type=type(exc).__name__)

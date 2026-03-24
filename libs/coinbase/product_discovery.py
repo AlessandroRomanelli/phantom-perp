@@ -44,7 +44,13 @@ async def discover_product_ids(
     for product in products:
         if product.product_venue != "INTX":
             continue
-        base_symbol = product.base_display_symbol or product.base_currency_id
+        # base_display_symbol may be empty in Advanced Trade API responses;
+        # fall back to extracting the symbol from product_id (e.g., "ETH-PERP-INTX" -> "ETH")
+        base_symbol = (
+            product.base_display_symbol
+            or product.base_currency_id
+            or product.product_id.split("-")[0]
+        )
         if base_symbol in symbol_set:
             mapping[base_symbol] = product.product_id
 

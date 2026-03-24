@@ -21,11 +21,12 @@ def _ready_state(instrument_id: str, mark_price: str = "100.00") -> IngestionSta
     state.has_ws_tick = True
     state.has_candles = True
     state.has_funding = True
-    state.best_bid = Decimal("99.75")
-    state.best_ask = Decimal("100.25")
-    state.last_price = Decimal("100.00")
-    state.mark_price = Decimal(mark_price)
-    state.index_price = Decimal("99.90")
+    price = Decimal(mark_price)
+    state.best_bid = price - Decimal("0.25")
+    state.best_ask = price + Decimal("0.25")
+    state.last_price = price
+    state.mark_price = price
+    state.index_price = price - Decimal("0.10")
     return state
 
 

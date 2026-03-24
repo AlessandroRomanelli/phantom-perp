@@ -48,7 +48,7 @@ class TestBuildSnapshot:
 
         assert snapshot is not None
         assert snapshot.instrument == TEST_INSTRUMENT_ID
-        assert snapshot.mark_price == Decimal("2230.60")
+        assert snapshot.mark_price == Decimal("2230.75")  # last_price (WS real-time)
         assert snapshot.index_price == Decimal("2230.55")
         assert snapshot.last_price == Decimal("2230.75")
         assert snapshot.best_bid == Decimal("2230.50")
@@ -126,7 +126,7 @@ class TestSnapshotToDict:
         d = snapshot_to_dict(snapshot)
 
         assert d["instrument"] == TEST_INSTRUMENT_ID
-        assert d["mark_price"] == "2230.60"
+        assert d["mark_price"] == "2230.75"
         assert d["index_price"] == "2230.55"
         assert d["last_price"] == "2230.75"
         assert d["best_bid"] == "2230.50"

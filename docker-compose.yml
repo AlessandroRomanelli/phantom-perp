@@ -33,6 +33,9 @@ services:
       context: .
       dockerfile: agents/ingestion/Dockerfile
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://phantom:${POSTGRES_PASSWORD:-phantom_dev}@postgres:5432/phantom_perp
     depends_on:
       redis:
         condition: service_healthy
@@ -45,6 +48,8 @@ services:
       context: .
       dockerfile: agents/signals/Dockerfile
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
     depends_on:
       redis:
         condition: service_healthy
@@ -55,6 +60,8 @@ services:
       context: .
       dockerfile: agents/alpha/Dockerfile
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
     depends_on:
       redis:
         condition: service_healthy
@@ -65,6 +72,8 @@ services:
       context: .
       dockerfile: agents/risk/Dockerfile
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
     depends_on:
       redis:
         condition: service_healthy
@@ -75,6 +84,8 @@ services:
       context: .
       dockerfile: agents/confirmation/Dockerfile
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
     depends_on:
       redis:
         condition: service_healthy
@@ -85,6 +96,8 @@ services:
       context: .
       dockerfile: agents/execution/Dockerfile
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
     depends_on:
       redis:
         condition: service_healthy
@@ -95,6 +108,9 @@ services:
       context: .
       dockerfile: agents/reconciliation/Dockerfile
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://phantom:${POSTGRES_PASSWORD:-phantom_dev}@postgres:5432/phantom_perp
     depends_on:
       redis:
         condition: service_healthy
@@ -107,10 +123,27 @@ services:
       context: .
       dockerfile: agents/monitoring/Dockerfile
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://phantom:${POSTGRES_PASSWORD:-phantom_dev}@postgres:5432/phantom_perp
     depends_on:
       redis:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: agents/dashboard/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      REDIS_URL: redis://redis:6379
+      DASHBOARD_REFRESH: "2"
+    depends_on:
+      redis:
         condition: service_healthy
     restart: unless-stopped
 

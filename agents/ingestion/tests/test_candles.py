@@ -53,7 +53,7 @@ class TestPollCandlesOnce:
         assert "ONE_HOUR" in state.candles_by_granularity
         assert len(state.candles_by_granularity["ONE_HOUR"]) == 10
         call_kwargs = mock_client.get_candles.call_args.kwargs
-        assert call_kwargs["instrument_id"] == "ETH-PERP"
+        assert call_kwargs["product_id"] == "ETH-PERP"
         assert call_kwargs["granularity"] == "ONE_HOUR"
         assert "start" in call_kwargs
 
@@ -102,7 +102,7 @@ class TestPollCandlesOnce:
 
         assert state.last_candle_update is not None
         call_kwargs = mock_client.get_candles.call_args.kwargs
-        assert call_kwargs["instrument_id"] == "BTC-PERP"
+        assert call_kwargs["product_id"] == "BTC-PERP"
 
 
 class TestTimeframeConfig:

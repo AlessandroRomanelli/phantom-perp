@@ -53,8 +53,8 @@ def deserialize_snapshot(payload: dict[str, Any]) -> MarketSnapshot:
         next_funding_time=datetime.fromisoformat(payload["next_funding_time"]),
         hours_since_last_funding=float(payload["hours_since_last_funding"]),
         orderbook_imbalance=float(payload["orderbook_imbalance"]),
-        volatility_1h=float(payload["volatility_1h"]),
-        volatility_24h=float(payload["volatility_24h"]),
+        volatility_1h=float(payload["volatility_1h"] or 0.0),
+        volatility_24h=float(payload["volatility_24h"] or 0.0),
     )
 
 

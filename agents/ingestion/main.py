@@ -214,11 +214,12 @@ async def run_agent() -> None:
             for i, inst in enumerate(instruments):
                 async def _launch_candles(
                     inst_id: str = inst.id,
+                    prod_id: str = inst.product_id,
                     delay: float = i * REST_POLLER_STAGGER_SECONDS,
                 ) -> None:
                     await asyncio.sleep(delay)
                     await run_all_candle_pollers(
-                        rest_clients[inst_id], states[inst_id], instrument_id=inst_id,
+                        rest_clients[inst_id], states[inst_id], instrument_id=prod_id,
                     )
 
                 tg.create_task(
@@ -229,12 +230,13 @@ async def run_agent() -> None:
             for i, inst in enumerate(instruments):
                 async def _launch_funding(
                     inst_id: str = inst.id,
+                    prod_id: str = inst.product_id,
                     delay: float = i * REST_POLLER_STAGGER_SECONDS,
                 ) -> None:
                     await asyncio.sleep(delay)
                     await run_funding_poller(
                         rest_clients[inst_id], states[inst_id], publisher,
-                        instrument_id=inst_id,
+                        instrument_id=prod_id,
                     )
 
                 tg.create_task(

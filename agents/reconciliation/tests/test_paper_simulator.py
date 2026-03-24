@@ -232,7 +232,7 @@ class TestPaperPortfolioFills:
 
 class TestPaperPortfolioFunding:
     def test_no_position_no_funding(self, portfolio_a: PaperPortfolio) -> None:
-        result = portfolio_a.apply_funding(Decimal("0.0001"), Decimal("2000"))
+        result = portfolio_a.apply_funding("ETH-PERP", Decimal("0.0001"), Decimal("2000"))
         assert result is None
 
     def test_long_pays_positive_rate(self, portfolio_a: PaperPortfolio) -> None:
@@ -245,7 +245,7 @@ class TestPaperPortfolioFunding:
             is_maker=True,
         )
 
-        payment = portfolio_a.apply_funding(Decimal("0.0001"), Decimal("2000"))
+        payment = portfolio_a.apply_funding("ETH-PERP", Decimal("0.0001"), Decimal("2000"))
 
         assert payment is not None
         # rate=0.0001 * notional=2000 = 0.20, long pays → -0.20
@@ -263,7 +263,7 @@ class TestPaperPortfolioFunding:
             is_maker=True,
         )
 
-        payment = portfolio_a.apply_funding(Decimal("0.0001"), Decimal("2000"))
+        payment = portfolio_a.apply_funding("ETH-PERP", Decimal("0.0001"), Decimal("2000"))
 
         assert payment is not None
         assert payment.payment_usdc == Decimal("0.20")
@@ -280,7 +280,7 @@ class TestPaperPortfolioFunding:
             is_maker=True,
         )
 
-        payment = portfolio_a.apply_funding(Decimal("-0.0002"), Decimal("2000"))
+        payment = portfolio_a.apply_funding("ETH-PERP", Decimal("-0.0002"), Decimal("2000"))
 
         assert payment is not None
         # -rate * notional = -(-0.0002)*2000 = +0.40 for longs
@@ -297,8 +297,8 @@ class TestPaperPortfolioFunding:
             is_maker=True,
         )
 
-        portfolio_a.apply_funding(Decimal("0.0001"), Decimal("2000"))
-        portfolio_a.apply_funding(Decimal("0.0001"), Decimal("2000"))
+        portfolio_a.apply_funding("ETH-PERP", Decimal("0.0001"), Decimal("2000"))
+        portfolio_a.apply_funding("ETH-PERP", Decimal("0.0001"), Decimal("2000"))
 
         assert portfolio_a.position is not None
         assert portfolio_a.position.cumulative_funding_usdc == Decimal("-0.40")
@@ -306,7 +306,7 @@ class TestPaperPortfolioFunding:
 
 class TestPaperPortfolioSnapshot:
     def test_empty_portfolio_snapshot(self, portfolio_a: PaperPortfolio) -> None:
-        snapshot = portfolio_a.build_snapshot(Decimal("2000"))
+        snapshot = portfolio_a.build_snapshot({"ETH-PERP": Decimal("2000")})
 
         assert snapshot.equity_usdc == Decimal("10000.00")
         assert snapshot.used_margin_usdc == Decimal("0")
@@ -324,7 +324,7 @@ class TestPaperPortfolioSnapshot:
             is_maker=True,
         )
 
-        snapshot = portfolio_a.build_snapshot(Decimal("2100"))
+        snapshot = portfolio_a.build_snapshot({"ETH-PERP": Decimal("2100")})
 
         assert len(snapshot.open_positions) == 1
         assert snapshot.unrealized_pnl_usdc == Decimal("100.00")
@@ -347,7 +347,7 @@ class TestPaperPortfolioSnapshot:
             is_maker=True,
         )
 
-        snapshot = portfolio_a.build_snapshot(Decimal("2000"))
+        snapshot = portfolio_a.build_snapshot({"ETH-PERP": Decimal("2000")})
 
         # Equity should be initial - fees (no unrealized P&L at same price)
         expected_fee = (Decimal("2000") * FEE_MAKER).quantize(Decimal("0.01"))
@@ -373,7 +373,7 @@ class TestPaperPortfolioSnapshot:
             is_maker=True,
         )
 
-        snapshot = portfolio_a.build_snapshot(Decimal("2100"))
+        snapshot = portfolio_a.build_snapshot({"ETH-PERP": Decimal("2100")})
 
         assert snapshot.realized_pnl_today_usdc == Decimal("100.00")
         assert snapshot.fees_paid_today_usdc > Decimal("0")
@@ -381,6 +381,6 @@ class TestPaperPortfolioSnapshot:
         assert snapshot.unrealized_pnl_usdc == Decimal("0.00")
 
     def test_snapshot_portfolio_metadata(self, portfolio_a: PaperPortfolio) -> None:
-        snapshot = portfolio_a.build_snapshot(Decimal("2000"))
+        snapshot = portfolio_a.build_snapshot({"ETH-PERP": Decimal("2000")})
 
         assert snapshot.portfolio_target == PortfolioTarget.A

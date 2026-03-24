@@ -50,6 +50,78 @@ from agents.risk.margin_calculator import (
     compute_maintenance_margin,
 )
 from agents.risk.portfolio_state_fetcher import PortfolioStateFetcher
+
+import orjson
+import redis.asyncio as aioredis
+
+
+class PaperPortfolioStateFetcher:
+    """Read latest portfolio state from Redis streams (paper mode).
+
+    In paper mode, the reconciliation agent's paper simulator publishes
+    PortfolioSnapshots to stream:portfolio_state:a/b. The risk agent
+    reads the latest snapshot instead of calling the Coinbase API.
+    """
+
+    def __init__(self, redis_url: str) -> None:
+        self._redis: aioredis.Redis = aioredis.from_url(
+            redis_url, decode_responses=False,
+        )
+        self._defaults = {
+            PortfolioTarget.A: PortfolioSnapshot(
+                timestamp=utc_now(),
+                portfolio_target=PortfolioTarget.A,
+                equity_usdc=Decimal("10000"),
+                used_margin_usdc=Decimal("0"),
+                available_margin_usdc=Decimal("10000"),
+                margin_utilization_pct=0.0,
+                positions=[],
+                unrealized_pnl_usdc=Decimal("0"),
+                realized_pnl_today_usdc=Decimal("0"),
+                funding_pnl_today_usdc=Decimal("0"),
+                fees_paid_today_usdc=Decimal("0"),
+            ),
+            PortfolioTarget.B: PortfolioSnapshot(
+                timestamp=utc_now(),
+                portfolio_target=PortfolioTarget.B,
+                equity_usdc=Decimal("10000"),
+                used_margin_usdc=Decimal("0"),
+                available_margin_usdc=Decimal("10000"),
+                margin_utilization_pct=0.0,
+                positions=[],
+                unrealized_pnl_usdc=Decimal("0"),
+                realized_pnl_today_usdc=Decimal("0"),
+                funding_pnl_today_usdc=Decimal("0"),
+                fees_paid_today_usdc=Decimal("0"),
+            ),
+        }
+
+    async def fetch(self, target: PortfolioTarget) -> PortfolioSnapshot:
+        """Read latest portfolio snapshot from Redis stream."""
+        suffix = "a" if target == PortfolioTarget.A else "b"
+        stream = f"stream:portfolio_state:{suffix}"
+        try:
+            entries = await self._redis.xrevrange(stream, "+", "-", count=1)
+            if entries:
+                raw = entries[0][1].get(b"data")
+                if raw:
+                    data = orjson.loads(raw)
+                    return PortfolioSnapshot(
+                        timestamp=datetime.fromisoformat(data["timestamp"]),
+                        portfolio_target=target,
+                        equity_usdc=Decimal(str(data.get("equity_usdc", "10000"))),
+                        used_margin_usdc=Decimal(str(data.get("used_margin_usdc", "0"))),
+                        available_margin_usdc=Decimal(str(data.get("available_margin_usdc", "10000"))),
+                        margin_utilization_pct=float(data.get("margin_utilization_pct", 0)),
+                        positions=[],
+                        unrealized_pnl_usdc=Decimal(str(data.get("unrealized_pnl_usdc", "0"))),
+                        realized_pnl_today_usdc=Decimal(str(data.get("realized_pnl_today_usdc", "0"))),
+                        funding_pnl_today_usdc=Decimal(str(data.get("funding_pnl_today_usdc", "0"))),
+                        fees_paid_today_usdc=Decimal(str(data.get("fees_paid_today_usdc", "0"))),
+                    )
+        except Exception:
+            pass
+        return self._defaults[target]
 from agents.risk.position_sizer import compute_position_size
 
 
@@ -417,20 +489,27 @@ async def run_agent() -> None:
         limits_b_leverage=str(limits_b.max_leverage),
     )
 
-    client_pool = CoinbaseClientPool(
-        auth_a=CoinbaseAuth(
-            settings.coinbase.api_key_a,
-            settings.coinbase.api_secret_a,
-        ),
-        auth_b=CoinbaseAuth(
-            settings.coinbase.api_key_b,
-            settings.coinbase.api_secret_b,
-        ),
-        base_url=settings.coinbase.rest_url,
-        portfolio_uuid_a=settings.portfolios.portfolio_a_id,
-        portfolio_uuid_b=settings.portfolios.portfolio_b_id,
-    )
-    fetcher = PortfolioStateFetcher(client_pool)
+    is_paper = settings.infra.environment == "paper"
+
+    if is_paper:
+        fetcher = PaperPortfolioStateFetcher(settings.infra.redis_url)
+        log.info("risk_portfolio_source", mode="paper", source="redis_streams")
+    else:
+        client_pool = CoinbaseClientPool(
+            auth_a=CoinbaseAuth(
+                settings.coinbase.api_key_a,
+                settings.coinbase.api_secret_a,
+            ),
+            auth_b=CoinbaseAuth(
+                settings.coinbase.api_key_b,
+                settings.coinbase.api_secret_b,
+            ),
+            base_url=settings.coinbase.rest_url,
+            portfolio_uuid_a=settings.portfolios.portfolio_a_id,
+            portfolio_uuid_b=settings.portfolios.portfolio_b_id,
+        )
+        fetcher = PortfolioStateFetcher(client_pool)
+        log.info("risk_portfolio_source", mode="live", source="coinbase_api")
 
     consumer = RedisConsumer(redis_url=settings.infra.redis_url)
     publisher = RedisPublisher(redis_url=settings.infra.redis_url)

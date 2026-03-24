@@ -87,6 +87,20 @@ def portfolio_snapshot_to_dict(snap: PortfolioSnapshot) -> dict[str, Any]:
         "funding_pnl_today_usdc": str(snap.funding_pnl_today_usdc),
         "fees_paid_today_usdc": str(snap.fees_paid_today_usdc),
         "position_count": len(snap.open_positions),
+        "positions": [
+            {
+                "instrument": p.instrument,
+                "side": p.side.value,
+                "size": str(p.size),
+                "entry_price": str(p.entry_price.quantize(Decimal("0.01"))),
+                "mark_price": str(p.mark_price.quantize(Decimal("0.01"))),
+                "unrealized_pnl_usdc": str(p.unrealized_pnl_usdc.quantize(Decimal("0.01"))),
+                "leverage": str(p.leverage),
+                "liquidation_price": str(p.liquidation_price.quantize(Decimal("0.01"))),
+            }
+            for p in snap.positions
+            if p.size > 0
+        ],
     }
 
 

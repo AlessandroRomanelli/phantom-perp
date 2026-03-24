@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>phantom-perp dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Fira Sans', 'system-ui', 'sans-serif'],
+            mono: ['Fira Code', 'monospace'],
+          },
+          colors: {
+            surface: { 50: '#0a0a0f', 100: '#12121a', 200: '#1a1a25', 300: '#22222f' },
+            accent: { blue: '#3b82f6', cyan: '#22d3ee', amber: '#f59e0b', green: '#22c55e', red: '#ef4444' },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #0a0a0f; font-family: 'Fira Sans', sans-serif; }
+    .font-mono { font-family: 'Fira Code', monospace; }
+    .glow-blue { text-shadow: 0 0 8px rgba(59,130,246,0.4); }
+    .glow-green { text-shadow: 0 0 8px rgba(34,197,94,0.3); }
+    .glow-red { text-shadow: 0 0 8px rgba(239,68,68,0.3); }
+    .glow-amber { text-shadow: 0 0 8px rgba(245,158,11,0.3); }
+    @keyframes pulse-dot { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+    .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+    .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: #12121a; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    tr:hover td { background: rgba(59,130,246,0.05); }
+  </style>
+</head>
+<body class="text-gray-300 min-h-screen overflow-y-auto scrollbar-thin">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-50 bg-surface-50/90 backdrop-blur-md border-b border-gray-800/60">
+    <div class="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <h1 class="text-lg font-semibold text-white font-mono tracking-tight">phantom-perp</h1>
+        <span class="text-xs font-mono text-gray-500">v1.1</span>
+        <span id="ws-status" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-800 text-gray-400">
+          <span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
+          connecting
+        </span>
+      </div>
+      <div class="flex items-center gap-4 text-xs font-mono text-gray-500">
+        <span id="clock"></span>
+        <span id="msg-count"></span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-[1600px] mx-auto px-4 py-4 space-y-4">
+
+    <!-- Strategy Overview -->
+    <section id="strategy-bar" class="flex items-center gap-3 text-xs font-mono">
+      <span class="text-gray-500">Strategies:</span>
+      <div class="flex gap-1.5" id="strat-pills"></div>
+      <span class="text-gray-600 mx-2">|</span>
+      <span class="text-gray-500">Session:</span>
+      <span id="session-label" class="px-2 py-0.5 rounded text-xs font-medium"></span>
+    </section>
+
+    <!-- Instruments -->
+    <section>
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Instruments</h2>
+      <div class="bg-surface-100 rounded-lg border border-gray-800/60 overflow-hidden">
+        <table class="w-full text-sm font-mono">
+          <thead>
+            <tr class="text-xs text-gray-500 uppercase border-b border-gray-800/40">
+              <th class="text-left px-4 py-2.5">Instrument</th>
+              <th class="text-right px-4 py-2.5">Mark Price</th>
+              <th class="text-right px-4 py-2.5">Spread</th>
+              <th class="text-right px-4 py-2.5">Funding</th>
+              <th class="text-right px-4 py-2.5">Age</th>
+              <th class="text-right px-4 py-2.5">Status</th>
+            </tr>
+          </thead>
+          <tbody id="instruments-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Feature Stores -->
+    <section>
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Feature Stores</h2>
+      <div class="flex gap-2" id="feature-stores"></div>
+    </section>
+
+    <!-- Portfolio Performance -->
+    <section>
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Portfolio Performance</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div id="portfolio-a" class="bg-surface-100 rounded-lg border border-gray-800/60 p-4"></div>
+        <div id="portfolio-b" class="bg-surface-100 rounded-lg border border-gray-800/60 p-4"></div>
+      </div>
+    </section>
+
+    <!-- Two-column layout: main content + fills sidebar -->
+    <div class="flex flex-col lg:flex-row gap-4">
+
+    <!-- Main content column -->
+    <div class="flex-1 min-w-0 space-y-4">
+
+    <!-- Signals -->
+    <section>
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Recent Signals</h2>
+      <div class="bg-surface-100 rounded-lg border border-gray-800/60 overflow-hidden">
+        <table class="w-full text-sm font-mono">
+          <thead>
+            <tr class="text-xs text-gray-500 uppercase border-b border-gray-800/40">
+              <th class="text-left px-4 py-2">Age</th>
+              <th class="text-left px-4 py-2">Direction</th>
+              <th class="text-left px-4 py-2">Strategy</th>
+              <th class="text-left px-4 py-2">Instrument</th>
+              <th class="text-right px-4 py-2">Conviction</th>
+              <th class="text-center px-4 py-2">Target</th>
+              <th class="text-right px-4 py-2">Count</th>
+            </tr>
+          </thead>
+          <tbody id="signals-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Risk / Execution / Alerts row -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <section>
+        <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Risk / Orders</h2>
+        <div id="risk-section" class="bg-surface-100 rounded-lg border border-gray-800/60 p-4 text-sm font-mono space-y-1"></div>
+      </section>
+      <section>
+        <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Execution</h2>
+        <div id="exec-section" class="bg-surface-100 rounded-lg border border-gray-800/60 p-4 text-sm font-mono space-y-1"></div>
+      </section>
+      <section>
+        <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Alerts</h2>
+        <div id="alerts-section" class="bg-surface-100 rounded-lg border border-gray-800/60 p-4 text-sm font-mono space-y-1"></div>
+      </section>
+    </div>
+
+    <!-- Streams -->
+    <section>
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Streams</h2>
+      <div class="bg-surface-100 rounded-lg border border-gray-800/60 overflow-hidden">
+        <table class="w-full text-sm font-mono">
+          <thead>
+            <tr class="text-xs text-gray-500 uppercase border-b border-gray-800/40">
+              <th class="text-left px-4 py-2">Stream</th>
+              <th class="text-right px-4 py-2">Count</th>
+              <th class="text-right px-4 py-2">Rate</th>
+              <th class="text-right px-4 py-2">Last</th>
+            </tr>
+          </thead>
+          <tbody id="streams-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    </div><!-- end main content column -->
+
+    <!-- Fills sidebar -->
+    <div class="lg:w-80 xl:w-96 flex-shrink-0">
+      <div class="lg:sticky lg:top-16">
+        <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Recent Fills</h2>
+        <div class="bg-surface-100 rounded-lg border border-gray-800/60 overflow-hidden">
+          <table class="w-full text-xs font-mono">
+            <thead>
+              <tr class="text-[10px] text-gray-500 uppercase border-b border-gray-800/40">
+                <th class="text-left px-2 py-1.5">Age</th>
+                <th class="text-left px-2 py-1.5">Inst</th>
+                <th class="text-left px-2 py-1.5">Side</th>
+                <th class="text-right px-2 py-1.5">Size</th>
+                <th class="text-right px-2 py-1.5">Notional</th>
+                <th class="text-right px-2 py-1.5">Fee</th>
+                <th class="text-left px-1 py-1.5">T</th>
+              </tr>
+            </thead>
+            <tbody id="fills-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    </div><!-- end two-column layout -->
+
+  </main>
+
+  <footer class="max-w-[1600px] mx-auto px-4 py-3 text-xs text-gray-600 font-mono">
+    phantom-perp v1.1 &middot; 7 strategies &middot; 5 instruments &middot; WebSocket live
+  </footer>
+
+<script>
+// ---- Helpers ----
+const INSTRUMENTS = ['ETH-PERP','BTC-PERP','SOL-PERP','QQQ-PERP','SPY-PERP'];
+const STRATEGIES = [
+  {id:'momentum',label:'MOM'},{id:'mean_reversion',label:'MR'},
+  {id:'liquidation_cascade',label:'LIQ'},{id:'correlation',label:'CORR'},
+  {id:'regime_trend',label:'RT'},{id:'orderbook_imbalance',label:'OBI'},
+  {id:'vwap',label:'VWAP'}
+];
+
+let prevLengths = {};
+
+function ago(epoch) {
+  if (!epoch) return '--';
+  const s = (Date.now()/1000) - epoch;
+  if (s < 0) return 'future';
+  if (s < 60) return Math.floor(s) + 's';
+  if (s < 3600) return Math.floor(s/60) + 'm';
+  return (s/3600).toFixed(1) + 'h';
+}
+
+function agoFromISO(iso) {
+  if (!iso) return '--';
+  try { return ago(new Date(iso).getTime()/1000); } catch { return '?'; }
+}
+
+function pnlColor(val) {
+  const v = parseFloat(val);
+  if (isNaN(v)) return 'text-gray-400';
+  if (v > 0) return 'text-accent-green glow-green';
+  if (v < 0) return 'text-accent-red glow-red';
+  return 'text-gray-400';
+}
+
+function fmtPnl(val) {
+  const v = parseFloat(val);
+  if (isNaN(v)) return '$0.00';
+  return (v >= 0 ? '+' : '') + '$' + v.toFixed(2);
+}
+
+function convictionBar(val) {
+  const v = parseFloat(val);
+  if (isNaN(v)) return '';
+  const filled = Math.round(v * 10);
+  const empty = 10 - filled;
+  const color = v >= 0.7 ? 'text-accent-green' : v >= 0.5 ? 'text-accent-amber' : 'text-gray-500';
+  return `<span class="${color}">${'#'.repeat(filled)}${'·'.repeat(empty)}</span> <span class="${color}">${v.toFixed(2)}</span>`;
+}
+
+// ---- Session ----
+function getSession() {
+  const now = new Date();
+  const day = now.getUTCDay();
+  const hour = now.getUTCHours();
+  if (day === 0 || day === 6) return {label:'crypto_weekend', cls:'bg-amber-900/40 text-accent-amber'};
+  if (hour >= 13 && hour < 20) return {label:'equity_market', cls:'bg-green-900/40 text-accent-green'};
+  return {label:'crypto_weekday', cls:'bg-cyan-900/40 text-accent-cyan'};
+}
+
+// ---- Init static ----
+function initStratPills() {
+  const el = document.getElementById('strat-pills');
+  el.innerHTML = STRATEGIES.map(s =>
+    `<span class="px-2 py-0.5 rounded bg-blue-900/30 text-accent-blue text-xs">${s.label}</span>`
+  ).join('');
+}
+
+function updateSession() {
+  const s = getSession();
+  const el = document.getElementById('session-label');
+  el.textContent = s.label;
+  el.className = `px-2 py-0.5 rounded text-xs font-medium ${s.cls}`;
+}
+
+// ---- Renderers ----
+function renderInstruments(instruments) {
+  const body = document.getElementById('instruments-body');
+  body.innerHTML = INSTRUMENTS.map(id => {
+    const d = instruments[id];
+    if (!d) return `<tr><td class="px-4 py-2 text-gray-500">${id}</td><td colspan="5" class="px-4 py-2 text-gray-600 text-right">--</td></tr>`;
+    const ageStr = agoFromISO(d.timestamp);
+    const ageSec = d.timestamp ? (Date.now() - new Date(d.timestamp).getTime())/1000 : 999;
+    let statusCls, statusTxt;
+    if (ageSec < 30) { statusCls = 'text-accent-green glow-green'; statusTxt = 'OK'; }
+    else if (ageSec < 120) { statusCls = 'text-accent-amber glow-amber'; statusTxt = 'STALE'; }
+    else { statusCls = 'text-accent-red glow-red'; statusTxt = 'DOWN'; }
+    const spread = d.spread_bps != null ? parseFloat(d.spread_bps).toFixed(1) + ' bps' : '--';
+    return `<tr class="border-b border-gray-800/20">
+      <td class="px-4 py-2 text-white font-medium">${id}</td>
+      <td class="px-4 py-2 text-right text-white">$${d.mark_price}</td>
+      <td class="px-4 py-2 text-right text-gray-400">${spread}</td>
+      <td class="px-4 py-2 text-right text-gray-400">${d.funding_rate || '--'}</td>
+      <td class="px-4 py-2 text-right text-gray-500">${ageStr}</td>
+      <td class="px-4 py-2 text-right"><span class="${statusCls} font-semibold">${statusTxt}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderFeatureStores(stores) {
+  const el = document.getElementById('feature-stores');
+  if (!Object.keys(stores).length) {
+    el.innerHTML = '<span class="text-gray-600 text-sm font-mono">Awaiting signals agent data</span>';
+    return;
+  }
+  el.innerHTML = INSTRUMENTS.map(id => {
+    const count = stores[id] || 0;
+    const color = count > 0 ? 'border-accent-green/30 text-accent-green' : 'border-gray-700 text-gray-600';
+    return `<div class="px-3 py-1.5 rounded border ${color} text-xs font-mono">
+      ${id} <span class="font-semibold ml-1">${count}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderPortfolio(containerId, label, streams) {
+  const el = document.getElementById(containerId);
+  const suffix = containerId === 'portfolio-a' ? 'a' : 'b';
+  const stream = streams[`stream:portfolio_state:${suffix}`];
+  const snap = stream?.latest;
+
+  if (!snap) {
+    el.innerHTML = `<div class="text-gray-500 text-sm">Portfolio ${label}: <span class="text-gray-600">awaiting data</span></div>`;
+    return;
+  }
+
+  const equity = snap.equity_usdc || '0';
+  const usedMargin = snap.used_margin_usdc || '0';
+  const availMargin = snap.available_margin_usdc || '0';
+  const marginUtil = snap.margin_utilization_pct || 0;
+  const unrealized = snap.unrealized_pnl_usdc || '0';
+  const realized = snap.realized_pnl_today_usdc || '0';
+  const funding = snap.funding_pnl_today_usdc || '0';
+  const fees = snap.fees_paid_today_usdc || '0';
+  const positions = snap.positions || [];
+
+  const net = parseFloat(realized) + parseFloat(unrealized) + parseFloat(funding) - parseFloat(fees);
+  const muPct = Math.min(parseFloat(marginUtil), 100);
+  const muColor = muPct < 40 ? 'bg-accent-green' : muPct < 60 ? 'bg-accent-amber' : 'bg-accent-red';
+
+  let posTable = '';
+  if (positions.length) {
+    posTable = `<table class="w-full text-xs font-mono mt-3">
+      <thead><tr class="text-gray-500 uppercase">
+        <th class="text-left py-1">Instrument</th>
+        <th class="text-left py-1">Side</th>
+        <th class="text-right py-1">Size</th>
+        <th class="text-right py-1">Entry</th>
+        <th class="text-right py-1">Mark</th>
+        <th class="text-right py-1">P&L</th>
+        <th class="text-right py-1">Lev</th>
+        <th class="text-right py-1">Liq</th>
+      </tr></thead>
+      <tbody>${positions.map(p => {
+        const sideCls = p.side === 'LONG' ? 'text-accent-green' : 'text-accent-red';
+        return `<tr class="border-t border-gray-800/20">
+          <td class="py-1.5 text-white">${p.instrument}</td>
+          <td class="py-1.5 ${sideCls} font-semibold">${p.side}</td>
+          <td class="py-1.5 text-right text-gray-300">${p.size}</td>
+          <td class="py-1.5 text-right text-gray-400">$${p.entry_price}</td>
+          <td class="py-1.5 text-right text-white">$${p.mark_price}</td>
+          <td class="py-1.5 text-right ${pnlColor(p.unrealized_pnl_usdc)}">${fmtPnl(p.unrealized_pnl_usdc)}</td>
+          <td class="py-1.5 text-right text-gray-400">${parseFloat(p.leverage).toFixed(1)}x</td>
+          <td class="py-1.5 text-right text-gray-500">$${p.liquidation_price}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  } else {
+    posTable = '<div class="text-gray-600 text-xs mt-3 font-mono">No open positions</div>';
+  }
+
+  el.innerHTML = `
+    <div class="flex items-center justify-between mb-3">
+      <span class="text-white font-semibold text-sm">Portfolio ${label}</span>
+      <span class="text-gray-500 text-xs font-mono">${agoFromISO(snap.timestamp)}</span>
+    </div>
+    <div class="grid grid-cols-3 gap-3 text-xs font-mono mb-2">
+      <div><span class="text-gray-500">Equity</span><br><span class="text-white text-base font-semibold glow-blue">$${equity}</span></div>
+      <div><span class="text-gray-500">Used Margin</span><br><span class="text-gray-300">$${usedMargin}</span></div>
+      <div><span class="text-gray-500">Available</span><br><span class="text-gray-300">$${availMargin}</span></div>
+    </div>
+    <div class="mb-2">
+      <div class="flex items-center gap-2 text-xs font-mono">
+        <span class="text-gray-500">Margin</span>
+        <div class="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+          <div class="${muColor} h-full rounded-full transition-all duration-500" style="width:${muPct}%"></div>
+        </div>
+        <span class="text-gray-400">${muPct.toFixed(1)}%</span>
+      </div>
+    </div>
+    <div class="grid grid-cols-5 gap-2 text-xs font-mono">
+      <div><span class="text-gray-500">Unrealized</span><br><span class="${pnlColor(unrealized)}">${fmtPnl(unrealized)}</span></div>
+      <div><span class="text-gray-500">Realized</span><br><span class="${pnlColor(realized)}">${fmtPnl(realized)}</span></div>
+      <div><span class="text-gray-500">Funding</span><br><span class="${pnlColor(funding)}">${fmtPnl(funding)}</span></div>
+      <div><span class="text-gray-500">Fees</span><br><span class="text-accent-red">-$${parseFloat(fees).toFixed(2)}</span></div>
+      <div><span class="text-gray-500">Net P&L</span><br><span class="${pnlColor(net)} font-semibold">${fmtPnl(net)}</span></div>
+    </div>
+    ${posTable}
+  `;
+}
+
+function flattenSignals(signals) {
+  // Flatten consecutive signals with same direction+strategy+instrument+target
+  const flat = [];
+  for (const s of signals) {
+    const key = `${s.direction}|${s.source}|${s.instrument}|${s.suggested_target}`;
+    const last = flat.length > 0 ? flat[flat.length - 1] : null;
+    if (last && last._key === key) {
+      last.count++;
+      // _entry_epoch stays from the first (newest) signal in the group
+      last.conviction = Math.max(last.conviction, s.conviction); // best conviction
+    } else {
+      flat.push({...s, _key: key, count: 1});
+    }
+  }
+  return flat;
+}
+
+function renderSignals(signals) {
+  const body = document.getElementById('signals-body');
+  if (!signals.length) {
+    body.innerHTML = '<tr><td colspan="7" class="px-4 py-3 text-gray-600">No signals emitted yet</td></tr>';
+    return;
+  }
+  const rows = flattenSignals(signals);
+  body.innerHTML = rows.slice(0, 10).map(s => {
+    const dirCls = s.direction === 'LONG' ? 'text-accent-green' : s.direction === 'SHORT' ? 'text-accent-red' : 'text-gray-400';
+    const target = s.suggested_target === 'autonomous' || s.suggested_target === 'A'
+      ? '<span class="text-purple-400 font-semibold">A</span>'
+      : s.suggested_target ? '<span class="text-gray-500">B</span>' : '<span class="text-gray-600">?</span>';
+    const countBadge = s.count > 1
+      ? `<span class="text-accent-amber">${s.count}x</span>`
+      : `<span class="text-gray-600">1</span>`;
+    return `<tr class="border-b border-gray-800/20">
+      <td class="px-4 py-2 text-gray-500">${s._entry_epoch ? ago(s._entry_epoch) : '--'}</td>
+      <td class="px-4 py-2 ${dirCls} font-semibold">${s.direction || '?'}</td>
+      <td class="px-4 py-2 text-accent-cyan">${s.source || '?'}</td>
+      <td class="px-4 py-2 text-gray-300">${s.instrument || '?'}</td>
+      <td class="px-4 py-2 text-right">${convictionBar(s.conviction)}</td>
+      <td class="px-4 py-2 text-center">${target}</td>
+      <td class="px-4 py-2 text-right">${countBadge}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderFills(fills) {
+  const body = document.getElementById('fills-body');
+  if (!fills.length) {
+    body.innerHTML = '<tr><td colspan="7" class="px-2 py-3 text-gray-600">No fills yet</td></tr>';
+    return;
+  }
+  body.innerHTML = fills.slice(0, 20).map(f => {
+    const side = f.side || '?';
+    const sideCls = side === 'BUY' ? 'text-accent-green' : side === 'SELL' ? 'text-accent-red' : 'text-gray-400';
+    const portfolio = f.portfolio_target || '?';
+    const pLabel = portfolio === 'autonomous' ? 'A' : portfolio === 'user_confirmed' ? 'B' : '?';
+    const isMaker = f.is_maker === 'True' || f.is_maker === true;
+    const orderId = f.order_id || '';
+    let typeLabel = `<span class="text-gray-500">${pLabel}</span>`;
+    if (orderId.startsWith('tp-')) typeLabel = `<span class="text-accent-green">${pLabel}tp</span>`;
+    else if (orderId.startsWith('sl-')) typeLabel = `<span class="text-accent-red">${pLabel}sl</span>`;
+    const price = parseFloat(f.price || 0);
+    const size = parseFloat(f.size || 0);
+    const notional = price * size;
+    // Compact instrument: ETH-PERP -> ETH
+    const inst = (f.instrument || '?').replace('-PERP', '');
+    return `<tr class="border-b border-gray-800/20">
+      <td class="px-2 py-1 text-gray-500">${f._entry_epoch ? ago(f._entry_epoch) : agoFromISO(f.filled_at)}</td>
+      <td class="px-2 py-1 text-white">${inst}</td>
+      <td class="px-2 py-1 ${sideCls} font-semibold">${side}</td>
+      <td class="px-2 py-1 text-right text-gray-300 cursor-default" title="$${price.toFixed(2)}">${size}</td>
+      <td class="px-2 py-1 text-right text-white">$${notional.toFixed(0)}</td>
+      <td class="px-2 py-1 text-right text-gray-600">$${parseFloat(f.fee_usdc || 0).toFixed(2)}</td>
+      <td class="px-1 py-1">${typeLabel}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderRisk(streams) {
+  const el = document.getElementById('risk-section');
+  const ra = streams['stream:ranked_ideas:a']?.length || 0;
+  const rb = streams['stream:ranked_ideas:b']?.length || 0;
+  const aa = streams['stream:approved_orders:a']?.length || 0;
+  const ab = streams['stream:approved_orders:b']?.length || 0;
+  const rateA = ra > 0 ? ((aa/ra)*100).toFixed(0) + '%' : '';
+  const rateB = rb > 0 ? ((ab/rb)*100).toFixed(0) + '%' : '';
+  el.innerHTML = `
+    <div class="flex justify-between"><span class="text-gray-500">Portfolio A</span><span>${ra} ideas &rarr; <span class="text-accent-green">${aa} approved</span> ${rateA}</span></div>
+    <div class="flex justify-between"><span class="text-gray-500">Portfolio B</span><span>${rb} ideas &rarr; <span class="text-accent-green">${ab} approved</span> ${rateB}</span></div>
+  `;
+}
+
+function renderExecution(streams) {
+  const el = document.getElementById('exec-section');
+  const ea = streams['stream:exchange_events:a']?.length || 0;
+  const eb = streams['stream:exchange_events:b']?.length || 0;
+  const confirmed = streams['stream:confirmed_orders']?.length || 0;
+  if (ea + eb + confirmed === 0) {
+    el.innerHTML = '<span class="text-gray-600">No execution activity yet</span>';
+    return;
+  }
+  el.innerHTML = `
+    <div class="flex justify-between"><span class="text-gray-500">Exchange events</span><span>A=${ea}, B=${eb}</span></div>
+    ${confirmed ? `<div class="flex justify-between"><span class="text-gray-500">Confirmed (B)</span><span>${confirmed}</span></div>` : ''}
+  `;
+}
+
+function renderAlerts(streams) {
+  const el = document.getElementById('alerts-section');
+  const alertData = streams['stream:alerts'];
+  const count = alertData?.length || 0;
+  if (count === 0) {
+    el.innerHTML = '<span class="text-accent-green glow-green">No alerts</span>';
+    return;
+  }
+  const snap = alertData?.latest;
+  const severity = snap?.severity || '?';
+  const sevCls = severity === 'CRITICAL' ? 'text-accent-red glow-red' : 'text-accent-amber glow-amber';
+  el.innerHTML = `
+    <div class="flex justify-between"><span class="text-gray-500">Total</span><span class="text-accent-amber">${count}</span></div>
+    ${snap ? `<div class="${sevCls}">[${severity}] ${snap.alert_type || ''}: ${snap.message || ''}</div>` : ''}
+  `;
+}
+
+function renderStreams(streams) {
+  const body = document.getElementById('streams-body');
+  const keys = Object.keys(streams).sort();
+  body.innerHTML = keys.map(key => {
+    const d = streams[key];
+    const length = d.length || 0;
+    const prev = prevLengths[key] || length;
+    const delta = length - prev;
+    const ageStr = d.latest_epoch ? ago(d.latest_epoch) : '';
+    const name = key.replace('stream:', '');
+    const rowCls = length > 0 ? (delta > 0 ? 'text-accent-green' : 'text-gray-300') : 'text-gray-600';
+    return `<tr class="border-b border-gray-800/20 ${rowCls}">
+      <td class="px-4 py-1.5">${name}</td>
+      <td class="px-4 py-1.5 text-right">${length.toLocaleString()}</td>
+      <td class="px-4 py-1.5 text-right">${delta > 0 ? '+' + delta : ''}</td>
+      <td class="px-4 py-1.5 text-right text-gray-500">${ageStr}</td>
+    </tr>`;
+  }).join('');
+  prevLengths = {};
+  for (const [k, v] of Object.entries(streams)) prevLengths[k] = v.length || 0;
+}
+
+// ---- WebSocket ----
+let ws;
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    const el = document.getElementById('ws-status');
+    el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-accent-green pulse-dot"></span> live';
+    el.className = 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-green-900/30 text-accent-green';
+  };
+
+  ws.onclose = () => {
+    const el = document.getElementById('ws-status');
+    el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-accent-red"></span> disconnected';
+    el.className = 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-red-900/30 text-accent-red';
+    setTimeout(connect, 3000);
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const data = JSON.parse(new TextDecoder().decode(e.data));
+      renderInstruments(data.instruments || {});
+      renderFeatureStores(data.feature_stores || {});
+      renderPortfolio('portfolio-a', 'A (Autonomous)', data.streams || {});
+      renderPortfolio('portfolio-b', 'B (User-Confirmed)', data.streams || {});
+      renderFills(data.fills || []);
+      renderSignals(data.signals || []);
+      renderRisk(data.streams || {});
+      renderExecution(data.streams || {});
+      renderAlerts(data.streams || {});
+      renderStreams(data.streams || {});
+
+      // Header stats
+      const total = Object.values(data.streams || {}).reduce((s, v) => s + (v.length || 0), 0);
+      const active = Object.values(data.streams || {}).filter(v => (v.length || 0) > 0).length;
+      document.getElementById('msg-count').textContent = `${total.toLocaleString()} msgs / ${active} active streams`;
+    } catch {}
+  };
+}
+
+// ---- Clock ----
+function updateClock() {
+  document.getElementById('clock').textContent = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+}
+
+// ---- Boot ----
+initStratPills();
+updateSession();
+setInterval(updateSession, 60000);
+setInterval(updateClock, 1000);
+updateClock();
+connect();
+</script>
+</body>
+</html>

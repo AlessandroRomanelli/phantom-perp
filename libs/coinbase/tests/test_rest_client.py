@@ -93,14 +93,21 @@ class TestGetPortfolio:
         with respx.mock(base_url="https://api.coinbase.com") as mock:
             mock.get("/api/v3/brokerage/intx/portfolio/test-portfolio-uuid").mock(
                 return_value=Response(200, json={
-                    "summary": {
+                    "portfolios": [{
                         "portfolio_uuid": "test-portfolio-uuid",
                         "collateral": "10000",
+                        "portfolio_initial_margin": "500",
+                    }],
+                    "summary": {
+                        "unrealized_pnl": {"value": "50", "currency": "USDC"},
+                        "total_balance": {"value": "10050", "currency": "USDC"},
                     }
                 })
             )
             result = await client.get_portfolio()
             assert result.portfolio_uuid == "test-portfolio-uuid"
+            assert result.collateral == "10000"
+            assert result.portfolio_initial_margin == "500"
 
 
 @pytest.mark.asyncio

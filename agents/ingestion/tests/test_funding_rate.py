@@ -84,7 +84,7 @@ class TestPollFundingOnce:
         await poll_funding_once(mock_client, state, instrument_id="BTC-PERP")
 
         call_kwargs = mock_client.get_funding_rate.call_args.kwargs
-        assert call_kwargs["instrument_id"] == "BTC-PERP"
+        assert call_kwargs["product_id"] == "BTC-PERP"
         assert state.last_funding_update is not None
 
     @pytest.mark.asyncio

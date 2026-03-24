@@ -58,9 +58,9 @@ async def poll_candles_once(
     try:
         start = utc_now() - tf.candle_duration * tf.max_candles
         candles = await rest_client.get_candles(
-            instrument_id=instrument_id,
+            product_id=instrument_id,
             granularity=tf.granularity,
-            start=start.isoformat(),
+            start=str(int(start.timestamp())),
         )
         # Keep only the most recent candles
         state.candles_by_granularity[tf.granularity] = candles[-tf.max_candles :]

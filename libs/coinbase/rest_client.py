@@ -251,8 +251,14 @@ class CoinbaseRESTClient:
             "GET",
             f"/api/v3/brokerage/intx/portfolio/{self._portfolio_uuid}",
         )
-        summary = data.get("summary", data) if isinstance(data, dict) else data
-        return PortfolioResponse.model_validate(summary)
+        # The response has "portfolios" (array) and "summary" (object).
+        # Portfolio-level fields (collateral, margin, uuid) are in portfolios[0].
+        if isinstance(data, dict):
+            portfolios = data.get("portfolios", [])
+            portfolio_data = portfolios[0] if portfolios else data
+        else:
+            portfolio_data = data
+        return PortfolioResponse.model_validate(portfolio_data)
 
     async def get_positions(self) -> list[PositionResponse]:
         """Get all positions for this client's portfolio."""

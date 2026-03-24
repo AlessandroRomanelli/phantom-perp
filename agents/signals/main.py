@@ -224,8 +224,8 @@ def deserialize_snapshot(payload: dict[str, Any]) -> MarketSnapshot:
         next_funding_time=datetime.fromisoformat(payload["next_funding_time"]),
         hours_since_last_funding=float(payload["hours_since_last_funding"]),
         orderbook_imbalance=float(payload["orderbook_imbalance"]),
-        volatility_1h=float(payload["volatility_1h"]),
-        volatility_24h=float(payload["volatility_24h"]),
+        volatility_1h=float(payload["volatility_1h"] or 0.0),
+        volatility_24h=float(payload["volatility_24h"] or 0.0),
     )
 
 
@@ -433,13 +433,19 @@ async def run_agent() -> None:
             await consumer.ack(channel, "signals_agent", msg_id)
 
             if snapshot_count % 500 == 0:
+                sample_counts = {
+                    iid: s.sample_count for iid, s in stores.items()
+                }
                 logger.info(
                     "signals_progress",
                     snapshots=snapshot_count,
                     signals_emitted=signal_count,
-                    store_samples={
-                        iid: s.sample_count for iid, s in stores.items()
-                    },
+                    store_samples=sample_counts,
+                )
+                # Publish to Redis hash for dashboard visibility
+                await publisher._redis.hset(
+                    "phantom:feature_store_status",
+                    mapping={k: str(v) for k, v in sample_counts.items()},
                 )
     finally:
         await consumer.close()

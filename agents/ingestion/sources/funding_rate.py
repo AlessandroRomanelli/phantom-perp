@@ -42,7 +42,7 @@ async def poll_funding_once(
         instrument_id: Instrument to fetch funding rate for.
     """
     try:
-        resp = await rest_client.get_funding_rate(instrument_id=instrument_id)
+        resp = await rest_client.get_funding_rate(product_id=instrument_id)
 
         state.funding_rate = resp.funding_rate
         state.next_funding_time = None  # Advanced Trade has no event_time

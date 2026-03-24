@@ -152,13 +152,16 @@ def build_system_snapshot(
 
 
 def _map_side(exchange_side: str, net_size: Decimal) -> PositionSide:
-    """Map Coinbase side string + net size to our PositionSide enum."""
+    """Map Coinbase side string + net size to our PositionSide enum.
+
+    Advanced Trade returns prefixed values like POSITION_SIDE_LONG.
+    """
     if net_size == 0:
         return PositionSide.FLAT
     side_upper = exchange_side.upper()
-    if side_upper in ("LONG", "BUY"):
+    if "LONG" in side_upper or side_upper == "BUY":
         return PositionSide.LONG
-    if side_upper in ("SHORT", "SELL"):
+    if "SHORT" in side_upper or side_upper == "SELL":
         return PositionSide.SHORT
     # Fallback: infer from sign
     return PositionSide.LONG if net_size > 0 else PositionSide.SHORT

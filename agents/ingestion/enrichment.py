@@ -75,20 +75,20 @@ def compute_volatility_from_candles(
     Returns:
         Annualized volatility as a float. Returns 0.0 if insufficient data.
     """
-    if len(candles) < 2:
+    if len(candles) < 3:
         return 0.0
 
     closes = [float(c.close) for c in candles]
     if periods is not None:
         closes = closes[-periods:]
 
-    if len(closes) < 2:
+    if len(closes) < 3:
         return 0.0
 
     arr = np.array(closes, dtype=np.float64)
     log_returns = np.diff(np.log(arr))
 
-    if len(log_returns) == 0:
+    if len(log_returns) < 2:
         return 0.0
 
     std = float(np.std(log_returns, ddof=1))

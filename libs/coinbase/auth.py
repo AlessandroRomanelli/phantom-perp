@@ -25,10 +25,61 @@ class CoinbaseAuth:
 
     def __init__(self, api_key: str, api_secret: str) -> None:
         self.api_key = api_key
-        # Normalize PEM: env vars may use literal \n instead of real newlines
-        normalized_secret = api_secret.replace("\\n", "\n")
-        self._private_key = serialization.load_pem_private_key(
-            normalized_secret.encode("utf-8"), password=None,
+        self._private_key = self._load_key(api_secret)
+
+    @staticmethod
+    def _load_key(raw: str) -> object:
+        """Load an EC private key from various formats.
+
+        Coinbase CDP portal may provide the key as:
+        - Full PEM with headers (-----BEGIN ... -----)
+        - Raw base64 DER (no headers) in SEC1 or PKCS8 format
+        """
+        normalized = raw.replace("\\n", "\n").strip()
+
+        # Already has PEM headers — load directly
+        if normalized.startswith("-----"):
+            return serialization.load_pem_private_key(
+                normalized.encode("utf-8"), password=None,
+            )
+
+        # Raw base64 — try wrapping with both PKCS8 and SEC1 headers
+        import base64
+
+        # First try loading as raw DER bytes
+        try:
+            der_bytes = base64.b64decode(normalized)
+        except Exception as exc:
+            msg = f"API secret is not valid PEM or base64: {exc}"
+            raise ValueError(msg) from exc
+
+        # Try PKCS8 DER first (most common from CDP)
+        try:
+            return serialization.load_der_private_key(der_bytes, password=None)
+        except Exception:
+            pass
+
+        # Try PEM with PKCS8 headers
+        pem_pkcs8 = (
+            "-----BEGIN PRIVATE KEY-----\n"
+            + normalized
+            + "\n-----END PRIVATE KEY-----"
+        )
+        try:
+            return serialization.load_pem_private_key(
+                pem_pkcs8.encode("utf-8"), password=None,
+            )
+        except Exception:
+            pass
+
+        # Try PEM with EC headers (SEC1)
+        pem_ec = (
+            "-----BEGIN EC PRIVATE KEY-----\n"
+            + normalized
+            + "\n-----END EC PRIVATE KEY-----"
+        )
+        return serialization.load_pem_private_key(
+            pem_ec.encode("utf-8"), password=None,
         )
 
     def sign(self, method: str, path: str, body: str = "") -> dict[str, str]:

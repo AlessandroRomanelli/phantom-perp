@@ -56,9 +56,10 @@ def build_snapshot(
     assert state.best_ask is not None
     assert state.last_price is not None
 
-    # mark_price: prefer funding endpoint (updates every 5min) since
-    # Advanced Trade WS doesn't provide mark_price
-    mark_price = state.funding_mark_price or state.mark_price
+    # mark_price: Advanced Trade WS doesn't provide a mark_price field.
+    # Use last_price from WS (real-time) as the primary source, with
+    # funding_mark_price (REST, every 5min) as fallback when WS hasn't ticked.
+    mark_price = state.last_price or state.funding_mark_price or state.mark_price
     # index_price: prefer WS value, fall back to last_price (spot approx)
     index_price = state.index_price or state.last_price
     assert mark_price is not None
