@@ -18,6 +18,7 @@ from typing import Any
 
 import numpy as np
 import yaml
+from sqlalchemy.exc import SQLAlchemyError
 
 from libs.common.config import (
     get_settings,
@@ -33,6 +34,9 @@ from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
+from libs.storage.models import SignalRecord
+from libs.storage.relational import RelationalStore, init_db
+from libs.storage.repository import TunerRepository
 
 from agents.signals.conviction_normalizer import normalize_conviction, should_route_portfolio_a
 from agents.signals.feature_store import FeatureStore
@@ -319,6 +323,12 @@ async def run_agent() -> None:
     """Main event loop for the signal generation agent."""
     settings = get_settings()
 
+    # Initialize PostgreSQL storage for signal metadata persistence
+    db_store = RelationalStore(settings.infra.database_url)
+    await init_db(db_store.engine)
+    repo = TunerRepository(db_store)
+    logger.info("signal_db_initialized")
+
     # Determine active instruments
     yaml_instruments = (
         settings.yaml_config.get("instruments", {}).get("active")
@@ -419,6 +429,32 @@ async def run_agent() -> None:
                         Channel.SIGNALS,
                         signal_to_dict(signal),
                     )
+                    try:
+                        await repo.write_signal(SignalRecord(
+                            signal_id=signal.signal_id,
+                            timestamp=signal.timestamp,
+                            instrument=signal.instrument,
+                            source=signal.source.value,
+                            direction=signal.direction.value,
+                            conviction=signal.conviction,
+                            time_horizon_seconds=int(signal.time_horizon.total_seconds()),
+                            reasoning=signal.reasoning,
+                            entry_price=signal.entry_price,
+                        ))
+                    except SQLAlchemyError as exc:
+                        logger.warning(
+                            "signal_db_write_failed",
+                            signal_id=signal.signal_id,
+                            error=str(exc),
+                            exc_type=type(exc).__name__,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "signal_db_write_failed",
+                            signal_id=signal.signal_id,
+                            error=str(exc),
+                            exc_type=type(exc).__name__,
+                        )
                     signal_count += 1
                     logger.info(
                         "signal_emitted",
@@ -450,6 +486,7 @@ async def run_agent() -> None:
     finally:
         await consumer.close()
         await publisher.close()
+        await db_store.close()
         logger.info(
             "signals_stopped",
             snapshots_processed=snapshot_count,
