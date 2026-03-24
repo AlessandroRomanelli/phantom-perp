@@ -37,10 +37,10 @@ See MILESTONES.md for v1.1 accomplishments.
   2. Every fill record carries a `signal_source` column identifying the originating strategy (column added and backfilled if absent)
   3. Tuner produces per-strategy performance data across all 5 instruments from a single query run
   4. Tuner produces per-instrument performance data across all strategies from the same data set
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 10-01-PLAN.md — ORM models, RelationalStore refactor, repository query layer, unit tests
-- [ ] 10-02-PLAN.md — Agent write injections (signals, risk, execution agents)
+- [x] 10-02-PLAN.md — Agent write injections (signals, risk, execution agents)
 
 ### Phase 11: Metrics Engine
 **Goal**: Tuner computes expectancy-first performance metrics per (strategy, instrument) with minimum-count gates
@@ -107,7 +107,7 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 10. PostgreSQL Data Pipeline | v1.2 | 1/2 | In Progress|  |
+| 10. PostgreSQL Data Pipeline | v1.2 | 2/2 | Complete   | 2026-03-24 |
 | 11. Metrics Engine | v1.2 | 0/? | Not started | - |
 | 12. Safety & Bounds | v1.2 | 0/? | Not started | - |
 | 13. Claude Integration | v1.2 | 0/? | Not started | - |
