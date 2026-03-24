@@ -16,6 +16,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from libs.coinbase.auth import CoinbaseAuth
 from libs.coinbase.client_pool import CoinbaseClientPool
 from libs.common.config import get_settings, load_yaml_config
@@ -123,6 +125,9 @@ class PaperPortfolioStateFetcher:
             pass
         return self._defaults[target]
 from agents.risk.position_sizer import compute_position_size
+from libs.storage.models import OrderSignalRecord
+from libs.storage.relational import RelationalStore, init_db
+from libs.storage.repository import TunerRepository
 
 
 # ---------------------------------------------------------------------------
@@ -479,6 +484,12 @@ async def run_agent() -> None:
     settings = get_settings()
     config = load_yaml_config("default")
 
+    # Initialize PostgreSQL storage for order-signal attribution
+    db_store = RelationalStore(settings.infra.database_url)
+    await init_db(db_store.engine)
+    repo = TunerRepository(db_store)
+    log.info("risk_db_initialized")
+
     limits_a = limits_for_portfolio(PortfolioTarget.A, config)
     limits_b = limits_for_portfolio(PortfolioTarget.B, config)
     engine = RiskEngine(limits_a, limits_b)
@@ -594,6 +605,42 @@ async def run_agent() -> None:
                 if result.approved and result.proposed_order is not None:
                     out_channel = Channel.approved_orders(idea.portfolio_target)
                     await publisher.publish(out_channel, order_to_dict(result.proposed_order))
+                    # Persist order-signal attribution per D-01
+                    try:
+                        order = result.proposed_order
+                        # Primary source = highest conviction signal (first in sources list,
+                        # which is ordered by conviction from alpha combiner)
+                        primary = order.sources[0].value if order.sources else "unknown"
+                        all_src = ",".join(s.value for s in order.sources)
+                        await repo.write_order_signal(OrderSignalRecord(
+                            order_id=order.order_id,
+                            signal_id=order.signal_id,
+                            portfolio_target=order.portfolio_target.value,
+                            instrument=order.instrument,
+                            conviction=order.conviction,
+                            primary_source=primary,
+                            all_sources=all_src,
+                            stop_loss=order.stop_loss,
+                            take_profit=order.take_profit,
+                            limit_price=order.limit_price,
+                            leverage=order.leverage,
+                            proposed_at=order.proposed_at,
+                            reasoning=order.reasoning,
+                        ))
+                    except SQLAlchemyError as exc:
+                        log.warning(
+                            "order_signal_db_write_failed",
+                            order_id=result.proposed_order.order_id,
+                            error=str(exc),
+                            exc_type=type(exc).__name__,
+                        )
+                    except Exception as exc:
+                        log.warning(
+                            "order_signal_db_write_failed",
+                            order_id=result.proposed_order.order_id,
+                            error=str(exc),
+                            exc_type=type(exc).__name__,
+                        )
                     log.info(
                         "order_approved",
                         order_id=result.proposed_order.order_id,
@@ -617,6 +664,7 @@ async def run_agent() -> None:
     finally:
         await consumer.close()
         await publisher.close()
+        await db_store.close()
         await client_pool.close()
 
 
