@@ -24,6 +24,7 @@ from typing import Any
 
 import orjson
 import redis.asyncio as aioredis
+from sqlalchemy.exc import SQLAlchemyError
 
 from libs.coinbase.models import OrderResponse
 from libs.common.config import get_settings, load_yaml_config
@@ -40,6 +41,9 @@ from libs.common.models.order import ApprovedOrder, Fill, ProposedOrder
 from libs.common.utils import utc_now
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
+from libs.storage.models import FillRecord
+from libs.storage.relational import RelationalStore, init_db
+from libs.storage.repository import TunerRepository
 
 from agents.execution.algo_selector import select_algo
 from agents.execution.circuit_breaker import CircuitBreaker
@@ -502,6 +506,12 @@ async def run_agent() -> None:
     yaml_config = load_yaml_config("default")
     exec_config = load_execution_config(yaml_config)
 
+    # Initialize PostgreSQL storage for fill record persistence
+    db_store = RelationalStore(settings.infra.database_url)
+    await init_db(db_store.engine)
+    repo = TunerRepository(db_store)
+    logger.info("execution_db_initialized")
+
     is_paper = settings.infra.environment == "paper"
     paper_broker = PaperBroker() if is_paper else None
 
@@ -678,6 +688,37 @@ async def run_agent() -> None:
                         events_channel = Channel.exchange_events(portfolio_target)
                         await publisher.publish(events_channel, fill_to_dict(fill))
                     fill_count += 1
+                    # Persist fill to PostgreSQL
+                    try:
+                        await repo.write_fill(FillRecord(
+                            fill_id=fill.fill_id,
+                            order_id=fill.order_id,
+                            portfolio_target=fill.portfolio_target.value,
+                            instrument=fill.instrument,
+                            side=fill.side.value,
+                            size=fill.size,
+                            price=fill.price,
+                            fee_usdc=fill.fee_usdc,
+                            is_maker=fill.is_maker,
+                            filled_at=fill.filled_at,
+                            trade_id=fill.trade_id,
+                        ))
+                    except SQLAlchemyError as exc:
+                        logger.warning(
+                            "fill_db_write_failed",
+                            fill_id=fill.fill_id,
+                            order_id=fill.order_id,
+                            error=str(exc),
+                            exc_type=type(exc).__name__,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "fill_db_write_failed",
+                            fill_id=fill.fill_id,
+                            order_id=fill.order_id,
+                            error=str(exc),
+                            exc_type=type(exc).__name__,
+                        )
 
                     logger.info(
                         "order_filled",
@@ -761,6 +802,7 @@ async def run_agent() -> None:
     finally:
         await consumer.close()
         await publisher.close()
+        await db_store.close()
         await redis.aclose()
         if paper_broker:
             await paper_broker.close()
