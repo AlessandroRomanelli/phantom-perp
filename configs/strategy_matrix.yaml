@@ -10,8 +10,8 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      - QQQ-PERP
-      - SPY-PERP
+      # - QQQ-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
+      # - SPY-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
 
   mean_reversion:
     enabled: true
@@ -19,8 +19,8 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      - QQQ-PERP
-      - SPY-PERP
+      # - QQQ-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
+      # - SPY-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
 
   liquidation_cascade:
     enabled: true
@@ -36,9 +36,8 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      - QQQ-PERP
-      - SPY-PERP
-      # QQQ/SPY enabled: basis divergence valid for equity perps
+      # - QQQ-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
+      # - SPY-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
 
   regime_trend:
     enabled: true
@@ -46,8 +45,8 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      - QQQ-PERP
-      - SPY-PERP
+      # - QQQ-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
+      # - SPY-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
 
   orderbook_imbalance:
     enabled: true
@@ -55,9 +54,8 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      - QQQ-PERP
-      - SPY-PERP
-      # All instruments enabled per D-11; depth gate naturally suppresses thin books
+      # - QQQ-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
+      # - SPY-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
 
   vwap:
     enabled: true
@@ -65,5 +63,5 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      - QQQ-PERP
-      - SPY-PERP
+      # - QQQ-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
+      # - SPY-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
