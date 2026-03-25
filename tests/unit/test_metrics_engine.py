@@ -8,6 +8,12 @@ Coverage:
 - Direction inference for LONG and SHORT round-trips
 - Overlapping entries (pyramiding)
 - Chronological sort robustness
+- Expectancy (METR-01) -- basic, all-wins, all-losses
+- Profit factor (METR-02) -- basic, no-losses guard
+- Drawdown (METR-03) -- amount, duration, still-in-drawdown, zero-drawdown
+- Fee-adjusted P&L and funding placeholder (METR-04/D-08/D-09)
+- Min-count gate (D-01/D-02)
+- Multiple strategy/instrument pairs
 """
 
 from __future__ import annotations
@@ -17,11 +23,14 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
+from freezegun import freeze_time
 
 from libs.metrics.engine import (
     OrderResult,
     RoundTrip,
+    StrategyMetrics,
     build_round_trips,
+    compute_strategy_metrics,
     pair_round_trips,
     vwap_aggregate,
 )
@@ -343,3 +352,640 @@ def test_build_round_trips_sorts_by_timestamp() -> None:
     assert len(trips) == 1
     assert trips[0].side == "BUY"  # entry is BUY (LONG)
     assert trips[0].gross_pnl == Decimal("10.0")
+
+
+# ---------------------------------------------------------------------------
+# Factory for RoundTrip objects (used in compute_strategy_metrics tests)
+# ---------------------------------------------------------------------------
+
+_rt_counter = itertools.count(1)
+
+
+def _make_round_trip(
+    *,
+    entry_order_id: str | None = None,
+    exit_order_id: str | None = None,
+    instrument: str = "ETH-PERP-INTX",
+    primary_source: str = "momentum",
+    side: str = "BUY",
+    entry_price: Decimal = Decimal("100"),
+    exit_price: Decimal = Decimal("110"),
+    size: Decimal = Decimal("1.0"),
+    gross_pnl: Decimal = Decimal("10"),
+    total_fees: Decimal = Decimal("1.0"),
+    net_pnl: Decimal = Decimal("9.0"),
+    opened_at: datetime = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
+    closed_at: datetime = datetime(2026, 1, 1, 1, 0, tzinfo=timezone.utc),
+) -> RoundTrip:
+    """Create a RoundTrip with sensible defaults. All keyword args overrideable."""
+    n = next(_rt_counter)
+    return RoundTrip(
+        entry_order_id=entry_order_id or f"entry-{n}",
+        exit_order_id=exit_order_id or f"exit-{n}",
+        instrument=instrument,
+        primary_source=primary_source,
+        side=side,
+        entry_price=entry_price,
+        exit_price=exit_price,
+        size=size,
+        gross_pnl=gross_pnl,
+        total_fees=total_fees,
+        net_pnl=net_pnl,
+        opened_at=opened_at,
+        closed_at=closed_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Helpers for min-count gate tests: build fills that produce N complete round-trips
+# ---------------------------------------------------------------------------
+
+def _make_n_round_trip_fills(
+    n: int,
+    *,
+    primary_source: str = "momentum",
+    instrument: str = "ETH-PERP-INTX",
+) -> list[AttributedFill]:
+    """Create 2*n fills (n BUY + n SELL pairs) producing exactly n round-trips."""
+    fills = []
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    for i in range(n):
+        fills.append(_make_fill(
+            f"buy-order-{primary_source}-{i}",
+            side="BUY",
+            price=Decimal("100"),
+            primary_source=primary_source,
+            instrument=instrument,
+            filled_at=base + timedelta(hours=i * 2),
+        ))
+        fills.append(_make_fill(
+            f"sell-order-{primary_source}-{i}",
+            side="SELL",
+            price=Decimal("110"),
+            primary_source=primary_source,
+            instrument=instrument,
+            filled_at=base + timedelta(hours=i * 2 + 1),
+        ))
+    return fills
+
+
+# ---------------------------------------------------------------------------
+# Tests: compute_strategy_metrics -- expectancy (METR-01)
+# ---------------------------------------------------------------------------
+
+
+def test_expectancy_basic() -> None:
+    """10 round-trips (6 wins, 4 losses) produce expectancy = 3.0."""
+    # Wins: net_pnl = [5, 10, 3, 8, 12, 7], avg_win = 7.5, win_rate = 0.6
+    # Losses: net_pnl = [-4, -6, -3, -2], avg_loss = 3.75, loss_rate = 0.4
+    # expectancy = 7.5 * 0.6 - 3.75 * 0.4 = 4.5 - 1.5 = 3.0
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    win_pnls = [Decimal("5"), Decimal("10"), Decimal("3"), Decimal("8"), Decimal("12"), Decimal("7")]
+    loss_pnls = [Decimal("-4"), Decimal("-6"), Decimal("-3"), Decimal("-2")]
+
+    round_trips: list[RoundTrip] = []
+    for i, pnl in enumerate(win_pnls):
+        round_trips.append(_make_round_trip(
+            gross_pnl=pnl + Decimal("1"),  # gross is slightly higher (net = gross - fee)
+            total_fees=Decimal("1"),
+            net_pnl=pnl,
+            opened_at=base + timedelta(hours=i * 2),
+            closed_at=base + timedelta(hours=i * 2 + 1),
+        ))
+    for i, pnl in enumerate(loss_pnls):
+        round_trips.append(_make_round_trip(
+            gross_pnl=pnl + Decimal("1"),
+            total_fees=Decimal("1"),
+            net_pnl=pnl,
+            opened_at=base + timedelta(hours=(len(win_pnls) + i) * 2),
+            closed_at=base + timedelta(hours=(len(win_pnls) + i) * 2 + 1),
+        ))
+
+    # Use compute_strategy_metrics via fills that produce these round-trips
+    # Easier to test _compute_metrics directly; instead, use a paired-fill approach
+    fills = _make_n_round_trip_fills(10)  # won't test exact metrics here; test via round-trips
+    # Build fills with specific net_pnl values would require controlling prices
+    # Use exact arithmetic approach: build the round-trips we need via exact fills
+    base_ts = datetime(2026, 2, 1, tzinfo=timezone.utc)
+    test_fills: list[AttributedFill] = []
+    all_pnls = win_pnls + loss_pnls  # 10 trades
+    for i, pnl in enumerate(all_pnls):
+        # gross_pnl = pnl + fee (fee = 0.50 entry + 0.50 exit = 1.0)
+        # For BUY/SELL round-trip: gross = exit_price - entry_price
+        # entry=100, size=1 -> exit = 100 + (pnl + 1.0) = 101 + pnl
+        entry_price = Decimal("100")
+        exit_price = entry_price + pnl + Decimal("1")  # pnl = gross - fee; gross = exit-entry
+        test_fills.append(_make_fill(
+            f"exp-buy-{i}",
+            side="BUY",
+            price=entry_price,
+            fee_usdc=Decimal("0.50"),
+            primary_source="test_expectancy",
+            instrument="TEST-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2),
+        ))
+        test_fills.append(_make_fill(
+            f"exp-sell-{i}",
+            side="SELL",
+            price=exit_price,
+            fee_usdc=Decimal("0.50"),
+            primary_source="test_expectancy",
+            instrument="TEST-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2 + 1),
+        ))
+
+    result = compute_strategy_metrics(test_fills, min_trades=10)
+    key = ("test_expectancy", "TEST-PERP")
+    assert key in result
+    metrics = result[key]
+    assert metrics is not None
+    assert metrics.win_count == 6
+    assert metrics.loss_count == 4
+    assert abs(float(metrics.expectancy_usdc) - 3.0) < 0.001
+
+
+def test_expectancy_all_wins() -> None:
+    """10 winning round-trips produce positive expectancy with loss_rate=0."""
+    base_ts = datetime(2026, 2, 2, tzinfo=timezone.utc)
+    test_fills: list[AttributedFill] = []
+    for i in range(10):
+        test_fills.append(_make_fill(
+            f"allwin-buy-{i}",
+            side="BUY",
+            price=Decimal("100"),
+            fee_usdc=Decimal("0.50"),
+            primary_source="allwins",
+            instrument="TEST-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2),
+        ))
+        test_fills.append(_make_fill(
+            f"allwin-sell-{i}",
+            side="SELL",
+            price=Decimal("110"),  # always profitable
+            fee_usdc=Decimal("0.50"),
+            primary_source="allwins",
+            instrument="TEST-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2 + 1),
+        ))
+
+    result = compute_strategy_metrics(test_fills, min_trades=10)
+    key = ("allwins", "TEST-PERP")
+    assert key in result
+    metrics = result[key]
+    assert metrics is not None
+    assert metrics.win_count == 10
+    assert metrics.loss_count == 0
+    assert metrics.expectancy_usdc > Decimal("0")
+    # expectancy = avg_win * win_rate - avg_loss * loss_rate = avg_win * 1.0 - 0 * 0.0
+    # avg_win = net_pnl = 10 - 1 = 9.0; expectancy = 9.0
+    assert abs(float(metrics.expectancy_usdc) - 9.0) < 0.001
+
+
+def test_expectancy_all_losses() -> None:
+    """10 losing round-trips produce negative expectancy with win_rate=0."""
+    base_ts = datetime(2026, 2, 3, tzinfo=timezone.utc)
+    test_fills: list[AttributedFill] = []
+    for i in range(10):
+        test_fills.append(_make_fill(
+            f"allloss-buy-{i}",
+            side="BUY",
+            price=Decimal("110"),
+            fee_usdc=Decimal("0.50"),
+            primary_source="alllosses",
+            instrument="TEST-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2),
+        ))
+        test_fills.append(_make_fill(
+            f"allloss-sell-{i}",
+            side="SELL",
+            price=Decimal("100"),  # always a loss
+            fee_usdc=Decimal("0.50"),
+            primary_source="alllosses",
+            instrument="TEST-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2 + 1),
+        ))
+
+    result = compute_strategy_metrics(test_fills, min_trades=10)
+    key = ("alllosses", "TEST-PERP")
+    assert key in result
+    metrics = result[key]
+    assert metrics is not None
+    assert metrics.win_count == 0
+    assert metrics.loss_count == 10
+    assert metrics.expectancy_usdc < Decimal("0")
+
+
+# ---------------------------------------------------------------------------
+# Tests: compute_strategy_metrics -- min-count gate (D-01/D-02)
+# ---------------------------------------------------------------------------
+
+
+def test_min_count_gate_returns_none() -> None:
+    """9 round-trips for a pair returns None for that key."""
+    fills = _make_n_round_trip_fills(9, primary_source="gated", instrument="GATE-PERP")
+    result = compute_strategy_metrics(fills, min_trades=10)
+    assert ("gated", "GATE-PERP") in result
+    assert result[("gated", "GATE-PERP")] is None
+
+
+def test_min_count_gate_boundary() -> None:
+    """Exactly 10 round-trips returns StrategyMetrics (not None)."""
+    fills = _make_n_round_trip_fills(10, primary_source="boundary", instrument="BOUND-PERP")
+    result = compute_strategy_metrics(fills, min_trades=10)
+    assert ("boundary", "BOUND-PERP") in result
+    metrics = result[("boundary", "BOUND-PERP")]
+    assert metrics is not None
+    assert isinstance(metrics, StrategyMetrics)
+    assert metrics.trade_count == 10
+
+
+# ---------------------------------------------------------------------------
+# Tests: compute_strategy_metrics -- profit factor (METR-02)
+# ---------------------------------------------------------------------------
+
+
+def test_profit_factor_basic() -> None:
+    """gross_wins=[10, 20, 15], gross_losses=[-5, -10] -> profit_factor = 45/15 = 3.0."""
+    # gross_profit = 10+20+15 = 45; gross_loss = 5+10 = 15; profit_factor = 3.0
+    # BUY entry at 100, SELL exit at (100 + gross_pnl) for wins; at (100 - |gross_loss|) for losses
+    # We need exactly 10 round-trips total; pad with 5 small wins
+    base_ts = datetime(2026, 2, 4, tzinfo=timezone.utc)
+    test_fills: list[AttributedFill] = []
+
+    # 3 big wins: gross = 10, 20, 15
+    win_gross = [Decimal("10"), Decimal("20"), Decimal("15")]
+    loss_gross = [Decimal("-5"), Decimal("-10")]
+    # 5 small wins: gross = 1 each (to reach 10 total)
+    small_wins = [Decimal("1")] * 5
+
+    all_entries = list(enumerate(win_gross + loss_gross + small_wins))
+    for i, gross in all_entries:
+        entry_price = Decimal("100")
+        exit_price = entry_price + gross
+        test_fills.append(_make_fill(
+            f"pf-buy-{i}",
+            side="BUY",
+            price=entry_price,
+            fee_usdc=Decimal("0"),  # zero fees for clean gross = net comparison
+            primary_source="pf_test",
+            instrument="PF-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2),
+        ))
+        test_fills.append(_make_fill(
+            f"pf-sell-{i}",
+            side="SELL",
+            price=exit_price,
+            fee_usdc=Decimal("0"),
+            primary_source="pf_test",
+            instrument="PF-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2 + 1),
+        ))
+
+    result = compute_strategy_metrics(test_fills, min_trades=10)
+    key = ("pf_test", "PF-PERP")
+    assert key in result
+    metrics = result[key]
+    assert metrics is not None
+    assert metrics.profit_factor is not None
+    # gross_profit = 10+20+15+1+1+1+1+1 = 50; gross_loss = 5+10 = 15; profit_factor = 50/15
+    assert abs(metrics.profit_factor - 50.0 / 15.0) < 0.001
+
+
+def test_profit_factor_no_losses() -> None:
+    """All winning round-trips produce profit_factor = None (zero gross_loss guard)."""
+    base_ts = datetime(2026, 2, 5, tzinfo=timezone.utc)
+    test_fills: list[AttributedFill] = []
+    for i in range(10):
+        test_fills.append(_make_fill(
+            f"noloss-buy-{i}",
+            side="BUY",
+            price=Decimal("100"),
+            fee_usdc=Decimal("0"),
+            primary_source="noloss",
+            instrument="NL-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2),
+        ))
+        test_fills.append(_make_fill(
+            f"noloss-sell-{i}",
+            side="SELL",
+            price=Decimal("115"),  # always profitable
+            fee_usdc=Decimal("0"),
+            primary_source="noloss",
+            instrument="NL-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2 + 1),
+        ))
+
+    result = compute_strategy_metrics(test_fills, min_trades=10)
+    key = ("noloss", "NL-PERP")
+    metrics = result[key]
+    assert metrics is not None
+    assert metrics.profit_factor is None  # no losing trades -> None (not division by zero)
+
+
+# ---------------------------------------------------------------------------
+# Tests: compute_strategy_metrics -- max drawdown (METR-03)
+# ---------------------------------------------------------------------------
+
+
+def test_max_drawdown_amount() -> None:
+    """Cumulative net P&L curve [5,15,10,8,20] -> peak=15, trough=8, max_dd=7."""
+    # Cumulative sequence via net_pnls: [5, 10, -5, -2, 12]
+    # sum([5]) = 5, sum([5,10]) = 15 (peak), sum([5,10,-5]) = 10, sum([..,-2]) = 8 (trough), sum([..,12]) = 20
+    # max_dd = 15 - 8 = 7
+    net_pnls = [Decimal("5"), Decimal("10"), Decimal("-5"), Decimal("-2"), Decimal("12")]
+    # Pad to 10 trades: add 5 more winning trades before to hit min_trades
+    # But we need them BEFORE to not affect the peak/trough sequence
+    # Solution: add 5 zero-net-pnl trades at the start (not touching drawdown)
+    # Actually just add 5 winning $0 net trades at the start with positive cumulative
+    # Easier: add them AFTER the sequence ends (post-recovery)
+    base_ts = datetime(2026, 2, 6, tzinfo=timezone.utc)
+    test_fills: list[AttributedFill] = []
+
+    all_pnls = net_pnls + [Decimal("1")] * 5  # 10 total trades
+    for i, net_pnl in enumerate(all_pnls):
+        entry_price = Decimal("100")
+        # gross = net (zero fees for clean calculation)
+        exit_price = entry_price + net_pnl
+        test_fills.append(_make_fill(
+            f"dd-buy-{i}",
+            side="BUY",
+            price=entry_price,
+            fee_usdc=Decimal("0"),
+            primary_source="dd_test",
+            instrument="DD-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2),
+        ))
+        test_fills.append(_make_fill(
+            f"dd-sell-{i}",
+            side="SELL",
+            price=exit_price,
+            fee_usdc=Decimal("0"),
+            primary_source="dd_test",
+            instrument="DD-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2 + 1),
+        ))
+
+    result = compute_strategy_metrics(test_fills, min_trades=10)
+    key = ("dd_test", "DD-PERP")
+    metrics = result[key]
+    assert metrics is not None
+    assert metrics.max_drawdown_usdc == Decimal("7")
+
+
+def test_drawdown_duration_hours() -> None:
+    """Peak at T+0h, trough at T+48h -> drawdown duration = 48.0 hours."""
+    base_ts = datetime(2026, 2, 7, tzinfo=timezone.utc)
+    test_fills: list[AttributedFill] = []
+
+    # Sequence: win at T=0, loss at T=48h, then 8 more wins to reach min 10
+    # Peak at T=1h (after first win closes), trough at T=49h (after loss closes)
+    # duration = 49h - 1h = 48h
+    trades = [
+        # (net_pnl, close_time_hours)
+        (Decimal("10"), 1),    # peak set at T=1h
+        (Decimal("-5"), 49),   # trough at T=49h; duration from T=1 to T=49 = 48h
+        (Decimal("6"), 97),    # recovery (cumulative = 11)
+        (Decimal("1"), 100),
+        (Decimal("1"), 101),
+        (Decimal("1"), 102),
+        (Decimal("1"), 103),
+        (Decimal("1"), 104),
+        (Decimal("1"), 105),
+        (Decimal("1"), 106),
+    ]
+
+    for i, (pnl, close_h) in enumerate(trades):
+        entry_price = Decimal("100")
+        exit_price = entry_price + pnl
+        open_ts = base_ts + timedelta(hours=close_h - 1)
+        close_ts = base_ts + timedelta(hours=close_h)
+        test_fills.append(_make_fill(
+            f"dur-buy-{i}",
+            side="BUY",
+            price=entry_price,
+            fee_usdc=Decimal("0"),
+            primary_source="dur_test",
+            instrument="DUR-PERP",
+            filled_at=open_ts,
+        ))
+        test_fills.append(_make_fill(
+            f"dur-sell-{i}",
+            side="SELL",
+            price=exit_price,
+            fee_usdc=Decimal("0"),
+            primary_source="dur_test",
+            instrument="DUR-PERP",
+            filled_at=close_ts,
+        ))
+
+    result = compute_strategy_metrics(test_fills, min_trades=10)
+    key = ("dur_test", "DUR-PERP")
+    metrics = result[key]
+    assert metrics is not None
+    # Duration from peak (T=1h) to trough close (T=49h) = 48h
+    assert abs(metrics.max_drawdown_duration_hours - 48.0) < 0.1
+
+
+@freeze_time("2026-01-05 00:00:00")
+def test_drawdown_duration_still_in_drawdown() -> None:
+    """Still-in-drawdown: peak at T+1h, no recovery -> duration uses frozen current time."""
+    base_ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    test_fills: list[AttributedFill] = []
+
+    # Peak at T=1h (after first trade closes), then 9 losses (never recover)
+    trades = [
+        (Decimal("10"), 1),   # peak; cumulative = 10
+        (Decimal("-2"), 25),  # cumulative = 8
+        (Decimal("-2"), 49),
+        (Decimal("-2"), 73),
+        (Decimal("-2"), 97),
+        (Decimal("-2"), 121),
+        (Decimal("-1"), 145),
+        (Decimal("-1"), 169),
+        (Decimal("-1"), 193),
+        (Decimal("-1"), 217),  # cumulative = 10 - 10*2 - 4 = still negative? Let's check:
+        # 10 - 2-2-2-2-2-1-1-1-1 = 10 - 14 = -4, well below peak
+    ]
+
+    for i, (pnl, close_h) in enumerate(trades):
+        entry_price = Decimal("100")
+        exit_price = entry_price + pnl
+        open_ts = base_ts + timedelta(hours=close_h - 1)
+        close_ts = base_ts + timedelta(hours=close_h)
+        test_fills.append(_make_fill(
+            f"sdd-buy-{i}",
+            side="BUY",
+            price=entry_price,
+            fee_usdc=Decimal("0"),
+            primary_source="still_dd",
+            instrument="SDD-PERP",
+            filled_at=open_ts,
+        ))
+        test_fills.append(_make_fill(
+            f"sdd-sell-{i}",
+            side="SELL",
+            price=exit_price,
+            fee_usdc=Decimal("0"),
+            primary_source="still_dd",
+            instrument="SDD-PERP",
+            filled_at=close_ts,
+        ))
+
+    result = compute_strategy_metrics(test_fills, min_trades=10)
+    key = ("still_dd", "SDD-PERP")
+    metrics = result[key]
+    assert metrics is not None
+    # frozen time = 2026-01-05 00:00:00 UTC = base_ts + 96h
+    # peak_time = base_ts + 1h; frozen_now = base_ts + 96h
+    # still_in_dd_duration = (96 - 1) = 95 hours
+    # The last trade's drawdown from peak = 10 - (-4) = 14 at T=217h
+    # still-in-drawdown duration = now - peak_time = (2026-01-05 - 2026-01-01T01:00) ~95h
+    # Duration should be at least 95 hours (from peak at T=1h to frozen now = 96h)
+    assert metrics.max_drawdown_duration_hours >= 94.0  # ~95h
+
+
+def test_drawdown_zero_drawdown() -> None:
+    """All 10 round-trips positive -> max_drawdown_usdc = 0, duration = 0.0."""
+    base_ts = datetime(2026, 2, 8, tzinfo=timezone.utc)
+    test_fills: list[AttributedFill] = []
+    for i in range(10):
+        test_fills.append(_make_fill(
+            f"zdd-buy-{i}",
+            side="BUY",
+            price=Decimal("100"),
+            fee_usdc=Decimal("0"),
+            primary_source="zero_dd",
+            instrument="ZDD-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2),
+        ))
+        test_fills.append(_make_fill(
+            f"zdd-sell-{i}",
+            side="SELL",
+            price=Decimal("110"),  # always +10 net (zero fees)
+            fee_usdc=Decimal("0"),
+            primary_source="zero_dd",
+            instrument="ZDD-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2 + 1),
+        ))
+
+    result = compute_strategy_metrics(test_fills, min_trades=10)
+    key = ("zero_dd", "ZDD-PERP")
+    metrics = result[key]
+    assert metrics is not None
+    assert metrics.max_drawdown_usdc == Decimal("0")
+    assert metrics.max_drawdown_duration_hours == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Tests: compute_strategy_metrics -- fee adjustment and P&L reporting (METR-04)
+# ---------------------------------------------------------------------------
+
+
+def test_fee_adjustment() -> None:
+    """total_fees_usdc in StrategyMetrics equals sum of all round-trip fees."""
+    base_ts = datetime(2026, 2, 9, tzinfo=timezone.utc)
+    test_fills: list[AttributedFill] = []
+    # 10 trades, each with entry fee=0.50 + exit fee=0.50 = 1.0 per round-trip
+    # total_fees = 10 * 1.0 = 10.0
+    for i in range(10):
+        test_fills.append(_make_fill(
+            f"fee-buy-{i}",
+            side="BUY",
+            price=Decimal("100"),
+            fee_usdc=Decimal("0.50"),
+            primary_source="fee_test",
+            instrument="FEE-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2),
+        ))
+        test_fills.append(_make_fill(
+            f"fee-sell-{i}",
+            side="SELL",
+            price=Decimal("115"),
+            fee_usdc=Decimal("0.50"),
+            primary_source="fee_test",
+            instrument="FEE-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2 + 1),
+        ))
+
+    result = compute_strategy_metrics(test_fills, min_trades=10)
+    key = ("fee_test", "FEE-PERP")
+    metrics = result[key]
+    assert metrics is not None
+    assert metrics.total_fees_usdc == Decimal("10.0")  # 10 trades * 1.0 per trade
+
+
+def test_gross_and_net_pnl_reported() -> None:
+    """StrategyMetrics has total_gross_pnl and total_net_pnl; net = gross - fees - funding."""
+    base_ts = datetime(2026, 2, 10, tzinfo=timezone.utc)
+    test_fills: list[AttributedFill] = []
+    # 10 trades: gross = 15 each, fee = 1.0 each -> net = 14 each
+    for i in range(10):
+        test_fills.append(_make_fill(
+            f"gnp-buy-{i}",
+            side="BUY",
+            price=Decimal("100"),
+            fee_usdc=Decimal("0.50"),
+            primary_source="gnp_test",
+            instrument="GNP-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2),
+        ))
+        test_fills.append(_make_fill(
+            f"gnp-sell-{i}",
+            side="SELL",
+            price=Decimal("115"),
+            fee_usdc=Decimal("0.50"),
+            primary_source="gnp_test",
+            instrument="GNP-PERP",
+            filled_at=base_ts + timedelta(hours=i * 2 + 1),
+        ))
+
+    result = compute_strategy_metrics(test_fills, min_trades=10)
+    key = ("gnp_test", "GNP-PERP")
+    metrics = result[key]
+    assert metrics is not None
+    assert metrics.total_gross_pnl == Decimal("150")  # 10 * 15
+    assert metrics.total_fees_usdc == Decimal("10.0")  # 10 * 1.0
+    assert metrics.funding_costs_usdc == Decimal("0")
+    assert metrics.total_net_pnl == metrics.total_gross_pnl - metrics.total_fees_usdc - metrics.funding_costs_usdc
+    assert metrics.total_net_pnl == Decimal("140")
+
+
+def test_funding_costs_placeholder() -> None:
+    """StrategyMetrics.funding_costs_usdc == Decimal('0') per D-08 placeholder."""
+    fills = _make_n_round_trip_fills(10, primary_source="funding_ph", instrument="FP-PERP")
+    result = compute_strategy_metrics(fills, min_trades=10)
+    key = ("funding_ph", "FP-PERP")
+    metrics = result[key]
+    assert metrics is not None
+    assert metrics.funding_costs_usdc == Decimal("0")
+
+
+# ---------------------------------------------------------------------------
+# Tests: compute_strategy_metrics -- multiple pairs and empty input
+# ---------------------------------------------------------------------------
+
+
+def test_multiple_strategy_instrument_pairs() -> None:
+    """2 strategies x 2 instruments produce dict with 4 keys, each with metrics or None."""
+    fills: list[AttributedFill] = []
+    # strategy1 / instrument1: 10 trades -> StrategyMetrics
+    fills += _make_n_round_trip_fills(10, primary_source="strat1", instrument="INS1-PERP")
+    # strategy1 / instrument2: 10 trades -> StrategyMetrics
+    fills += _make_n_round_trip_fills(10, primary_source="strat1", instrument="INS2-PERP")
+    # strategy2 / instrument1: 10 trades -> StrategyMetrics
+    fills += _make_n_round_trip_fills(10, primary_source="strat2", instrument="INS1-PERP")
+    # strategy2 / instrument2: 9 trades -> None (below min_trades)
+    fills += _make_n_round_trip_fills(9, primary_source="strat2", instrument="INS2-PERP")
+
+    result = compute_strategy_metrics(fills, min_trades=10)
+    assert len(result) == 4
+    assert result[("strat1", "INS1-PERP")] is not None
+    assert result[("strat1", "INS2-PERP")] is not None
+    assert result[("strat2", "INS1-PERP")] is not None
+    assert result[("strat2", "INS2-PERP")] is None
+
+
+def test_compute_strategy_metrics_empty() -> None:
+    """Empty fill list produces empty dict."""
+    result = compute_strategy_metrics([], min_trades=10)
+    assert result == {}

@@ -7,13 +7,14 @@ Pipeline:
     AttributedFill[] -> vwap_aggregate() -> OrderResult
     OrderResult[]    -> pair_round_trips() -> RoundTrip[]
     AttributedFill[] -> build_round_trips() -> dict[(source, instrument), RoundTrip[]]
+    AttributedFill[] -> compute_strategy_metrics() -> dict[(source, instrument), StrategyMetrics | None]
 """
 
 from __future__ import annotations
 
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from libs.storage.repository import AttributedFill
@@ -226,3 +227,52 @@ def build_round_trips(
             result[key] = trips
 
     return result
+
+
+@dataclass(frozen=True, slots=True)
+class StrategyMetrics:
+    """Per-(strategy, instrument) performance summary.
+
+    METR-04 note: funding_costs_usdc is Decimal("0") — funding cost attribution
+    is deferred per D-08 (requires position lifecycle tracking not in Phase 10).
+    total_net_pnl = total_gross_pnl - total_fees_usdc - funding_costs_usdc.
+    """
+
+    primary_source: str
+    instrument: str
+    trade_count: int
+    win_count: int
+    loss_count: int
+    win_rate: float  # 0.0-1.0
+    avg_win_usdc: Decimal
+    avg_loss_usdc: Decimal
+    expectancy_usdc: Decimal  # METR-01
+    profit_factor: float | None  # METR-02; None if no losing trades
+    total_gross_pnl: Decimal  # METR-04 gross (D-09)
+    total_fees_usdc: Decimal  # METR-04 trading fees
+    funding_costs_usdc: Decimal  # METR-04 funding costs (Decimal("0") per D-08)
+    total_net_pnl: Decimal  # METR-04 net = gross - fees - funding (D-09)
+    max_drawdown_usdc: Decimal  # METR-03 amount
+    max_drawdown_duration_hours: float  # METR-03 duration (D-07)
+
+
+def compute_strategy_metrics(
+    fills: list[AttributedFill],
+    min_trades: int = 10,
+) -> dict[tuple[str, str], StrategyMetrics | None]:
+    """Compute per-(strategy, instrument) performance metrics from attributed fills.
+
+    Groups fills by (primary_source, instrument), reconstructs closed round-trips,
+    applies the minimum-count gate (D-01/D-02), and returns StrategyMetrics for
+    pairs with sufficient data, or None for pairs below the minimum threshold.
+
+    Args:
+        fills: List of attributed fill records (typically from TunerRepository).
+        min_trades: Minimum number of closed round-trips required to compute metrics.
+                    Pairs below this threshold return None (D-01/D-02).
+
+    Returns:
+        Dict keyed by (primary_source, instrument). Value is StrategyMetrics if
+        len(round_trips) >= min_trades, else None.
+    """
+    raise NotImplementedError
