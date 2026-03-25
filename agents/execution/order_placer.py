@@ -11,10 +11,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
+import structlog
+
 from libs.common.models.enums import OrderSide, OrderStatus, OrderType, PortfolioTarget
 from libs.common.models.order import ApprovedOrder, Fill, ProposedOrder
 from libs.common.utils import utc_now
 from libs.coinbase.models import OrderResponse
+
+logger = structlog.get_logger(__name__)
 
 from agents.execution.algo_selector import ExecutionPlan, select_algo
 from agents.execution.config import ExecutionConfig
@@ -96,6 +100,7 @@ def build_result_from_response(
         protective = build_protective_orders(
             fill_side=fill_side,
             fill_size=filled,
+            fill_price=avg_price or Decimal("0"),
             stop_loss_price=stop_loss,
             take_profit_price=take_profit,
         )
@@ -153,4 +158,12 @@ def _map_exchange_status(exchange_status: str) -> OrderStatus:
         "REJECTED": OrderStatus.REJECTED_BY_EXCHANGE,
         "PENDING": OrderStatus.SENT_TO_EXCHANGE,
     }
-    return mapping.get(exchange_status.upper(), OrderStatus.SENT_TO_EXCHANGE)
+    mapped = mapping.get(exchange_status.upper())
+    if mapped is None:
+        logger.warning(
+            "unknown_exchange_status",
+            exchange_status=exchange_status,
+            defaulting_to="SENT_TO_EXCHANGE",
+        )
+        return OrderStatus.SENT_TO_EXCHANGE
+    return mapped

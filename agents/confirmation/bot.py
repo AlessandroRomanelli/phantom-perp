@@ -138,9 +138,16 @@ class TelegramBot:
         await self._app.shutdown()
         logger.info("telegram_bot_stopped")
 
-    async def _ensure_chat(self) -> str:
-        """Block until a chat ID is available, then return it."""
-        await self._chat_ready.wait()
+    async def _ensure_chat(self, timeout: float = 300.0) -> str:
+        """Block until a chat ID is available, then return it.
+
+        Args:
+            timeout: Maximum seconds to wait for chat registration.
+
+        Raises:
+            asyncio.TimeoutError: If no chat is registered within timeout.
+        """
+        await asyncio.wait_for(self._chat_ready.wait(), timeout=timeout)
         assert self._chat_id is not None
         return self._chat_id
 

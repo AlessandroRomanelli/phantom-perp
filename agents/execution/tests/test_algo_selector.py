@@ -32,8 +32,8 @@ class TestSelectAlgo:
         )
         assert plan.order_type == OrderType.LIMIT
         assert plan.limit_price is not None
-        # 2200 + 2200*5/10000 = 2200 + 1.10 = 2201.10
-        assert plan.limit_price == Decimal("2201.10")
+        # 2200 + 2200*5/10000 = 2201.10, but clamped to best_ask - tick = 2200.99
+        assert plan.limit_price == Decimal("2200.99")
         assert plan.is_maker is True
 
     def test_limit_sell_from_orderbook(self) -> None:
@@ -46,8 +46,8 @@ class TestSelectAlgo:
         )
         assert plan.order_type == OrderType.LIMIT
         assert plan.limit_price is not None
-        # 2201 - 2201*5/10000 = 2201 - 1.1005 → rounds to 2199.90
-        assert plan.limit_price == Decimal("2199.90")
+        # 2201 - 2201*5/10000 = 2199.90, but clamped to best_bid + tick = 2200.01
+        assert plan.limit_price == Decimal("2200.01")
 
     def test_market_order_when_requested_and_no_book(self) -> None:
         plan = select_algo(

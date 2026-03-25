@@ -249,8 +249,22 @@ async def run_agent() -> None:
     fill_count = 0
     alert_count = 0
 
+    # Alert deduplication: suppress identical alert_type+portfolio combos within cooldown
+    ALERT_COOLDOWN_SECONDS = 300  # 5 minutes between same alert type
+    _last_alert_times: dict[str, datetime] = {}
+
+    def _alert_dedup_key(alert: Alert) -> str:
+        portfolio = alert.portfolio_target.value if alert.portfolio_target else "global"
+        return f"{alert.alert_type.value}:{portfolio}"
+
     async def publish_alert(alert: Alert) -> None:
         nonlocal alert_count
+        key = _alert_dedup_key(alert)
+        now = alert.timestamp
+        last_fired = _last_alert_times.get(key)
+        if last_fired and (now - last_fired).total_seconds() < ALERT_COOLDOWN_SECONDS:
+            return  # Suppress duplicate alert within cooldown
+        _last_alert_times[key] = now
         await publisher.publish(Channel.ALERTS, alert_to_dict(alert))
         alert_count += 1
         logger.warning(
@@ -311,10 +325,10 @@ async def run_agent() -> None:
                     if dd_alert:
                         await publish_alert(dd_alert)
 
-                    # Daily loss (approximate from realized P&L and starting equity)
+                    # Daily loss (net P&L includes realized + unrealized + funding - fees)
                     if tracker.starting_equity_usdc > 0:
                         daily_loss_pct = float(
-                            abs(min(Decimal("0"), snap.realized_pnl_today_usdc))
+                            abs(min(Decimal("0"), snap.net_pnl_today_usdc))
                             / tracker.starting_equity_usdc
                             * 100
                         )
@@ -401,6 +415,14 @@ async def run_agent() -> None:
                     channel=channel,
                     error=str(e),
                 )
+            except Exception as e:
+                logger.error(
+                    "event_processing_error",
+                    channel=channel,
+                    msg_id=msg_id,
+                    error=str(e),
+                    exc_type=type(e).__name__,
+                )
 
             await consumer.ack(channel, "monitoring_agent", msg_id)
 
@@ -409,99 +431,115 @@ async def run_agent() -> None:
     async def heartbeat_reporter() -> None:
         while True:
             await asyncio.sleep(mon_config.heartbeat_interval_seconds)
-            now = utc_now()
-            sys_health = health.check_all(now)
+            try:
+                now = utc_now()
+                sys_health = health.check_all(now)
 
-            logger.info(
-                "heartbeat",
-                is_healthy=sys_health.is_healthy,
-                components=len(sys_health.components),
-                unhealthy=sys_health.unhealthy_count,
-                snapshots=snapshot_count,
-                funding_events=funding_count,
-                fills=fill_count,
-                alerts=alert_count,
-            )
+                logger.info(
+                    "heartbeat",
+                    is_healthy=sys_health.is_healthy,
+                    components=len(sys_health.components),
+                    unhealthy=sys_health.unhealthy_count,
+                    snapshots=snapshot_count,
+                    funding_events=funding_count,
+                    fills=fill_count,
+                    alerts=alert_count,
+                )
 
-            # Publish alerts for unhealthy components
-            for comp in sys_health.components:
-                if not comp.is_healthy:
-                    alert = Alert(
-                        alert_type=AlertType.COMPONENT_DOWN,
-                        severity=AlertSeverity.WARNING,
-                        portfolio_target=None,
-                        message=f"Component {comp.name}: {comp.detail}",
-                        timestamp=now,
-                        value=comp.stale_seconds,
-                        threshold=float(health.stale_threshold.total_seconds()),
-                    )
-                    await publish_alert(alert)
+                # Publish alerts for unhealthy components
+                for comp in sys_health.components:
+                    if not comp.is_healthy:
+                        alert = Alert(
+                            alert_type=AlertType.COMPONENT_DOWN,
+                            severity=AlertSeverity.WARNING,
+                            portfolio_target=None,
+                            message=f"Component {comp.name}: {comp.detail}",
+                            timestamp=now,
+                            value=comp.stale_seconds,
+                            threshold=float(health.stale_threshold.total_seconds()),
+                        )
+                        await publish_alert(alert)
+            except Exception as e:
+                logger.error(
+                    "heartbeat_error",
+                    error=str(e),
+                    exc_type=type(e).__name__,
+                )
 
     # -- Task: periodic performance summary ---------------------------------
 
     async def performance_reporter() -> None:
         while True:
             await asyncio.sleep(PERFORMANCE_LOG_INTERVAL)
-
-            # Portfolio A summary
-            summary_a = perf.tracker_a.summary()
-            if summary_a.sample_count > 0:
-                logger.info(
-                    "performance_summary",
-                    portfolio="A",
-                    return_pct=f"{summary_a.total_return_pct:.2f}",
-                    max_drawdown_pct=f"{summary_a.max_drawdown_pct:.2f}",
-                    current_drawdown_pct=f"{summary_a.current_drawdown_pct:.2f}",
-                    sharpe=f"{summary_a.sharpe_ratio:.2f}" if summary_a.sharpe_ratio else "N/A",
-                    wins=summary_a.win_count,
-                    losses=summary_a.loss_count,
-                    win_rate=f"{summary_a.win_rate:.1f}",
-                    equity_samples=summary_a.sample_count,
+            try:
+                await _log_performance()
+            except Exception as e:
+                logger.error(
+                    "performance_reporter_error",
+                    error=str(e),
+                    exc_type=type(e).__name__,
                 )
 
-            # Portfolio B summary
-            summary_b = perf.tracker_b.summary()
-            if summary_b.sample_count > 0:
-                logger.info(
-                    "performance_summary",
-                    portfolio="B",
-                    return_pct=f"{summary_b.total_return_pct:.2f}",
-                    max_drawdown_pct=f"{summary_b.max_drawdown_pct:.2f}",
-                    current_drawdown_pct=f"{summary_b.current_drawdown_pct:.2f}",
-                    sharpe=f"{summary_b.sharpe_ratio:.2f}" if summary_b.sharpe_ratio else "N/A",
-                    wins=summary_b.win_count,
-                    losses=summary_b.loss_count,
-                    win_rate=f"{summary_b.win_rate:.1f}",
-                    equity_samples=summary_b.sample_count,
-                )
+    async def _log_performance() -> None:
+        # Portfolio A summary
+        summary_a = perf.tracker_a.summary()
+        if summary_a.sample_count > 0:
+            logger.info(
+                "performance_summary",
+                portfolio="A",
+                return_pct=f"{summary_a.total_return_pct:.2f}",
+                max_drawdown_pct=f"{summary_a.max_drawdown_pct:.2f}",
+                current_drawdown_pct=f"{summary_a.current_drawdown_pct:.2f}",
+                sharpe=f"{summary_a.sharpe_ratio:.2f}" if summary_a.sharpe_ratio else "N/A",
+                wins=summary_a.win_count,
+                losses=summary_a.loss_count,
+                win_rate=f"{summary_a.win_rate:.1f}",
+                equity_samples=summary_a.sample_count,
+            )
 
-            # Fee summary
-            fee_a = fees.tracker_a.daily_summary()
-            fee_b = fees.tracker_b.daily_summary()
-            if fee_a.fill_count > 0 or fee_b.fill_count > 0:
-                logger.info(
-                    "fee_summary_24h",
-                    total_fees=str(fee_a.total_fees_usdc + fee_b.total_fees_usdc),
-                    a_fees=str(fee_a.total_fees_usdc),
-                    b_fees=str(fee_b.total_fees_usdc),
-                    a_maker_ratio=f"{fee_a.maker_ratio:.0%}",
-                    b_maker_ratio=f"{fee_b.maker_ratio:.0%}",
-                    a_savings=str(fee_a.estimated_savings_usdc),
-                    b_savings=str(fee_b.estimated_savings_usdc),
-                )
+        # Portfolio B summary
+        summary_b = perf.tracker_b.summary()
+        if summary_b.sample_count > 0:
+            logger.info(
+                "performance_summary",
+                portfolio="B",
+                return_pct=f"{summary_b.total_return_pct:.2f}",
+                max_drawdown_pct=f"{summary_b.max_drawdown_pct:.2f}",
+                current_drawdown_pct=f"{summary_b.current_drawdown_pct:.2f}",
+                sharpe=f"{summary_b.sharpe_ratio:.2f}" if summary_b.sharpe_ratio else "N/A",
+                wins=summary_b.win_count,
+                losses=summary_b.loss_count,
+                win_rate=f"{summary_b.win_rate:.1f}",
+                equity_samples=summary_b.sample_count,
+            )
 
-            # Funding summary
-            fund_a = funding.reporter_a.daily_summary()
-            fund_b = funding.reporter_b.daily_summary()
-            if fund_a.payment_count > 0 or fund_b.payment_count > 0:
-                logger.info(
-                    "funding_summary_24h",
-                    total_funding=str(fund_a.total_usdc + fund_b.total_usdc),
-                    a_funding=str(fund_a.total_usdc),
-                    b_funding=str(fund_b.total_usdc),
-                    a_payments=fund_a.payment_count,
-                    b_payments=fund_b.payment_count,
-                )
+        # Fee summary
+        fee_a = fees.tracker_a.daily_summary()
+        fee_b = fees.tracker_b.daily_summary()
+        if fee_a.fill_count > 0 or fee_b.fill_count > 0:
+            logger.info(
+                "fee_summary_24h",
+                total_fees=str(fee_a.total_fees_usdc + fee_b.total_fees_usdc),
+                a_fees=str(fee_a.total_fees_usdc),
+                b_fees=str(fee_b.total_fees_usdc),
+                a_maker_ratio=f"{fee_a.maker_ratio:.0%}",
+                b_maker_ratio=f"{fee_b.maker_ratio:.0%}",
+                a_savings=str(fee_a.estimated_savings_usdc),
+                b_savings=str(fee_b.estimated_savings_usdc),
+            )
+
+        # Funding summary
+        fund_a = funding.reporter_a.daily_summary()
+        fund_b = funding.reporter_b.daily_summary()
+        if fund_a.payment_count > 0 or fund_b.payment_count > 0:
+            logger.info(
+                "funding_summary_24h",
+                total_funding=str(fund_a.total_usdc + fund_b.total_usdc),
+                a_funding=str(fund_a.total_usdc),
+                b_funding=str(fund_b.total_usdc),
+                a_payments=fund_a.payment_count,
+                b_payments=fund_b.payment_count,
+            )
 
     # -- Run all tasks concurrently -----------------------------------------
 

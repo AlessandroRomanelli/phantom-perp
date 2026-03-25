@@ -65,15 +65,15 @@ def compute_fees_from_fills(fills: list[Fill]) -> tuple[Decimal, Decimal, Decima
 
 
 def compute_realized_pnl(fills: list[Fill]) -> Decimal:
-    """Compute realized P&L from fills using FIFO matching.
+    """Compute realized P&L from fills using average-cost matching.
 
-    Simplified: tracks net cost basis and computes P&L on the assumption
-    that sells realize gains/losses against the average entry price.
-
-    For a more accurate FIFO implementation, a full trade-matching engine
-    would be needed, but this gives a reasonable approximation.
+    Tracks signed net_sizes per instrument: positive = long, negative = short.
+    BUY fills increase net_size; SELL fills decrease it.  When a fill moves
+    net_size *through* zero (or towards it), the portion that reduces the
+    existing position realizes P&L against the average entry price.
     """
-    # Track per-instrument: total_cost_basis and net_size
+    # cost_basis tracks the *absolute* cost of the current position
+    # (avg_entry * abs(net_size)).  net_sizes is signed.
     cost_basis: dict[str, Decimal] = {}
     net_sizes: dict[str, Decimal] = {}
     realized: Decimal = Decimal("0")
@@ -84,19 +84,40 @@ def compute_realized_pnl(fills: list[Fill]) -> Decimal:
             cost_basis[inst] = Decimal("0")
             net_sizes[inst] = Decimal("0")
 
-        if fill.side == OrderSide.BUY:
-            # Add to position
+        # Signed delta: BUY is +size, SELL is -size
+        delta = fill.size if fill.side == OrderSide.BUY else -fill.size
+        prev_net = net_sizes[inst]
+
+        if prev_net == 0:
+            # Opening a fresh position (long or short)
+            net_sizes[inst] = delta
+            cost_basis[inst] = fill.size * fill.price
+        elif (prev_net > 0 and delta > 0) or (prev_net < 0 and delta < 0):
+            # Adding to existing position in same direction
+            net_sizes[inst] += delta
             cost_basis[inst] += fill.size * fill.price
-            net_sizes[inst] += fill.size
         else:
-            # Close/reduce position — realize P&L
-            if net_sizes[inst] > 0:
-                avg_entry = cost_basis[inst] / net_sizes[inst]
-                closed_size = min(fill.size, net_sizes[inst])
+            # Reducing or flipping position
+            abs_prev = abs(prev_net)
+            abs_delta = fill.size
+            avg_entry = cost_basis[inst] / abs_prev
+
+            closed_size = min(abs_delta, abs_prev)
+            if prev_net > 0:
+                # Was long, SELL is closing — P&L = (exit - entry) * size
                 realized += closed_size * (fill.price - avg_entry)
-                # Reduce cost basis proportionally
-                cost_basis[inst] -= closed_size * avg_entry
-                net_sizes[inst] -= closed_size
+            else:
+                # Was short, BUY is closing — P&L = (entry - exit) * size
+                realized += closed_size * (avg_entry - fill.price)
+
+            # Reduce cost basis proportionally
+            cost_basis[inst] -= closed_size * avg_entry
+            net_sizes[inst] += delta
+
+            # If we flipped direction, start new cost basis for the remainder
+            remainder = abs_delta - abs_prev
+            if remainder > 0:
+                cost_basis[inst] = remainder * fill.price
 
     return realized
 

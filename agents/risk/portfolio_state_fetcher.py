@@ -1,4 +1,4 @@
-"""Fetch fresh portfolio state from Coinbase INTX REST API.
+"""Fetch fresh portfolio state from Coinbase Advanced REST API.
 
 Every risk evaluation must use up-to-date equity and margin data.
 This module wraps the client pool to build a PortfolioSnapshot from
@@ -10,15 +10,19 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import structlog
+
 from libs.coinbase.client_pool import CoinbaseClientPool
 from libs.common.models.enums import PortfolioTarget, PositionSide
 from libs.common.models.portfolio import PortfolioSnapshot
 from libs.common.models.position import PerpPosition
 from libs.common.utils import utc_now
 
+log = structlog.get_logger(__name__)
+
 
 class PortfolioStateFetcher:
-    """Query Coinbase INTX for a portfolio's current state.
+    """Query Coinbase Advanced for a portfolio's current state.
 
     Args:
         client_pool: Per-portfolio REST client pool.
@@ -26,6 +30,15 @@ class PortfolioStateFetcher:
 
     def __init__(self, client_pool: CoinbaseClientPool) -> None:
         self._pool = client_pool
+        log.warning(
+            "live_pnl_fields_unavailable",
+            detail=(
+                "Coinbase /intx/portfolio endpoint does not provide "
+                "realized_pnl_today, funding_pnl_today, or fees_paid_today. "
+                "These fields are hardcoded to 0 in live mode; daily loss and "
+                "drawdown kill switches rely on the monitoring agent's tracking."
+            ),
+        )
 
     async def fetch(self, target: PortfolioTarget) -> PortfolioSnapshot:
         """Fetch live portfolio state from Coinbase.
@@ -88,6 +101,9 @@ class PortfolioStateFetcher:
             ),
             positions=positions,
             unrealized_pnl_usdc=portfolio_resp.unrealized_pnl,
+            # Coinbase /intx/portfolio does not expose daily realized P&L,
+            # funding P&L, or fee totals. These remain zero in live mode;
+            # the monitoring agent tracks them from fills and funding events.
             realized_pnl_today_usdc=Decimal("0"),
             funding_pnl_today_usdc=Decimal("0"),
             fees_paid_today_usdc=Decimal("0"),

@@ -6,7 +6,8 @@ strategies:
 - Aligned signals boost combined conviction.
 - Conflicting signals are resolved via regime-aware weighting (or cancel).
 
-A per-direction cooldown prevents emitting duplicate ideas in rapid succession.
+A bidirectional cooldown prevents emitting ideas in rapid succession,
+and a separate flip interval prevents direction reversals that churn fees.
 """
 
 from __future__ import annotations
@@ -44,7 +45,8 @@ class AlphaCombiner:
         regime_detector: Current market regime source.
         scorecard: Rolling strategy accuracy tracker.
         combination_window: How long to keep signals for potential combination.
-        cooldown: Minimum interval between ideas in the same direction.
+        cooldown: Minimum interval between ANY ideas for the same instrument.
+        min_flip_interval: Minimum time before reversing direction on an instrument.
     """
 
     def __init__(
@@ -54,12 +56,14 @@ class AlphaCombiner:
         scorecard: StrategyScorecard,
         combination_window: timedelta = timedelta(seconds=60),
         cooldown: timedelta = timedelta(seconds=30),
+        min_flip_interval: timedelta = timedelta(seconds=180),
     ) -> None:
         self._router = router
         self._regime = regime_detector
         self._scorecard = scorecard
         self._window = combination_window
         self._cooldown = cooldown
+        self._min_flip_interval = min_flip_interval
         self._buffer: deque[_BufferedSignal] = deque(maxlen=200)
         self._recent_ideas: deque[tuple[datetime, PositionSide, str]] = deque(maxlen=50)
 
@@ -81,7 +85,8 @@ class AlphaCombiner:
         self._prune_buffer(now)
         self._buffer.append(_BufferedSignal(signal=signal, received_at=now))
 
-        # Skip if we recently emitted an idea in this direction for this instrument
+        # Skip if we recently emitted any idea for this instrument (bidirectional)
+        # or if this would be a direction flip within the min_flip_interval
         if self._in_cooldown(signal.direction, signal.instrument, now):
             return []
 
@@ -94,7 +99,7 @@ class AlphaCombiner:
             return []
 
         active_signals = [b.signal for b in active]
-        regime = self._regime.current_regime
+        regime = self._regime.regime_for(signal.instrument)
 
         resolved = resolve_conflicts(
             active_signals, regime, self._scorecard,
@@ -164,12 +169,26 @@ class AlphaCombiner:
     def _in_cooldown(
         self, direction: PositionSide, instrument: str, now: datetime,
     ) -> bool:
-        """True if we recently emitted an idea in this direction for this instrument."""
-        cutoff = now - self._cooldown
-        return any(
-            ts > cutoff and d == direction and inst == instrument
-            for ts, d, inst in self._recent_ideas
-        )
+        """True if a recent idea blocks this one.
+
+        Two checks:
+        1. Bidirectional cooldown — any idea for this instrument within
+           ``self._cooldown`` blocks regardless of direction.
+        2. Flip guard — an idea in the *opposite* direction within
+           ``self._min_flip_interval`` blocks to prevent fee churn.
+        """
+        cooldown_cutoff = now - self._cooldown
+        flip_cutoff = now - self._min_flip_interval
+        for ts, d, inst in self._recent_ideas:
+            if inst != instrument:
+                continue
+            # Bidirectional: any recent idea blocks
+            if ts > cooldown_cutoff:
+                return True
+            # Flip guard: opposite direction within longer window blocks
+            if ts > flip_cutoff and d != direction:
+                return True
+        return False
 
     @staticmethod
     def _best_price(
@@ -188,4 +207,6 @@ class AlphaCombiner:
         """Median time horizon from contributing signals."""
         horizons = sorted(s.time_horizon for s in signals)
         mid = len(horizons) // 2
+        if len(horizons) % 2 == 0 and len(horizons) > 1:
+            return (horizons[mid - 1] + horizons[mid]) / 2
         return horizons[mid]

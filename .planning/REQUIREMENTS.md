@@ -24,23 +24,23 @@ Requirements for the AI-Powered Parameter Tuner milestone. Each maps to roadmap 
 ### Safety & Bounds
 
 - [x] **SAFE-01**: Every tunable parameter has hard min/max bounds defined in a bounds registry YAML
-- [ ] **SAFE-02**: YAML config writes use atomic write pattern (write-tmp + os.replace)
-- [ ] **SAFE-03**: Post-write validation reloads written YAML and compares against intended values
+- [x] **SAFE-02**: YAML config writes use atomic write pattern (write-tmp + os.replace)
+- [x] **SAFE-03**: Post-write validation reloads written YAML and compares against intended values
 - [x] **SAFE-04**: Tuner logs all parameter changes with before/after values in structured log
 
 ### Claude Integration
 
-- [ ] **CLAI-01**: Tuner sends performance metrics to Claude via Anthropic SDK with structured output
-- [ ] **CLAI-02**: Claude returns parameter recommendations as typed JSON with per-parameter reasoning
-- [ ] **CLAI-03**: Claude prompt includes current parameter values, bounds, and recent performance context
-- [ ] **CLAI-04**: Code validates all Claude recommendations against bounds before applying
+- [x] **CLAI-01**: Tuner sends performance metrics to Claude via Anthropic SDK with structured output
+- [x] **CLAI-02**: Claude returns parameter recommendations as typed JSON with per-parameter reasoning
+- [x] **CLAI-03**: Claude prompt includes current parameter values, bounds, and recent performance context
+- [x] **CLAI-04**: Code validates all Claude recommendations against bounds before applying
 
 ### Infrastructure
 
-- [ ] **INFR-01**: Tuner runs as a Docker container (run-to-completion, not daemon)
-- [ ] **INFR-02**: Shared Docker volume mounts config directory accessible to both tuner and signals containers
-- [ ] **INFR-03**: Daily cron trigger runs tuner container and restarts signals agent after completion
-- [ ] **INFR-04**: Tuner Dockerfile follows existing agent patterns (Python 3.13-slim, layer caching)
+- [x] **INFR-01**: Tuner runs as a Docker container (run-to-completion, not daemon)
+- [x] **INFR-02**: Shared Docker volume mounts config directory accessible to both tuner and signals containers
+- [x] **INFR-03**: Daily cron trigger runs tuner container and restarts signals agent after completion
+- [x] **INFR-04**: Tuner Dockerfile follows existing agent patterns (Python 3.13-slim, layer caching)
 
 ### Notifications
 
@@ -102,17 +102,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 | METR-03 | Phase 11 | Complete |
 | METR-04 | Phase 11 | Complete |
 | SAFE-01 | Phase 12 | Complete |
-| SAFE-02 | Phase 12 | Pending |
-| SAFE-03 | Phase 12 | Pending |
+| SAFE-02 | Phase 12 | Complete |
+| SAFE-03 | Phase 12 | Complete |
 | SAFE-04 | Phase 12 | Complete |
-| CLAI-01 | Phase 13 | Pending |
-| CLAI-02 | Phase 13 | Pending |
-| CLAI-03 | Phase 13 | Pending |
-| CLAI-04 | Phase 13 | Pending |
-| INFR-01 | Phase 14 | Pending |
-| INFR-02 | Phase 14 | Pending |
-| INFR-03 | Phase 14 | Pending |
-| INFR-04 | Phase 14 | Pending |
+| CLAI-01 | Phase 13 | Complete |
+| CLAI-02 | Phase 13 | Complete |
+| CLAI-03 | Phase 13 | Complete |
+| CLAI-04 | Phase 13 | Complete |
+| INFR-01 | Phase 14 | Complete |
+| INFR-02 | Phase 14 | Complete |
+| INFR-03 | Phase 14 | Complete |
+| INFR-04 | Phase 14 | Complete |
 | NOTF-01 | Phase 15 | Pending |
 | NOTF-02 | Phase 15 | Pending |
 | NOTF-03 | Phase 15 | Pending |

@@ -12,14 +12,14 @@ parameters:
   oi_divergence_lookback: 20
   oi_divergence_threshold_pct: 1.5
   atr_period: 14
-  stop_loss_atr_mult: 2.0
-  take_profit_atr_mult: 3.0
+  stop_loss_atr_mult: 3.0
+  take_profit_atr_mult: 4.0
   min_conviction: 0.35
   cooldown_bars: 12
   # Funding rate integration (CORR-02)
   funding_rate_boost: 0.10
   # Portfolio A routing (CORR-03)
-  portfolio_a_min_conviction: 0.70
+  portfolio_a_min_conviction: 0.55
 
 instruments:
   ETH-PERP:

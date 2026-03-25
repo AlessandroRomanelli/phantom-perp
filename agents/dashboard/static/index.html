@@ -178,11 +178,11 @@
               <tr class="text-[10px] text-gray-500 uppercase border-b border-gray-800/40">
                 <th class="text-left px-2 py-1.5">Age</th>
                 <th class="text-left px-2 py-1.5">Inst</th>
-                <th class="text-left px-2 py-1.5">Side</th>
-                <th class="text-right px-2 py-1.5">Size</th>
-                <th class="text-right px-2 py-1.5">Notional</th>
+                <th class="text-left px-2 py-1.5">Net</th>
+                <th class="text-right px-2 py-1.5">Buys</th>
+                <th class="text-right px-2 py-1.5">Sells</th>
                 <th class="text-right px-2 py-1.5">Fee</th>
-                <th class="text-left px-1 py-1.5">T</th>
+                <th class="text-right px-2 py-1.5">#</th>
               </tr>
             </thead>
             <tbody id="fills-body"></tbody>
@@ -442,35 +442,68 @@ function renderSignals(signals) {
   }).join('');
 }
 
+function squashFills(fills) {
+  // Group consecutive fills by instrument + portfolio
+  const groups = [];
+  for (const f of fills) {
+    const key = `${f.instrument}|${f.portfolio_target}`;
+    const last = groups.length > 0 ? groups[groups.length - 1] : null;
+    if (last && last._key === key) {
+      last.fills.push(f);
+    } else {
+      groups.push({_key: key, fills: [f]});
+    }
+  }
+  return groups.map(g => {
+    const fills = g.fills;
+    const first = fills[0]; // newest (list is descending)
+    const inst = (first.instrument || '?').replace('-PERP', '');
+    const portfolio = first.portfolio_target || '?';
+    const pLabel = portfolio === 'autonomous' ? 'A' : portfolio === 'user_confirmed' ? 'B' : '?';
+    let buySize = 0, sellSize = 0, buyNotional = 0, sellNotional = 0, totalFees = 0;
+    for (const f of fills) {
+      const sz = parseFloat(f.size || 0);
+      const px = parseFloat(f.price || 0);
+      const fee = parseFloat(f.fee_usdc || 0);
+      totalFees += fee;
+      if (f.side === 'BUY') { buySize += sz; buyNotional += sz * px; }
+      else { sellSize += sz; sellNotional += sz * px; }
+    }
+    const netSize = buySize - sellSize;
+    let netLabel, netCls;
+    if (Math.abs(netSize) < 1e-8) { netLabel = 'FLAT'; netCls = 'text-accent-amber'; }
+    else if (netSize > 0) { netLabel = 'LONG'; netCls = 'text-accent-green'; }
+    else { netLabel = 'SHORT'; netCls = 'text-accent-red'; }
+    const epoch = first._entry_epoch;
+    return {inst, pLabel, netLabel, netCls, buySize, sellSize, buyNotional, sellNotional, totalFees, count: fills.length, epoch};
+  });
+}
+
 function renderFills(fills) {
   const body = document.getElementById('fills-body');
   if (!fills.length) {
     body.innerHTML = '<tr><td colspan="7" class="px-2 py-3 text-gray-600">No fills yet</td></tr>';
     return;
   }
-  body.innerHTML = fills.slice(0, 20).map(f => {
-    const side = f.side || '?';
-    const sideCls = side === 'BUY' ? 'text-accent-green' : side === 'SELL' ? 'text-accent-red' : 'text-gray-400';
-    const portfolio = f.portfolio_target || '?';
-    const pLabel = portfolio === 'autonomous' ? 'A' : portfolio === 'user_confirmed' ? 'B' : '?';
-    const isMaker = f.is_maker === 'True' || f.is_maker === true;
-    const orderId = f.order_id || '';
-    let typeLabel = `<span class="text-gray-500">${pLabel}</span>`;
-    if (orderId.startsWith('tp-')) typeLabel = `<span class="text-accent-green">${pLabel}tp</span>`;
-    else if (orderId.startsWith('sl-')) typeLabel = `<span class="text-accent-red">${pLabel}sl</span>`;
-    const price = parseFloat(f.price || 0);
-    const size = parseFloat(f.size || 0);
-    const notional = price * size;
-    // Compact instrument: ETH-PERP -> ETH
-    const inst = (f.instrument || '?').replace('-PERP', '');
+  const groups = squashFills(fills);
+  body.innerHTML = groups.slice(0, 20).map(g => {
+    const buyStr = g.buySize > 0
+      ? `<span class="text-accent-green">${g.buySize.toFixed(4)}</span>`
+      : `<span class="text-gray-700">--</span>`;
+    const sellStr = g.sellSize > 0
+      ? `<span class="text-accent-red">${g.sellSize.toFixed(4)}</span>`
+      : `<span class="text-gray-700">--</span>`;
+    const countBadge = g.count > 1
+      ? `<span class="text-accent-amber">${g.count}</span>`
+      : `<span class="text-gray-600">1</span>`;
     return `<tr class="border-b border-gray-800/20">
-      <td class="px-2 py-1 text-gray-500">${f._entry_epoch ? ago(f._entry_epoch) : agoFromISO(f.filled_at)}</td>
-      <td class="px-2 py-1 text-white">${inst}</td>
-      <td class="px-2 py-1 ${sideCls} font-semibold">${side}</td>
-      <td class="px-2 py-1 text-right text-gray-300 cursor-default" title="$${price.toFixed(2)}">${size}</td>
-      <td class="px-2 py-1 text-right text-white">$${notional.toFixed(0)}</td>
-      <td class="px-2 py-1 text-right text-gray-600">$${parseFloat(f.fee_usdc || 0).toFixed(2)}</td>
-      <td class="px-1 py-1">${typeLabel}</td>
+      <td class="px-2 py-1 text-gray-500">${g.epoch ? ago(g.epoch) : '--'}</td>
+      <td class="px-2 py-1 text-white">${g.inst}<span class="text-gray-600 ml-1">${g.pLabel}</span></td>
+      <td class="px-2 py-1 ${g.netCls} font-semibold">${g.netLabel}</td>
+      <td class="px-2 py-1 text-right" title="$${g.buyNotional.toFixed(0)}">${buyStr}</td>
+      <td class="px-2 py-1 text-right" title="$${g.sellNotional.toFixed(0)}">${sellStr}</td>
+      <td class="px-2 py-1 text-right text-gray-600">$${g.totalFees.toFixed(2)}</td>
+      <td class="px-2 py-1 text-right">${countBadge}</td>
     </tr>`;
   }).join('');
 }

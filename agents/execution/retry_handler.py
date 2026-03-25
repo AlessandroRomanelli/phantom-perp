@@ -14,6 +14,7 @@ from libs.common.exceptions import (
     OrderRejectedError,
     RateLimitExceededError,
 )
+from libs.common.models.enums import OrderSide
 
 from agents.execution.algo_selector import ExecutionPlan
 from agents.execution.config import ExecutionConfig
@@ -34,6 +35,7 @@ def evaluate_retry(
     attempt: int,
     config: ExecutionConfig,
     current_plan: ExecutionPlan,
+    side: OrderSide | None = None,
 ) -> RetryDecision:
     """Decide whether to retry a failed order placement.
 
@@ -42,6 +44,7 @@ def evaluate_retry(
         attempt: Current attempt number (0-based, so first try is 0).
         config: Execution configuration.
         current_plan: The execution plan that failed.
+        side: Order side (BUY/SELL) — required for correct price adjustment.
 
     Returns:
         RetryDecision indicating whether to retry and any adjustments.
@@ -59,7 +62,9 @@ def evaluate_retry(
         )
 
     if isinstance(error, RateLimitExceededError):
-        wait = error.retry_after or 1.0
+        # Cap wait to 30s to prevent absurdly long sleeps from bad retry_after values
+        raw_wait = error.retry_after or 1.0
+        wait = min(float(raw_wait), 30.0)
         return RetryDecision(
             should_retry=True,
             reason="rate limited, waiting",
@@ -76,7 +81,7 @@ def evaluate_retry(
 
     if isinstance(error, OrderRejectedError):
         # Try adjusting the limit price slightly for the retry
-        adjusted = _adjust_price_for_retry(current_plan, attempt)
+        adjusted = _adjust_price_for_retry(current_plan, attempt, side=side)
         return RetryDecision(
             should_retry=True,
             reason=f"order rejected, adjusting price (attempt {attempt + 1})",
@@ -95,10 +100,12 @@ def _adjust_price_for_retry(
     plan: ExecutionPlan,
     attempt: int,
     tick_size: Decimal = Decimal("0.01"),
+    side: OrderSide | None = None,
 ) -> ExecutionPlan:
     """Adjust the execution plan for a retry attempt.
 
     For LIMIT orders, widen the price slightly to improve fill probability.
+    BUY orders: raise price (more aggressive). SELL orders: lower price (more aggressive).
     """
     from libs.common.models.enums import OrderType
 
@@ -107,9 +114,12 @@ def _adjust_price_for_retry(
 
     # Each retry widens the price by 1 tick
     adjustment = tick_size * Decimal(attempt + 1)
-    # We don't know side here, so widen in both directions
-    # The caller should handle which direction is appropriate
-    new_price = plan.limit_price + adjustment
+    # BUY: raise price to be more aggressive; SELL: lower price to be more aggressive
+    if side == OrderSide.SELL:
+        new_price = plan.limit_price - adjustment
+    else:
+        # BUY or unknown side — raise price (preserves legacy behavior for BUY)
+        new_price = plan.limit_price + adjustment
     return ExecutionPlan(
         order_type=plan.order_type,
         limit_price=new_price,

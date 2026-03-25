@@ -55,10 +55,13 @@ services:
     env_file: .env
     environment:
       REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://phantom:${POSTGRES_PASSWORD:-phantom_dev}@postgres:5432/phantom_perp
     volumes:
       - strategy_configs:/app/configs/strategies:ro
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     restart: unless-stopped
 
@@ -77,8 +80,11 @@ services:
     env_file: .env
     environment:
       REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://phantom:${POSTGRES_PASSWORD:-phantom_dev}@postgres:5432/phantom_perp
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     restart: unless-stopped
 
@@ -97,8 +103,11 @@ services:
     env_file: .env
     environment:
       REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://phantom:${POSTGRES_PASSWORD:-phantom_dev}@postgres:5432/phantom_perp
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     restart: unless-stopped
 

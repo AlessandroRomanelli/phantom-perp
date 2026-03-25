@@ -9,7 +9,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
+import structlog
+
 from libs.common.models.enums import OrderSide, OrderType
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +39,7 @@ class ProtectiveOrders:
 def build_protective_orders(
     fill_side: OrderSide,
     fill_size: Decimal,
+    fill_price: Decimal,
     stop_loss_price: Decimal | None,
     take_profit_price: Decimal | None,
     tick_size: Decimal = Decimal("0.01"),
@@ -44,6 +49,7 @@ def build_protective_orders(
     Args:
         fill_side: Side of the filled primary order (BUY/SELL).
         fill_size: Size of the filled position.
+        fill_price: Price the primary order filled at (for SL validation).
         stop_loss_price: Stop-loss trigger price.
         take_profit_price: Take-profit trigger price.
 
@@ -55,14 +61,22 @@ def build_protective_orders(
 
     sl = None
     if stop_loss_price is not None:
-        sl = ProtectiveOrderParams(
-            side=close_side,
-            size=fill_size,
-            order_type=OrderType.STOP_MARKET,
-            stop_price=_round_to_tick(stop_loss_price, tick_size),
-            limit_price=None,
-            reduce_only=True,
-        )
+        if not validate_stop_loss_required(stop_loss_price, fill_side, fill_price):
+            logger.warning(
+                "stop_loss_wrong_side",
+                fill_side=fill_side.value,
+                fill_price=str(fill_price),
+                stop_loss_price=str(stop_loss_price),
+            )
+        else:
+            sl = ProtectiveOrderParams(
+                side=close_side,
+                size=fill_size,
+                order_type=OrderType.STOP_MARKET,
+                stop_price=_round_to_tick(stop_loss_price, tick_size),
+                limit_price=None,
+                reduce_only=True,
+            )
 
     tp = None
     if take_profit_price is not None:

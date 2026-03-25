@@ -16,11 +16,12 @@ from libs.common.models.market_snapshot import MarketSnapshot
 class RegimeDetector:
     """Classify the current market regime from streaming snapshots.
 
-    Tracks a rolling window of mark prices and uses the snapshot's
-    volatility fields to detect regime transitions.
+    Maintains per-instrument price histories so that snapshots from
+    different instruments do not corrupt each other's trend/squeeze
+    detection.
 
     Args:
-        lookback: Number of snapshots to retain for trend analysis.
+        lookback: Number of snapshots to retain per instrument for trend analysis.
         high_vol_threshold: Volatility above this → HIGH_VOLATILITY.
         low_vol_threshold: Volatility below this → LOW_VOLATILITY or SQUEEZE.
         trend_pct_threshold: Price deviation from mean (%) to declare a trend.
@@ -35,8 +36,10 @@ class RegimeDetector:
         trend_pct_threshold: float = 0.5,
         squeeze_range_pct: float = 0.3,
     ) -> None:
-        self._prices: deque[float] = deque(maxlen=lookback)
-        self._regime = MarketRegime.RANGING
+        self._lookback = lookback
+        self._prices: dict[str, deque[float]] = {}
+        self._regimes: dict[str, MarketRegime] = {}
+        self._last_instrument: str | None = None
         self._high_vol = high_vol_threshold
         self._low_vol = low_vol_threshold
         self._trend_pct = trend_pct_threshold
@@ -44,8 +47,14 @@ class RegimeDetector:
 
     @property
     def current_regime(self) -> MarketRegime:
-        """The most recently detected regime."""
-        return self._regime
+        """The regime for the most recently updated instrument."""
+        if self._last_instrument is not None:
+            return self._regimes.get(self._last_instrument, MarketRegime.RANGING)
+        return MarketRegime.RANGING
+
+    def regime_for(self, instrument: str) -> MarketRegime:
+        """The detected regime for a specific instrument."""
+        return self._regimes.get(instrument, MarketRegime.RANGING)
 
     def update(self, snapshot: MarketSnapshot) -> MarketRegime:
         """Incorporate a new snapshot and return the updated regime.
@@ -56,41 +65,47 @@ class RegimeDetector:
         Returns:
             The detected MarketRegime after this update.
         """
-        self._prices.append(float(snapshot.last_price))
+        instrument = snapshot.instrument
+        self._last_instrument = instrument
+
+        if instrument not in self._prices:
+            self._prices[instrument] = deque(maxlen=self._lookback)
+
+        self._prices[instrument].append(float(snapshot.last_price))
         vol = snapshot.volatility_24h
+        prices_deque = self._prices[instrument]
 
-        if len(self._prices) < 10:
-            return self._regime
+        if len(prices_deque) < 10:
+            return self._regimes.get(instrument, MarketRegime.RANGING)
 
+        regime = self._classify(list(prices_deque), vol)
+        self._regimes[instrument] = regime
+        return regime
+
+    def _classify(self, prices: list[float], vol: float) -> MarketRegime:
+        """Classify regime from a single instrument's price history."""
         # High volatility overrides everything
         if vol > self._high_vol:
-            self._regime = MarketRegime.HIGH_VOLATILITY
-            return self._regime
+            return MarketRegime.HIGH_VOLATILITY
 
         # Low volatility: check for squeeze (narrow range) or just quiet
         if vol < self._low_vol:
-            prices = list(self._prices)
             mean = sum(prices) / len(prices)
             if mean > 0:
                 price_range_pct = (max(prices) - min(prices)) / mean * 100
                 if price_range_pct < self._squeeze_range:
-                    self._regime = MarketRegime.SQUEEZE
-                    return self._regime
-            self._regime = MarketRegime.LOW_VOLATILITY
-            return self._regime
+                    return MarketRegime.SQUEEZE
+            return MarketRegime.LOW_VOLATILITY
 
         # Normal vol: detect trend via price deviation from rolling mean
-        prices = list(self._prices)
         mean = sum(prices) / len(prices)
         current = prices[-1]
 
         if mean > 0:
             deviation_pct = (current - mean) / mean * 100
             if deviation_pct > self._trend_pct:
-                self._regime = MarketRegime.TRENDING_UP
+                return MarketRegime.TRENDING_UP
             elif deviation_pct < -self._trend_pct:
-                self._regime = MarketRegime.TRENDING_DOWN
-            else:
-                self._regime = MarketRegime.RANGING
+                return MarketRegime.TRENDING_DOWN
 
-        return self._regime
+        return MarketRegime.RANGING

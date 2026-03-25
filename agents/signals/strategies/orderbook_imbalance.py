@@ -118,7 +118,6 @@ class OrderbookImbalanceStrategy(SignalStrategy):
         closes = store.closes
         highs = store.highs
         lows = store.lows
-        volumes = store.volumes
 
         # Time-weighted imbalance over lookback window (OBI-02)
         window = imbalances[-p.lookback_bars:]
@@ -154,11 +153,15 @@ class OrderbookImbalanceStrategy(SignalStrategy):
         # Spread quality (0-0.30)
         spread_score = max(0.0, min((20.0 - snapshot.spread_bps) / 20.0 * 0.30, 0.30))
 
-        # Volume component (0-0.25)
-        vol_window = volumes[-p.lookback_bars:]
-        vol_mean = float(np.mean(vol_window))
-        cur_vol = float(volumes[-1])
-        volume_ratio = cur_vol / vol_mean if vol_mean > 0 else 1.0
+        # Volume component (0-0.25): use per-bar volume deltas
+        bar_vols = store.bar_volumes
+        if len(bar_vols) >= p.lookback_bars:
+            recent_vols = np.abs(bar_vols[-p.lookback_bars:])
+            vol_mean = float(np.mean(recent_vols))
+            cur_vol = float(np.abs(bar_vols[-1]))
+            volume_ratio = cur_vol / vol_mean if vol_mean > 0 else 1.0
+        else:
+            volume_ratio = 1.0  # Neutral when insufficient data
         vol_score = min(max((volume_ratio - 0.5) / 2.0, 0.0), 0.25)
 
         conviction = round(min(imb_score + spread_score + vol_score, 1.0), 3)
@@ -166,12 +169,11 @@ class OrderbookImbalanceStrategy(SignalStrategy):
         if conviction < p.min_conviction:
             return []
 
-        # Portfolio routing (OBI-04)
-        suggested_target = (
-            PortfolioTarget.A
-            if conviction >= p.portfolio_a_min_conviction
-            else PortfolioTarget.B
-        )
+        # Portfolio A only — short-horizon signals are not suitable for
+        # user-confirmed Portfolio B (opportunity gone before confirmation).
+        if conviction < p.portfolio_a_min_conviction:
+            return []
+        suggested_target = PortfolioTarget.A
 
         # Entry, stop, take profit
         entry = snapshot.last_price

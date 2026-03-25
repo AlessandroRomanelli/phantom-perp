@@ -46,9 +46,15 @@ class ProposedOrder:
 
     @property
     def notional_usdc(self) -> Decimal:
-        """Estimated notional value of the order."""
-        price = self.limit_price or Decimal("0")
-        return self.size * price
+        """Estimated notional value of the order.
+
+        For MARKET orders where limit_price is None, falls back to
+        estimated_margin_required_usdc * leverage as a proxy.
+        """
+        if self.limit_price is not None:
+            return self.size * self.limit_price
+        # Market orders have no limit_price — derive notional from margin and leverage
+        return self.estimated_margin_required_usdc * self.leverage
 
 
 @dataclass(frozen=True, slots=True)

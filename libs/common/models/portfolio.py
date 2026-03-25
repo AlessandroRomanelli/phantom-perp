@@ -10,7 +10,7 @@ from libs.common.models.position import PerpPosition
 
 @dataclass(slots=True)
 class PortfolioSnapshot:
-    """Point-in-time state of a single Coinbase INTX portfolio."""
+    """Point-in-time state of a single Coinbase Advanced portfolio."""
 
     timestamp: datetime
     portfolio_target: PortfolioTarget

@@ -82,14 +82,20 @@ class CoinbaseRESTClient:
         path: str,
         body: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
+        _max_retries: int = 2,
     ) -> Any:
         """Execute an authenticated request against the Coinbase Advanced Trade API.
+
+        Retries transient failures (connection errors, 5xx, 429) for idempotent
+        (GET) requests. Non-idempotent requests (POST/PUT/DELETE) are not retried
+        to avoid duplicate side effects.
 
         Args:
             method: HTTP method.
             path: API path (e.g., '/api/v3/brokerage/orders').
             body: JSON body for POST/PUT requests.
             params: Query parameters for GET requests.
+            _max_retries: Max retries for transient failures on GET requests.
 
         Returns:
             Parsed JSON response.
@@ -99,49 +105,76 @@ class CoinbaseRESTClient:
             InsufficientMarginError: If margin is insufficient for the order.
             CoinbaseAPIError: For other API errors.
         """
-        await self._rate_limiter.acquire()
+        import asyncio
 
         import orjson
 
-        body_str = orjson.dumps(body).decode() if body else ""
-        headers = self._auth.sign(method, path, body_str)
-        headers["Content-Type"] = "application/json"
+        is_idempotent = method.upper() == "GET"
+        max_attempts = (_max_retries + 1) if is_idempotent else 1
+        last_exc: Exception | None = None
 
-        response = await self._client.request(
-            method=method,
-            url=path,
-            content=body_str.encode() if body_str else None,
-            params=params,
-            headers=headers,
-        )
+        for attempt in range(max_attempts):
+            try:
+                await self._rate_limiter.acquire()
 
-        # Update rate limiter from response headers
-        remaining = response.headers.get("RateLimit-Remaining")
-        reset_at = response.headers.get("RateLimit-Reset")
-        self._rate_limiter.update_from_headers(
-            remaining=int(remaining) if remaining else None,
-            reset_at=float(reset_at) if reset_at else None,
-        )
+                body_str = orjson.dumps(body).decode() if body else ""
+                headers = self._auth.sign(method, path, body_str)
+                headers["Content-Type"] = "application/json"
 
-        if response.status_code == 429:
-            retry_after = response.headers.get("Retry-After")
-            raise RateLimitExceededError(
-                endpoint=path,
-                retry_after=float(retry_after) if retry_after else None,
+                response = await self._client.request(
+                    method=method,
+                    url=path,
+                    content=body_str.encode() if body_str else None,
+                    params=params,
+                    headers=headers,
+                )
+            except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout,
+                    httpx.PoolTimeout, httpx.ConnectTimeout) as exc:
+                last_exc = exc
+                if attempt < max_attempts - 1:
+                    await asyncio.sleep(1.0 * (attempt + 1))
+                    continue
+                raise CoinbaseAPIError(0, f"Connection failed: {exc}", path) from exc
+
+            # Update rate limiter from response headers
+            remaining = response.headers.get("RateLimit-Remaining")
+            reset_at = response.headers.get("RateLimit-Reset")
+            self._rate_limiter.update_from_headers(
+                remaining=int(remaining) if remaining else None,
+                reset_at=float(reset_at) if reset_at else None,
             )
 
-        if response.status_code >= 400:
-            error_body = response.text
-            if "insufficient margin" in error_body.lower():
-                raise InsufficientMarginError(response.status_code, error_body, path)
-            if response.status_code in (400, 422):
-                raise OrderRejectedError(response.status_code, error_body, path)
-            raise CoinbaseAPIError(response.status_code, error_body, path)
+            if response.status_code == 429:
+                retry_after = response.headers.get("Retry-After")
+                if attempt < max_attempts - 1:
+                    wait = float(retry_after) if retry_after else 2.0
+                    await asyncio.sleep(min(wait, 10.0))
+                    continue
+                raise RateLimitExceededError(
+                    endpoint=path,
+                    retry_after=float(retry_after) if retry_after else None,
+                )
 
-        if response.status_code == 204:
-            return None
+            # Retry on 5xx for idempotent requests
+            if response.status_code >= 500 and attempt < max_attempts - 1:
+                await asyncio.sleep(1.0 * (attempt + 1))
+                continue
 
-        return response.json()
+            if response.status_code >= 400:
+                error_body = response.text
+                if "insufficient margin" in error_body.lower():
+                    raise InsufficientMarginError(response.status_code, error_body, path)
+                if response.status_code in (400, 422):
+                    raise OrderRejectedError(response.status_code, error_body, path)
+                raise CoinbaseAPIError(response.status_code, error_body, path)
+
+            if response.status_code == 204:
+                return None
+
+            return response.json()
+
+        # Should not reach here, but just in case
+        raise CoinbaseAPIError(0, f"Request failed after {max_attempts} attempts", path)
 
     # -- Public (non-portfolio-scoped) endpoints ----------------------------
 

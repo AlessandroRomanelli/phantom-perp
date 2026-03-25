@@ -130,10 +130,18 @@ def _compute_limit_price(
     """
     if side == OrderSide.BUY and best_bid is not None:
         offset = best_bid * Decimal(offset_bps) / Decimal("10000")
-        return _round_to_tick(best_bid + offset, tick_size)
+        price = _round_to_tick(best_bid + offset, tick_size)
+        # Clamp to stay below best_ask so we remain a maker order
+        if best_ask is not None:
+            price = min(price, _round_to_tick(best_ask - tick_size, tick_size))
+        return price
     if side == OrderSide.SELL and best_ask is not None:
         offset = best_ask * Decimal(offset_bps) / Decimal("10000")
-        return _round_to_tick(best_ask - offset, tick_size)
+        price = _round_to_tick(best_ask - offset, tick_size)
+        # Clamp to stay above best_bid so we remain a maker order
+        if best_bid is not None:
+            price = max(price, _round_to_tick(best_bid + tick_size, tick_size))
+        return price
     return None
 
 

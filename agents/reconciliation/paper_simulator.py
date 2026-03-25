@@ -146,6 +146,7 @@ class PaperPortfolio:
         self.target = target
         self.initial_equity = initial_equity
         self.realized_pnl = Decimal("0")
+        self.realized_pnl_per_instrument: dict[str, Decimal] = {}
         self.fees_paid = Decimal("0")
         self.funding_pnl = Decimal("0")
         self.positions: dict[str, SimulatedPosition] = {}
@@ -209,6 +210,10 @@ class PaperPortfolio:
                 # Close the full position
                 close_pnl = pos.unrealized_pnl(fill_price)
                 self.realized_pnl += close_pnl
+                self.realized_pnl_per_instrument[instrument] = (
+                    self.realized_pnl_per_instrument.get(instrument, Decimal("0"))
+                    + close_pnl
+                )
                 remaining = size - pos.size
                 if remaining > 0:
                     # Flip: open opposite position with the remainder
@@ -228,7 +233,12 @@ class PaperPortfolio:
                     if pos.side == PositionSide.LONG
                     else (pos.entry_price - fill_price)
                 )
-                self.realized_pnl += pnl_per_unit * size
+                partial_pnl = pnl_per_unit * size
+                self.realized_pnl += partial_pnl
+                self.realized_pnl_per_instrument[instrument] = (
+                    self.realized_pnl_per_instrument.get(instrument, Decimal("0"))
+                    + partial_pnl
+                )
                 pos.size -= size
                 pos.total_fees_usdc += fee
 
@@ -321,7 +331,7 @@ class PaperPortfolio:
                 entry_price=pos.entry_price,
                 mark_price=mark_price,
                 unrealized_pnl_usdc=unrealized,
-                realized_pnl_usdc=self.realized_pnl,
+                realized_pnl_usdc=self.realized_pnl_per_instrument.get(instrument, Decimal("0")),
                 leverage=leverage,
                 initial_margin_usdc=initial_margin,
                 maintenance_margin_usdc=maint_margin,

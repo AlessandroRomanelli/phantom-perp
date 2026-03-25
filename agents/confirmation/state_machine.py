@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 
+from libs.common.constants import PORTFOLIO_B_AUTO_APPROVE_MAX_NOTIONAL_USDC
 from libs.common.models.enums import OrderStatus, PortfolioTarget
 from libs.common.models.order import ApprovedOrder, ProposedOrder
 from libs.common.utils import utc_now
@@ -46,6 +47,7 @@ class OrderStateMachine:
 
     config: ConfirmationConfig
     _pending: dict[str, PendingOrder] = field(default_factory=dict)
+    _max_pending: int = 100
 
     # -- Ingest ----------------------------------------------------------------
 
@@ -55,6 +57,13 @@ class OrderStateMachine:
         Returns the PendingOrder wrapper.
         """
         now = now or utc_now()
+        # Auto-purge terminal orders if we're approaching the limit
+        if len(self._pending) >= self._max_pending:
+            self.purge_terminal()
+        # If still at limit after purge, expire oldest non-terminal orders
+        if len(self._pending) >= self._max_pending:
+            self.expire_stale(now)
+            self.purge_terminal()
         pending = PendingOrder(
             order=order,
             received_at=now,
@@ -146,7 +155,9 @@ class OrderStateMachine:
             return False
         if order.conviction < aa.min_conviction:
             return False
-        if order.notional_usdc > aa.max_notional_usdc:
+        # Enforce the hard-coded constant as a ceiling over any YAML-configured value
+        effective_cap = min(aa.max_notional_usdc, PORTFOLIO_B_AUTO_APPROVE_MAX_NOTIONAL_USDC)
+        if order.notional_usdc > effective_cap:
             return False
         return True
 

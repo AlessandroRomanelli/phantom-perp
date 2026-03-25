@@ -32,7 +32,7 @@ class PortfolioNotConfiguredError(PhantomPerpError):
 
 
 class CoinbaseAPIError(PhantomPerpError):
-    """Error returned by the Coinbase INTX API."""
+    """Error returned by the Coinbase Advanced API."""
 
     def __init__(self, status_code: int, message: str, endpoint: str) -> None:
         self.status_code = status_code

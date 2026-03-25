@@ -10,6 +10,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from libs.coinbase.models import Amount, PortfolioResponse, PositionResponse
+from libs.common.exceptions import PortfolioMismatchError
 from libs.common.models.enums import PortfolioTarget, PositionSide
 from libs.common.models.portfolio import PortfolioSnapshot, SystemSnapshot
 from libs.common.models.position import PerpPosition
@@ -83,6 +84,7 @@ def build_portfolio_snapshot(
     position_resps: list[PositionResponse],
     portfolio_target: PortfolioTarget,
     *,
+    expected_portfolio_id: str | None = None,
     realized_pnl_today_usdc: Decimal = Decimal("0"),
     funding_pnl_today_usdc: Decimal = Decimal("0"),
     fees_paid_today_usdc: Decimal = Decimal("0"),
@@ -94,11 +96,21 @@ def build_portfolio_snapshot(
         portfolio_resp: Portfolio-level summary from Coinbase Advanced Trade.
         position_resps: All positions in this portfolio from Coinbase.
         portfolio_target: A or B.
+        expected_portfolio_id: If provided, validate that the response's
+            portfolio_uuid matches. Raises PortfolioMismatchError on mismatch.
         realized_pnl_today_usdc: Today's realized P&L from our internal tracking.
         funding_pnl_today_usdc: Today's net funding from our tracker.
         fees_paid_today_usdc: Today's total fees from our fill records.
         now: Timestamp for the snapshot.
     """
+    if expected_portfolio_id and portfolio_resp.portfolio_uuid:
+        if portfolio_resp.portfolio_uuid != expected_portfolio_id:
+            raise PortfolioMismatchError(
+                expected_target=portfolio_target.value,
+                expected_id=expected_portfolio_id,
+                actual_id=portfolio_resp.portfolio_uuid,
+            )
+
     now = now or utc_now()
     positions = [
         build_position(pr, portfolio_target) for pr in position_resps
@@ -115,7 +127,8 @@ def build_portfolio_snapshot(
     # Available = total_balance - used_margin (approximation)
     available = total_balance - used_margin if total_balance > used_margin else Decimal("0")
 
-    equity = total_balance if total_balance > 0 else collateral
+    balance = total_balance if total_balance > 0 else collateral
+    equity = balance + unrealized_pnl
 
     margin_util = (
         float(used_margin / equity * 100)

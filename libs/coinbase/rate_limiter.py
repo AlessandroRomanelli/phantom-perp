@@ -1,6 +1,6 @@
-"""Token-bucket rate limiter for Coinbase INTX API.
+"""Token-bucket rate limiter for Coinbase Advanced API.
 
-Each API key has its own rate limit budget. Since Coinbase INTX API keys
+Each API key has its own rate limit budget. Since Coinbase Advanced API keys
 are portfolio-scoped, each portfolio gets its own RateLimiter instance
 via the CoinbaseClientPool.
 """
@@ -12,7 +12,7 @@ import time
 
 
 class RateLimiter:
-    """Async token-bucket rate limiter for Coinbase INTX API.
+    """Async token-bucket rate limiter for Coinbase Advanced API.
 
     Tokens replenish at a fixed rate. Each API call consumes one token.
     When the bucket is empty, callers are awaited until a token is available.
@@ -54,14 +54,17 @@ class RateLimiter:
         Args:
             tokens: Number of tokens to consume (usually 1 per API call).
         """
-        async with self._lock:
-            self._refill()
-            while self._tokens < tokens:
+        while True:
+            async with self._lock:
+                self._refill()
+                if self._tokens >= tokens:
+                    self._tokens -= tokens
+                    return
+                # Calculate wait time before releasing the lock
                 deficit = tokens - self._tokens
                 wait_time = deficit / self._refill_rate
-                await asyncio.sleep(wait_time)
-                self._refill()
-            self._tokens -= tokens
+            # Sleep outside the lock so other callers aren't blocked
+            await asyncio.sleep(wait_time)
 
     def update_from_headers(self, remaining: int | None, reset_at: float | None) -> None:
         """Update internal state from Coinbase rate-limit response headers.

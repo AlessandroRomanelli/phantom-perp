@@ -148,52 +148,65 @@ async def run_agent() -> None:
     # Snapshot counter for logging
     snapshot_count = 0
 
-    # Per-instrument snapshot throttle (D-05): at most 1 snapshot per instrument per 100ms
+    # Per-instrument snapshot throttle: at most 1 snapshot per instrument per 5s.
+    # Fastest feature store samples at 30s, so 5s gives 6 snapshots per sample
+    # while keeping Redis load low on the memory-constrained production host.
     _last_publish: dict[str, float] = {}
-    _THROTTLE_SECONDS = 0.1
+    _THROTTLE_SECONDS = 5.0
 
     async def on_ws_update(instrument_id: str) -> None:
         """Called on every WS state update -- build and publish a throttled snapshot."""
         nonlocal snapshot_count
 
-        # Throttle: at most 1 snapshot per instrument per 100ms (D-05)
+        # Throttle: at most 1 snapshot per instrument per 5s (D-05)
         now = time.monotonic()
         if now - _last_publish.get(instrument_id, 0.0) < _THROTTLE_SECONDS:
             return
         _last_publish[instrument_id] = now
 
-        state = states[instrument_id]
+        try:
+            state = states[instrument_id]
 
-        # D-11: Validate instrument ID consistency before snapshot creation
-        assert state.instrument_id == instrument_id, (
-            f"Instrument ID mismatch: state has {state.instrument_id!r}, "
-            f"callback received {instrument_id!r}"
-        )
+            # D-11: Validate instrument ID consistency before snapshot creation
+            if state.instrument_id != instrument_id:
+                logger.error(
+                    "instrument_id_mismatch",
+                    state_instrument=state.instrument_id,
+                    callback_instrument=instrument_id,
+                )
+                return
 
-        # Readiness gate: all data sources must have delivered (D-08, D-09)
-        # Also gates instruments marked stale after reconnect (D-10) --
-        # has_ws_tick is reset to False by _mark_stale_instruments, so
-        # is_ready() returns False until fresh WS data arrives.
-        if not state.is_ready():
-            return
+            # Readiness gate: all data sources must have delivered (D-08, D-09)
+            # Also gates instruments marked stale after reconnect (D-10) --
+            # has_ws_tick is reset to False by _mark_stale_instruments, so
+            # is_ready() returns False until fresh WS data arrives.
+            if not state.is_ready():
+                return
 
-        snapshot = build_snapshot(state, instrument_id=instrument_id)
-        if snapshot is None:
-            return
+            snapshot = build_snapshot(state, instrument_id=instrument_id)
+            if snapshot is None:
+                return
 
-        payload = snapshot_to_dict(snapshot)
-        await publisher.publish(Channel.MARKET_SNAPSHOTS, payload)
+            payload = snapshot_to_dict(snapshot)
+            await publisher.publish(Channel.MARKET_SNAPSHOTS, payload)
 
-        # Global counter, log every 100th with instrument ID (D-07)
-        snapshot_count += 1
-        if snapshot_count % 100 == 1:
-            logger.info(
-                "snapshot_published",
+            # Global counter, log every 100th with instrument ID (D-07)
+            snapshot_count += 1
+            if snapshot_count % 100 == 1:
+                logger.info(
+                    "snapshot_published",
+                    instrument=instrument_id,
+                    count=snapshot_count,
+                    mark_price=str(snapshot.mark_price),
+                    spread_bps=f"{snapshot.spread_bps:.1f}",
+                    funding_rate=str(snapshot.funding_rate),
+                )
+        except Exception as e:
+            logger.error(
+                "snapshot_callback_failed",
                 instrument=instrument_id,
-                count=snapshot_count,
-                mark_price=str(snapshot.mark_price),
-                spread_bps=f"{snapshot.spread_bps:.1f}",
-                funding_rate=str(snapshot.funding_rate),
+                error=str(e),
+                exc_type=type(e).__name__,
             )
 
     logger.info("ingestion_starting")
@@ -247,7 +260,14 @@ async def run_agent() -> None:
             async def _rest_staleness_loop() -> None:
                 while True:
                     await asyncio.sleep(30)  # Check every 30s
-                    _mark_stale_rest_data(states)
+                    try:
+                        _mark_stale_rest_data(states)
+                    except Exception as e:
+                        logger.error(
+                            "rest_staleness_check_failed",
+                            error=str(e),
+                            exc_type=type(e).__name__,
+                        )
 
             tg.create_task(_rest_staleness_loop())
     except* Exception as eg:

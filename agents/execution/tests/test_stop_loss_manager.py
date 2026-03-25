@@ -15,6 +15,7 @@ class TestBuildProtectiveOrders:
         result = build_protective_orders(
             fill_side=OrderSide.BUY,
             fill_size=Decimal("2.5"),
+            fill_price=Decimal("2200"),
             stop_loss_price=Decimal("2100"),
             take_profit_price=Decimal("2400"),
         )
@@ -29,6 +30,7 @@ class TestBuildProtectiveOrders:
         result = build_protective_orders(
             fill_side=OrderSide.SELL,
             fill_size=Decimal("1.0"),
+            fill_price=Decimal("2200"),
             stop_loss_price=Decimal("2300"),
             take_profit_price=Decimal("2000"),
         )
@@ -40,6 +42,7 @@ class TestBuildProtectiveOrders:
         result = build_protective_orders(
             fill_side=OrderSide.BUY,
             fill_size=Decimal("1.0"),
+            fill_price=Decimal("2200"),
             stop_loss_price=Decimal("2100"),
             take_profit_price=Decimal("2400"),
         )
@@ -53,6 +56,7 @@ class TestBuildProtectiveOrders:
         result = build_protective_orders(
             fill_side=OrderSide.BUY,
             fill_size=Decimal("1.0"),
+            fill_price=Decimal("2200"),
             stop_loss_price=Decimal("2100"),
             take_profit_price=None,
         )
@@ -63,6 +67,7 @@ class TestBuildProtectiveOrders:
         result = build_protective_orders(
             fill_side=OrderSide.BUY,
             fill_size=Decimal("1.0"),
+            fill_price=Decimal("2200"),
             stop_loss_price=None,
             take_profit_price=Decimal("2400"),
         )
@@ -73,6 +78,7 @@ class TestBuildProtectiveOrders:
         result = build_protective_orders(
             fill_side=OrderSide.BUY,
             fill_size=Decimal("1.0"),
+            fill_price=Decimal("2200"),
             stop_loss_price=None,
             take_profit_price=None,
         )
@@ -83,6 +89,7 @@ class TestBuildProtectiveOrders:
         result = build_protective_orders(
             fill_side=OrderSide.BUY,
             fill_size=Decimal("1.0"),
+            fill_price=Decimal("2200"),
             stop_loss_price=Decimal("2100.12345"),
             take_profit_price=Decimal("2400.56789"),
         )

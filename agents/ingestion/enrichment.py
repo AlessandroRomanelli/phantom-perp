@@ -62,15 +62,18 @@ def compute_orderbook_imbalance(
 def compute_volatility_from_candles(
     candles: list[CandleResponse],
     periods: int | None = None,
+    periods_per_year: float = 8760.0,
 ) -> float:
     """Compute annualized realized volatility from candle close prices.
 
-    Uses log returns and annualizes based on the number of periods
-    that would fit in a year (assuming hourly candles = 8760 periods/year).
+    Uses log returns and annualizes based on the number of candle-sized
+    periods that fit in a year.
 
     Args:
         candles: OHLCV candles sorted by timestamp ascending.
         periods: Number of most-recent candles to use. None = all.
+        periods_per_year: Number of candle periods in one year. Must match
+            the candle granularity (e.g. 525600 for 1-min, 8760 for 1-hour).
 
     Returns:
         Annualized volatility as a float. Returns 0.0 if insufficient data.
@@ -92,8 +95,7 @@ def compute_volatility_from_candles(
         return 0.0
 
     std = float(np.std(log_returns, ddof=1))
-    # Annualize: assume hourly candles (8760 hours/year)
-    return float(std * np.sqrt(8760.0))
+    return float(std * np.sqrt(periods_per_year))
 
 
 def compute_volatility_1h(state: IngestionState) -> float:
@@ -102,7 +104,7 @@ def compute_volatility_1h(state: IngestionState) -> float:
     Uses the last 60 one-minute candles (1 hour of data).
     """
     candles = state.candles_by_granularity.get("ONE_MINUTE", [])
-    return compute_volatility_from_candles(candles, periods=60)
+    return compute_volatility_from_candles(candles, periods=60, periods_per_year=525600.0)
 
 
 def compute_volatility_24h(state: IngestionState) -> float:
@@ -111,4 +113,4 @@ def compute_volatility_24h(state: IngestionState) -> float:
     Uses the last 24 one-hour candles (24 hours of data).
     """
     candles = state.candles_by_granularity.get("ONE_HOUR", [])
-    return compute_volatility_from_candles(candles, periods=24)
+    return compute_volatility_from_candles(candles, periods=24, periods_per_year=8760.0)

@@ -28,6 +28,10 @@ from agents.ingestion.state import BookLevel, IngestionState
 
 logger = setup_logging("ws_market_data", json_output=False)
 
+# Max orderbook levels to retain per side. Prevents unbounded growth
+# from incremental L2 updates over 24/7 operation.
+_MAX_BOOK_LEVELS = 50
+
 
 def _to_decimal(value: Any) -> Decimal | None:
     """Safely convert a value to Decimal, returning None on failure."""
@@ -331,6 +335,11 @@ def _apply_level_update(
     if size > 0:
         levels.append(BookLevel(price=price, size=size))
         levels.sort(key=lambda lvl: lvl.price, reverse=reverse)
+
+    # Cap book depth to prevent unbounded growth over 24/7 operation.
+    # 50 levels is more than sufficient for spread/imbalance calculations.
+    if len(levels) > _MAX_BOOK_LEVELS:
+        del levels[_MAX_BOOK_LEVELS:]
 
 
 async def run_ws_market_data(

@@ -46,8 +46,10 @@ class PortfolioRouter:
             PortfolioTarget.A for autonomous execution,
             PortfolioTarget.B for user-confirmed execution.
         """
-        # If the strategy itself suggests a target, check if we should honor it
-        if signal.suggested_target is not None and not self._rules:
+        # If the strategy explicitly suggests a target, honor it.
+        # This respects per-strategy conviction thresholds: a strategy that
+        # sets suggested_target=B is saying "my conviction is too low for A".
+        if signal.suggested_target is not None:
             return signal.suggested_target
 
         # Rule 1: Short time horizon → A
@@ -77,6 +79,10 @@ class PortfolioRouter:
         Returns:
             Tuple of (target, human-readable reason).
         """
+        if signal.suggested_target is not None:
+            label = "A" if signal.suggested_target == PortfolioTarget.A else "B"
+            return signal.suggested_target, f"Strategy suggested target ({label})"
+
         if signal.time_horizon < _DEFAULT_SHORT_HORIZON_THRESHOLD:
             return PortfolioTarget.A, f"Short time horizon ({signal.time_horizon})"
 

@@ -8,23 +8,22 @@ parameters:
   imbalance_threshold: 0.25
   max_spread_bps: 20.0
   atr_period: 14
-  stop_loss_atr_mult: 1.5
-  take_profit_atr_mult: 2.0
+  stop_loss_atr_mult: 2.5
+  take_profit_atr_mult: 3.0
   min_conviction: 0.45
   cooldown_bars: 3
   portfolio_a_min_conviction: 0.65
 
 instruments:
   ETH-PERP:
-    imbalance_threshold: 0.25
-    max_spread_bps: 15.0
+    # Disabled: net loser on Portfolio A (-$331 net P&L on 31 round trips)
+    enabled: false
   BTC-PERP:
     imbalance_threshold: 0.30
     max_spread_bps: 10.0
   SOL-PERP:
-    imbalance_threshold: 0.20
-    max_spread_bps: 25.0
-    min_conviction: 0.50
+    # Disabled: net loser on Portfolio A (-$17.66 net P&L on 36 round trips)
+    enabled: false
   QQQ-PERP:
     imbalance_threshold: 0.30
     max_spread_bps: 30.0

@@ -121,8 +121,14 @@ class PaperPortfolioStateFetcher:
                         funding_pnl_today_usdc=Decimal(str(data.get("funding_pnl_today_usdc", "0"))),
                         fees_paid_today_usdc=Decimal(str(data.get("fees_paid_today_usdc", "0"))),
                     )
-        except Exception:
-            pass
+        except Exception as exc:
+            import structlog
+            structlog.get_logger("risk_agent").warning(
+                "paper_portfolio_fetch_error",
+                portfolio=target.value,
+                error=str(exc),
+                exc_type=type(exc).__name__,
+            )
         return self._defaults[target]
 from agents.risk.position_sizer import compute_position_size
 from libs.storage.models import OrderSignalRecord
@@ -224,6 +230,16 @@ class RiskEngine:
             )
 
         # ------------------------------------------------------------------
+        # 4a. Zero/negative equity — automatic rejection
+        # ------------------------------------------------------------------
+        if portfolio_state.equity_usdc <= 0:
+            return RiskCheckResult(
+                approved=False,
+                rejection_reason="portfolio_equity_zero_or_negative",
+                critical=True,
+            )
+
+        # ------------------------------------------------------------------
         # 4. Daily loss kill switch
         # ------------------------------------------------------------------
         if portfolio_state.equity_usdc > 0:
@@ -259,7 +275,7 @@ class RiskEngine:
                 )
 
         # ------------------------------------------------------------------
-        # 6. Max concurrent positions
+        # 6. Max concurrent positions + same-instrument stacking guard
         # ------------------------------------------------------------------
         open_positions = portfolio_state.open_positions
         if len(open_positions) >= limits.max_concurrent_positions:
@@ -270,6 +286,17 @@ class RiskEngine:
                     f">= limit {limits.max_concurrent_positions}"
                 ),
             )
+
+        # Reject if there is already an open position on the same instrument
+        for pos in open_positions:
+            if pos.instrument == idea.instrument:
+                return RiskCheckResult(
+                    approved=False,
+                    rejection_reason=(
+                        f"Already have open {pos.side.value} position on "
+                        f"{idea.instrument} (size={pos.size})"
+                    ),
+                )
 
         # ------------------------------------------------------------------
         # 7. Position sizing
@@ -501,6 +528,7 @@ async def run_agent() -> None:
     )
 
     is_paper = settings.infra.environment == "paper"
+    client_pool: CoinbaseClientPool | None = None
 
     if is_paper:
         fetcher = PaperPortfolioStateFetcher(settings.infra.redis_url)
@@ -572,8 +600,30 @@ async def run_agent() -> None:
                 if funding_rate:
                     latest_funding_rate = funding_rate
 
-                # Fetch live portfolio state from Coinbase
-                portfolio_state = await fetcher.fetch(idea.portfolio_target)
+                # Fetch live portfolio state from Coinbase (with timeout)
+                try:
+                    portfolio_state = await asyncio.wait_for(
+                        fetcher.fetch(idea.portfolio_target),
+                        timeout=15.0,
+                    )
+                except asyncio.TimeoutError:
+                    log.warning(
+                        "portfolio_fetch_timeout",
+                        portfolio=idea.portfolio_target.value,
+                        idea_id=idea.idea_id,
+                    )
+                    await consumer.ack(channel, "risk_agent", msg_id)
+                    continue
+                except Exception as exc:
+                    log.warning(
+                        "portfolio_fetch_error",
+                        portfolio=idea.portfolio_target.value,
+                        idea_id=idea.idea_id,
+                        error=str(exc),
+                        exc_type=type(exc).__name__,
+                    )
+                    await consumer.ack(channel, "risk_agent", msg_id)
+                    continue
 
                 # Run risk evaluation
                 result = engine.evaluate(
@@ -665,7 +715,8 @@ async def run_agent() -> None:
         await consumer.close()
         await publisher.close()
         await db_store.close()
-        await client_pool.close()
+        if client_pool is not None:
+            await client_pool.close()
 
 
 def main() -> None:

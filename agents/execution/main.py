@@ -1,4 +1,4 @@
-"""Execution agent — places orders on Coinbase INTX.
+"""Execution agent — places orders on Coinbase Advanced.
 
 Subscribes to:
   - stream:approved_orders:a  (Portfolio A — immediate, from risk agent)
@@ -16,6 +16,7 @@ Modes:
 from __future__ import annotations
 
 import asyncio
+import signal
 import sys
 from dataclasses import dataclass
 from datetime import datetime
@@ -182,7 +183,13 @@ async def fetch_latest_market(
     market = LatestMarket()
     # Scan enough entries to find the target instrument (snapshots cycle through 5 instruments)
     count = 1 if not instrument else 20
-    entries = await redis.xrevrange(Channel.MARKET_SNAPSHOTS, count=count)
+    try:
+        entries = await asyncio.wait_for(
+            redis.xrevrange(Channel.MARKET_SNAPSHOTS, count=count),
+            timeout=5.0,
+        )
+    except asyncio.TimeoutError:
+        return market
     if not entries:
         return market
     for _, fields in entries:
@@ -377,7 +384,7 @@ async def _execute_with_retry(
             return response, current_plan.is_maker
 
         except Exception as e:
-            decision = evaluate_retry(e, attempt, config, current_plan)
+            decision = evaluate_retry(e, attempt, config, current_plan, side=side)
             if not decision.should_retry:
                 logger.error(
                     "order_placement_failed",
@@ -421,6 +428,7 @@ async def _place_protective_orders(
     protective = build_protective_orders(
         fill_side=fill_side,
         fill_size=fill_size,
+        fill_price=fill_price,
         stop_loss_price=stop_loss,
         take_profit_price=take_profit,
     )
@@ -521,6 +529,11 @@ async def run_agent() -> None:
 
     cb = CircuitBreaker()
 
+    # Track processed order IDs for deduplication on redelivery
+    processed_order_ids: set[str] = set()
+    # Cap the dedup set to prevent unbounded memory growth
+    _DEDUP_SET_MAX = 10_000
+
     channel_a = Channel.approved_orders(PortfolioTarget.A)
     channel_b = Channel.confirmed_orders()
 
@@ -529,6 +542,17 @@ async def run_agent() -> None:
         group="execution_agent",
         consumer_name="execution-0",
     )
+
+    # Register graceful shutdown on SIGTERM (Docker stop)
+    shutdown_event = asyncio.Event()
+
+    def _signal_handler() -> None:
+        logger.info("shutdown_signal_received")
+        shutdown_event.set()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, _signal_handler)
 
     logger.info(
         "execution_agent_started",
@@ -545,6 +569,10 @@ async def run_agent() -> None:
 
     try:
         async for channel, msg_id, payload in consumer.listen():
+            # Check for graceful shutdown between messages
+            if shutdown_event.is_set():
+                logger.info("graceful_shutdown_initiated")
+                break
             try:
                 # -----------------------------------------------------------
                 # 1. Deserialize the order based on which stream it came from
@@ -576,6 +604,16 @@ async def run_agent() -> None:
                     reduce_only = approved.reduce_only
                     source_label = "confirmation_agent"
                 else:
+                    await consumer.ack(channel, "execution_agent", msg_id)
+                    continue
+
+                # Deduplication: skip orders already processed (redelivery after crash)
+                if order_id in processed_order_ids:
+                    logger.info(
+                        "order_deduplicated",
+                        order_id=order_id,
+                        source=source_label,
+                    )
                     await consumer.ack(channel, "execution_agent", msg_id)
                     continue
 
@@ -668,6 +706,14 @@ async def run_agent() -> None:
                         order_id=order_id,
                         reason="all_retries_exhausted",
                     )
+                    # Track consecutive rejections for auto-trip
+                    trip_event = cb.record_rejection(portfolio_target)
+                    if trip_event:
+                        logger.warning(
+                            "circuit_breaker_auto_tripped",
+                            portfolio=portfolio_target.value,
+                            reason=trip_event.reason,
+                        )
                     await consumer.ack(channel, "execution_agent", msg_id)
                     continue
 
@@ -681,12 +727,24 @@ async def run_agent() -> None:
                     is_maker=was_maker,
                 )
 
+                # Reset rejection counter on successful exchange response
+                cb.record_success(portfolio_target)
+
                 if fill:
-                    # In paper mode, the reconciliation paper simulator publishes
                     # fills — skip here to avoid duplicates in exchange_events.
                     if not is_paper:
                         events_channel = Channel.exchange_events(portfolio_target)
-                        await publisher.publish(events_channel, fill_to_dict(fill))
+                        try:
+                            await publisher.publish(events_channel, fill_to_dict(fill))
+                        except Exception as pub_err:
+                            logger.error(
+                                "fill_publish_failed",
+                                order_id=order_id,
+                                fill_id=fill.fill_id,
+                                channel=events_channel,
+                                error=str(pub_err),
+                            )
+                            # Don't ack — let message redeliver so fill isn't lost
                     fill_count += 1
                     # Persist fill to PostgreSQL
                     try:
@@ -778,6 +836,14 @@ async def run_agent() -> None:
                         exchange_order_id=response.order_id,
                     )
 
+                # Track this order as processed for deduplication
+                processed_order_ids.add(order_id)
+                if len(processed_order_ids) > _DEDUP_SET_MAX:
+                    # Evict oldest entries (set is unordered, but this bounds memory)
+                    to_remove = len(processed_order_ids) - _DEDUP_SET_MAX
+                    for _ in range(to_remove):
+                        processed_order_ids.pop()
+
             except (KeyError, ValueError) as e:
                 logger.warning(
                     "order_deserialize_error",
@@ -791,7 +857,15 @@ async def run_agent() -> None:
                     error_type=type(e).__name__,
                 )
 
-            await consumer.ack(channel, "execution_agent", msg_id)
+            try:
+                await consumer.ack(channel, "execution_agent", msg_id)
+            except Exception as ack_err:
+                logger.warning(
+                    "ack_failed",
+                    msg_id=msg_id,
+                    channel=channel,
+                    error=str(ack_err),
+                )
 
             if order_count % 50 == 0:
                 logger.info(

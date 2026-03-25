@@ -188,7 +188,9 @@ def _weighted_conviction(
     if not signals:
         return 0.0
     total = 0.0
+    weight_sum = 0.0
     for s in signals:
         w = _signal_weight(s, regime, scorecard)
         total += s.conviction * w
-    return total / len(signals)
+        weight_sum += w
+    return total / weight_sum if weight_sum > 0 else 0.0

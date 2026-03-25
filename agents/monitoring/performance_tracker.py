@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
+
+# Keep 48h of equity samples (at 30s polling = ~5760 samples).
+# Enough for Sharpe computation and drawdown tracking without unbounded growth.
+MAX_EQUITY_SAMPLES = 5760
+
+# Keep at most 1000 trade results for win/loss tracking (rolling window).
+MAX_TRADE_RESULTS = 1000
 
 
 @dataclass(slots=True)
@@ -38,11 +46,19 @@ class PerformanceTracker:
 
     Call record_equity() with each PortfolioSnapshot to accumulate the
     equity curve.  Call summary() at any time for current metrics.
+
+    Equity samples are capped at MAX_EQUITY_SAMPLES to prevent unbounded
+    memory growth during 24/7 operation. Peak/trough/drawdown stats are
+    maintained incrementally so they survive pruning.
     """
 
     starting_equity_usdc: Decimal
-    _samples: list[EquitySample] = field(default_factory=list)
-    _trade_results: list[Decimal] = field(default_factory=list)
+    _samples: deque[EquitySample] = field(
+        default_factory=lambda: deque(maxlen=MAX_EQUITY_SAMPLES),
+    )
+    _trade_results: deque[Decimal] = field(
+        default_factory=lambda: deque(maxlen=MAX_TRADE_RESULTS),
+    )
     _peak_equity: Decimal = Decimal("0")
     _trough_equity: Decimal | None = None
     _max_drawdown_pct: float = 0.0

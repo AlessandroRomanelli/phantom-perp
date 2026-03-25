@@ -82,8 +82,8 @@ Plans:
   4. Every Claude recommendation is clipped to hard bounds before being applied — no recommendation can bypass the bounds layer
 **Plans**: 2 plans
 Plans:
-- [ ] 13-01-PLAN.md — [To be planned]
-- [ ] 13-02-PLAN.md — [To be planned]
+- [x] 13-01-PLAN.md — Claude client: prompt builder, Anthropic SDK caller with forced tool use, response parser (TDD)
+- [ ] 13-02-PLAN.md — Recommender: validation pipeline (clip/reject/coerce), tuning cycle orchestrator, audit logging (TDD)
 **UI hint**: no
 
 ### Phase 14: Docker Infrastructure
@@ -97,8 +97,8 @@ Plans:
   4. Tuner Dockerfile builds successfully using the same Python 3.13-slim base and layer-caching pattern as existing agent images
 **Plans**: 2 plans
 Plans:
-- [ ] 14-01-PLAN.md — [To be planned]
-- [ ] 14-02-PLAN.md — [To be planned]
+- [x] 14-01-PLAN.md — Tuner entrypoint (bootstrap, DB fetch, exit codes), Dockerfile (python:3.13-slim, no TA-Lib), pyproject.toml tuner dep group
+- [ ] 14-02-PLAN.md — Scheduler container (alpine + crond + docker-cli), compose integration (tuner + scheduler + strategy_configs volume)
 
 ### Phase 15: Telegram Notifications & End-to-End Acceptance
 **Goal**: Operator receives a Telegram message each day with every parameter change and Claude's reasoning, and the full pipeline passes end-to-end acceptance
@@ -124,7 +124,7 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15
 |-------|-----------|----------------|--------|-----------|
 | 10. PostgreSQL Data Pipeline | v1.2 | 2/2 | Complete    | 2026-03-24 |
 | 11. Metrics Engine | v1.2 | 2/2 | Complete    | 2026-03-25 |
-| 12. Safety & Bounds | v1.2 | 2/2 | Complete   | 2026-03-25 |
-| 13. Claude Integration | v1.2 | 0/2 | Not started | - |
-| 14. Docker Infrastructure | v1.2 | 0/2 | Not started | - |
+| 12. Safety & Bounds | v1.2 | 2/2 | Complete    | 2026-03-25 |
+| 13. Claude Integration | v1.2 | 1/2 | Complete    | 2026-03-25 |
+| 14. Docker Infrastructure | v1.2 | 1/2 | In Progress|  |
 | 15. Telegram Notifications & End-to-End Acceptance | v1.2 | 0/2 | Not started | - |

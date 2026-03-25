@@ -7,7 +7,7 @@ from decimal import Decimal
 from libs.common.models.enums import PositionSide
 
 # Maintenance margin rate as a fraction of notional.
-# Coinbase INTX uses a tiered system; 1% is a conservative estimate for
+# Coinbase Advanced uses a tiered system; 1% is a conservative estimate for
 # typical ETH-PERP position sizes the system will hold.
 MAINTENANCE_MARGIN_RATE = Decimal("0.01")
 

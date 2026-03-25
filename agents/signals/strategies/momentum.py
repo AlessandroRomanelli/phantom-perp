@@ -227,7 +227,7 @@ class MomentumStrategy(SignalStrategy):
 
         # Compute adaptive conviction (MOM-02)
         conviction = self._compute_conviction(
-            cur_adx if adx_valid else 25.0,
+            cur_adx if adx_valid else 20.0,
             cur_rsi if rsi_valid else 50.0,
             bullish_cross,
             volume_ratio=volume_ratio,
@@ -345,16 +345,16 @@ class MomentumStrategy(SignalStrategy):
           - Volume/volatility component (0-0.30): combines volume_ratio and ATR percentile.
         """
         # ADX component: stronger trend = higher conviction (0 to 0.35)
-        adx_score = min((adx_value - 20.0) / 60.0 * 0.35 / 0.5, 0.35)
+        adx_score = min((adx_value - 20.0) / 60.0 * 0.35, 0.35)
         adx_score = max(adx_score, 0.0)
 
         # RSI component: RSI alignment with direction (0 to 0.35)
         if is_bullish:
             # For bullish: RSI 30-50 is ideal (not overbought, room to run)
-            rsi_score = max(0.0, min((70.0 - rsi_value) / 80.0 * 0.35 / 0.5, 0.35))
+            rsi_score = max(0.0, min((70.0 - rsi_value) / 80.0 * 0.35, 0.35))
         else:
             # For bearish: RSI 50-70 is ideal
-            rsi_score = max(0.0, min((rsi_value - 30.0) / 80.0 * 0.35 / 0.5, 0.35))
+            rsi_score = max(0.0, min((rsi_value - 30.0) / 80.0 * 0.35, 0.35))
 
         # Volume/volatility component (0 to 0.30)
         # Volume ratio contribution: higher volume = higher conviction

@@ -139,10 +139,20 @@ async def run_agent() -> None:
             if channel == Channel.MARKET_SNAPSHOTS:
                 try:
                     snapshot = deserialize_snapshot(payload)
-                    regime_detector.update(snapshot)
-                    snapshot_count += 1
                 except (KeyError, ValueError) as e:
                     logger.warning("snapshot_deserialize_error", error=str(e))
+                    await consumer.ack(channel, "alpha_agent", msg_id)
+                    continue
+                try:
+                    regime_detector.update(snapshot)
+                except Exception as e:
+                    logger.warning(
+                        "regime_update_error",
+                        instrument=snapshot.instrument,
+                        error=str(e),
+                        exc_type=type(e).__name__,
+                    )
+                snapshot_count += 1
             elif channel == Channel.SIGNALS:
                 try:
                     signal = deserialize_signal(payload)
@@ -152,7 +162,18 @@ async def run_agent() -> None:
                     continue
 
                 signal_count += 1
-                ideas = combiner.add_signal(signal)
+                try:
+                    ideas = combiner.add_signal(signal)
+                except Exception as e:
+                    logger.warning(
+                        "signal_combination_error",
+                        signal_id=signal.signal_id,
+                        instrument=signal.instrument,
+                        error=str(e),
+                        exc_type=type(e).__name__,
+                    )
+                    await consumer.ack(channel, "alpha_agent", msg_id)
+                    continue
 
                 for idea in ideas:
                     target_channel = Channel.ranked_ideas(idea.portfolio_target)

@@ -3,7 +3,7 @@
 
 **Phantom Perp — Strategy Enhancement**
 
-A trading strategy improvement project for the Phantom Perp system — an event-driven, multi-agent perpetual futures trading bot on Coinbase INTX. The goal is to make the existing 5 strategies smarter and more active, add proven new strategies that fill signal gaps, and tune everything per-instrument across 5 perpetual contracts (ETH, BTC, SOL, QQQ, SPY).
+A trading strategy improvement project for the Phantom Perp system — an event-driven, multi-agent perpetual futures trading bot on Coinbase Advanced. The goal is to make the existing 5 strategies smarter and more active, add proven new strategies that fill signal gaps, and tune everything per-instrument across 5 perpetual contracts (ETH, BTC, SOL, QQQ, SPY).
 
 **Core Value:** Better signal quality and broader market coverage — the bot should trade smarter when it fires and fire more often by capturing opportunities the current strategies miss (low-vol periods, funding rate dislocations, orderbook flow, volume-based entries).
 
@@ -31,7 +31,7 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - Production: Pre-built Docker images for `linux/amd64`
 ## Frameworks
 - `python-telegram-bot` (21+) - Telegram bot integration for Portfolio B confirmations
-- `httpx` (0.27+) - Async REST client for Coinbase INTX API
+- `httpx` (0.27+) - Async REST client for Coinbase Advanced API
 - `websockets` (13+) - Async WebSocket client for Coinbase real-time feeds
 - `polars` (1.0+) - Primary for speed-critical 24/7 data paths
 - `pandas` - Compatibility/fallback (used via polars where possible)
@@ -58,7 +58,7 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - Docker & Docker Compose - Local dev and production orchestration
 - `Dockerfile` per agent with layer caching optimization
 ## Key Dependencies
-- `httpx` + `websockets` - Exchange connectivity (Coinbase INTX)
+- `httpx` + `websockets` - Exchange connectivity (Coinbase Advanced)
 - `redis` - Message broker (Redis Streams)
 - `SQLAlchemy` + `asyncpg` - Persistent state (PostgreSQL + TimescaleDB)
 - `python-telegram-bot` - Portfolio B confirmations (user interaction)
@@ -87,7 +87,7 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - Python 3.12+
 - Docker & Docker Compose
 - ~500MB RAM minimum (single container)
-- Internet connectivity for Coinbase INTX API
+- Internet connectivity for Coinbase Advanced API
 - Linux `x86_64` (amd64) — images pre-compiled for this architecture
 - Docker runtime
 - Redis 7-alpine (in-memory, 64MB max with LRU eviction)
@@ -257,7 +257,7 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - 24/7 operational model with no market-close downtime
 - Safety-critical architecture with non-negotiable guardrails (hardcoded, not configurable)
 ## Layers
-- Purpose: Ingest real-time market data (orderbook, trades, candles, funding rates) from Coinbase INTX and external enrichment sources
+- Purpose: Ingest real-time market data (orderbook, trades, candles, funding rates) from Coinbase Advanced and external enrichment sources
 - Location: `agents/ingestion/`
 - Contains: WebSocket and REST polling modules that consume Coinbase APIs and external data providers, normalize to unified `MarketSnapshot` model
 - Depends on: Coinbase REST/WS clients (`libs/coinbase/`), Redis for publishing

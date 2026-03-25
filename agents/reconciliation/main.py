@@ -1,6 +1,6 @@
 """Reconciliation agent — queries Coinbase portfolios and publishes state.
 
-Periodically polls the Coinbase INTX REST API for each portfolio's
+Periodically polls the Coinbase Advanced REST API for each portfolio's
 equity, margin, and positions, then publishes PortfolioSnapshot objects
 to stream:portfolio_state:a and stream:portfolio_state:b.
 
@@ -158,6 +158,8 @@ async def poll_portfolio(
     client: CoinbaseRESTClient,
     target: PortfolioTarget,
     publisher: RedisPublisher,
+    *,
+    expected_portfolio_id: str | None = None,
 ) -> None:
     """Query Coinbase for a single portfolio's state and publish a snapshot.
 
@@ -176,21 +178,50 @@ async def poll_portfolio(
     try:
         position_resps = await client.get_positions()
     except (CoinbaseAPIError, RateLimitExceededError) as e:
-        logger.warning("positions_fetch_failed", portfolio=target.value, error=str(e))
-        position_resps = []
+        logger.warning(
+            "positions_fetch_failed",
+            portfolio=target.value,
+            error=str(e),
+            msg="Skipping snapshot publish — positions data unavailable",
+        )
+        return
     except Exception as e:
-        logger.error("positions_fetch_error", portfolio=target.value, error=str(e))
-        position_resps = []
+        logger.error(
+            "positions_fetch_error",
+            portfolio=target.value,
+            error=str(e),
+            msg="Skipping snapshot publish — positions data unavailable",
+        )
+        return
 
-    snapshot = build_portfolio_snapshot(
-        portfolio_resp=portfolio_resp,
-        position_resps=position_resps,
-        portfolio_target=target,
-    )
+    try:
+        snapshot = build_portfolio_snapshot(
+            portfolio_resp=portfolio_resp,
+            position_resps=position_resps,
+            portfolio_target=target,
+            expected_portfolio_id=expected_portfolio_id,
+        )
+    except Exception as e:
+        logger.error(
+            "snapshot_build_failed",
+            portfolio=target.value,
+            error=str(e),
+            exc_type=type(e).__name__,
+        )
+        return
 
     channel = Channel.portfolio_state(target)
     payload = portfolio_snapshot_to_dict(snapshot)
-    await publisher.publish(channel, payload)
+    try:
+        await publisher.publish(channel, payload)
+    except Exception as e:
+        logger.error(
+            "snapshot_publish_failed",
+            portfolio=target.value,
+            error=str(e),
+            exc_type=type(e).__name__,
+        )
+        return
 
     position_count = len(snapshot.open_positions)
     logger.info(
@@ -208,13 +239,40 @@ async def run_portfolio_poller(
     client: CoinbaseRESTClient,
     target: PortfolioTarget,
     publisher: RedisPublisher,
+    *,
+    expected_portfolio_id: str | None = None,
 ) -> None:
     """Continuously poll a single portfolio at a fixed interval."""
     label = target.value
     logger.info("portfolio_poller_started", portfolio=label, interval=POLL_INTERVAL)
+    consecutive_failures = 0
 
     while True:
-        await poll_portfolio(client, target, publisher)
+        try:
+            await poll_portfolio(
+                client, target, publisher, expected_portfolio_id=expected_portfolio_id,
+            )
+            consecutive_failures = 0
+        except Exception as e:
+            consecutive_failures += 1
+            logger.error(
+                "poll_portfolio_unexpected_error",
+                portfolio=label,
+                error=str(e),
+                exc_type=type(e).__name__,
+                consecutive_failures=consecutive_failures,
+            )
+            # Back off on repeated failures to avoid tight error loops
+            if consecutive_failures >= 5:
+                backoff = min(consecutive_failures * POLL_INTERVAL, 300)
+                logger.warning(
+                    "poll_portfolio_backoff",
+                    portfolio=label,
+                    backoff_seconds=backoff,
+                    consecutive_failures=consecutive_failures,
+                )
+                await asyncio.sleep(backoff)
+                continue
         await asyncio.sleep(POLL_INTERVAL)
 
 
@@ -286,12 +344,14 @@ async def run_agent() -> None:
         async with asyncio.TaskGroup() as tg:
             # Always poll Portfolio A
             tg.create_task(
-                run_portfolio_poller(client_a, PortfolioTarget.A, publisher),
+                run_portfolio_poller(
+                    client_a, PortfolioTarget.A, publisher,
+                    expected_portfolio_id=portfolio_a_id,
+                ),
             )
 
-            # Poll Portfolio B only if configured
+            # Poll Portfolio B only if configured with its own dedicated API key
             if portfolio_b_id:
-                # Use separate auth if B has its own keys, otherwise reuse A's
                 if settings.coinbase.api_key_b:
                     auth_b = CoinbaseAuth(
                         api_key=settings.coinbase.api_key_b,
@@ -302,12 +362,19 @@ async def run_agent() -> None:
                         base_url=settings.coinbase.rest_url,
                         rate_limiter=RateLimiter(),
                     )
+                    tg.create_task(
+                        run_portfolio_poller(
+                            client_b, PortfolioTarget.B, publisher,
+                            expected_portfolio_id=portfolio_b_id,
+                        ),
+                    )
                 else:
-                    client_b = client_a
-
-                tg.create_task(
-                    run_portfolio_poller(client_b, PortfolioTarget.B, publisher),
-                )
+                    logger.critical(
+                        "portfolio_b_missing_api_key",
+                        msg="Portfolio B ID is configured but API key is missing. "
+                        "Refusing to start Portfolio B poller — would query Portfolio A data.",
+                        portfolio_b_id=portfolio_b_id,
+                    )
             else:
                 logger.info("portfolio_b_not_configured", msg="skipping Portfolio B polling")
 

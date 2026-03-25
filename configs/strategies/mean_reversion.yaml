@@ -12,12 +12,12 @@ parameters:
   adx_period: 14
   adx_max: 40.0
   atr_period: 14
-  stop_loss_atr_mult: 1.5
+  stop_loss_atr_mult: 2.5
   min_conviction: 0.35
   cooldown_bars: 8
   trend_reject_threshold: 0.6
   extended_deviation_threshold: 0.5
-  portfolio_a_min_conviction: 0.65
+  portfolio_a_min_conviction: 0.55
   vol_lookback: 10
 
 instruments:

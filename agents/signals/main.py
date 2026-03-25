@@ -9,6 +9,7 @@ StandardSignals to stream:signals.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import sys
 from dataclasses import replace
 from datetime import datetime, timedelta
@@ -346,9 +347,18 @@ async def run_agent() -> None:
     consumer = RedisConsumer(redis_url=settings.infra.redis_url)
     publisher = RedisPublisher(redis_url=settings.infra.redis_url)
 
-    # Per-instrument feature stores
-    stores: dict[str, FeatureStore] = {
-        iid: FeatureStore(sample_interval=timedelta(seconds=30))
+    # Per-instrument feature stores: slow (5 min) for trend/reversion strategies,
+    # fast (30s) for high-frequency strategies like orderbook_imbalance.
+    _SLOW_INTERVAL = timedelta(seconds=300)  # 5 min bars
+    _FAST_INTERVAL = timedelta(seconds=30)   # 30s bars
+    _FAST_STRATEGIES = frozenset({"orderbook_imbalance", "liquidation_cascade"})
+
+    slow_stores: dict[str, FeatureStore] = {
+        iid: FeatureStore(sample_interval=_SLOW_INTERVAL)
+        for iid in instrument_ids
+    }
+    fast_stores: dict[str, FeatureStore] = {
+        iid: FeatureStore(sample_interval=_FAST_INTERVAL)
         for iid in instrument_ids
     }
 
@@ -365,6 +375,13 @@ async def run_agent() -> None:
             strategies=[s.name for s in strats],
         )
 
+    logger.info(
+        "feature_store_config",
+        slow_interval_sec=_SLOW_INTERVAL.total_seconds(),
+        fast_interval_sec=_FAST_INTERVAL.total_seconds(),
+        fast_strategies=sorted(_FAST_STRATEGIES),
+    )
+
     await consumer.subscribe(
         channels=[Channel.MARKET_SNAPSHOTS],
         group="signals_agent",
@@ -377,112 +394,152 @@ async def run_agent() -> None:
     try:
         async for channel, msg_id, payload in consumer.listen():
             try:
-                snapshot = deserialize_snapshot(payload)
-            except (KeyError, ValueError) as e:
-                logger.warning("snapshot_deserialize_error", error=str(e))
-                await consumer.ack(channel, "signals_agent", msg_id)
-                continue
-
-            # Route to the correct per-instrument feature store
-            instrument = snapshot.instrument
-            store = stores.get(instrument)
-            if store is None:
-                await consumer.ack(channel, "signals_agent", msg_id)
-                continue
-
-            store.update(snapshot)
-            snapshot_count += 1
-
-            # Classify current session for session-aware overrides
-            session_info = classify_session(snapshot.timestamp)
-
-            # Run this instrument's strategies
-            for strategy in strategies_by_instrument.get(instrument, []):
-                if store.sample_count < strategy.min_history:
+                try:
+                    snapshot = deserialize_snapshot(payload)
+                except (KeyError, ValueError) as e:
+                    logger.warning("snapshot_deserialize_error", error=str(e))
+                    await consumer.ack(channel, "signals_agent", msg_id)
                     continue
 
-                # Apply session overrides temporarily
-                overrides = get_session_overrides(
-                    session_config, strategy.name, session_info.session_type, instrument,
-                )
-                originals = _apply_session_overrides(strategy, overrides)
+                # Route to the correct per-instrument feature stores
+                instrument = snapshot.instrument
+                slow_store = slow_stores.get(instrument)
+                fast_store = fast_stores.get(instrument)
+                if slow_store is None or fast_store is None:
+                    await consumer.ack(channel, "signals_agent", msg_id)
+                    continue
 
-                try:
-                    signals = strategy.evaluate(snapshot, store)
-                except Exception as e:
-                    logger.error(
-                        "strategy_error",
-                        strategy=strategy.name,
-                        instrument=instrument,
-                        error=str(e),
+                slow_store.update(snapshot)
+                fast_store.update(snapshot)
+                snapshot_count += 1
+
+                # Classify current session for session-aware overrides
+                session_info = classify_session(snapshot.timestamp)
+
+                # Run this instrument's strategies
+                for strategy in strategies_by_instrument.get(instrument, []):
+                    store = fast_store if strategy.name in _FAST_STRATEGIES else slow_store
+                    if store.sample_count < strategy.min_history:
+                        continue
+
+                    # Apply session overrides temporarily
+                    overrides = get_session_overrides(
+                        session_config, strategy.name, session_info.session_type, instrument,
                     )
-                    signals = []
-                finally:
-                    # Restore original params after evaluation
-                    _restore_params(strategy, originals)
+                    originals = _apply_session_overrides(strategy, overrides)
 
-                for signal in signals:
-                    # Apply conviction normalization and unified routing
-                    signal = _apply_conviction_normalization(signal)
-
-                    await publisher.publish(
-                        Channel.SIGNALS,
-                        signal_to_dict(signal),
-                    )
                     try:
-                        await repo.write_signal(SignalRecord(
-                            signal_id=signal.signal_id,
-                            timestamp=signal.timestamp,
+                        signals = strategy.evaluate(snapshot, store)
+                    except Exception as e:
+                        logger.error(
+                            "strategy_error",
+                            strategy=strategy.name,
+                            instrument=instrument,
+                            error=str(e),
+                        )
+                        signals = []
+                    finally:
+                        # Restore original params after evaluation
+                        _restore_params(strategy, originals)
+
+                    for signal in signals:
+                        # Apply conviction normalization and unified routing
+                        signal = _apply_conviction_normalization(signal)
+
+                        try:
+                            await publisher.publish(
+                                Channel.SIGNALS,
+                                signal_to_dict(signal),
+                            )
+                        except Exception as exc:
+                            logger.error(
+                                "signal_publish_failed",
+                                signal_id=signal.signal_id,
+                                instrument=signal.instrument,
+                                error=str(exc),
+                                exc_type=type(exc).__name__,
+                            )
+                            continue
+                        try:
+                            await repo.write_signal(SignalRecord(
+                                signal_id=signal.signal_id,
+                                timestamp=signal.timestamp,
+                                instrument=signal.instrument,
+                                source=signal.source.value,
+                                direction=signal.direction.value,
+                                conviction=signal.conviction,
+                                time_horizon_seconds=int(
+                                    signal.time_horizon.total_seconds()
+                                ),
+                                reasoning=signal.reasoning,
+                                entry_price=signal.entry_price,
+                            ))
+                        except SQLAlchemyError as exc:
+                            logger.warning(
+                                "signal_db_write_failed",
+                                signal_id=signal.signal_id,
+                                error=str(exc),
+                                exc_type=type(exc).__name__,
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                "signal_db_write_failed",
+                                signal_id=signal.signal_id,
+                                error=str(exc),
+                                exc_type=type(exc).__name__,
+                            )
+                        signal_count += 1
+                        logger.info(
+                            "signal_emitted",
+                            strategy=strategy.name,
                             instrument=signal.instrument,
-                            source=signal.source.value,
                             direction=signal.direction.value,
                             conviction=signal.conviction,
-                            time_horizon_seconds=int(signal.time_horizon.total_seconds()),
-                            reasoning=signal.reasoning,
-                            entry_price=signal.entry_price,
-                        ))
-                    except SQLAlchemyError as exc:
-                        logger.warning(
-                            "signal_db_write_failed",
-                            signal_id=signal.signal_id,
-                            error=str(exc),
-                            exc_type=type(exc).__name__,
+                            conviction_band=signal.metadata.get("conviction_band"),
+                            entry=str(signal.entry_price),
+                        )
+
+                await consumer.ack(channel, "signals_agent", msg_id)
+
+                if snapshot_count % 500 == 0:
+                    slow_counts = {
+                        iid: s.sample_count for iid, s in slow_stores.items()
+                    }
+                    fast_counts = {
+                        iid: s.sample_count for iid, s in fast_stores.items()
+                    }
+                    logger.info(
+                        "signals_progress",
+                        snapshots=snapshot_count,
+                        signals_emitted=signal_count,
+                        store_samples_slow=slow_counts,
+                        store_samples_fast=fast_counts,
+                    )
+                    try:
+                        # Publish to Redis hash for dashboard visibility
+                        await publisher._redis.hset(
+                            "phantom:feature_store_status",
+                            mapping={
+                                f"{k}:slow": str(v) for k, v in slow_counts.items()
+                            } | {
+                                f"{k}:fast": str(v) for k, v in fast_counts.items()
+                            },
                         )
                     except Exception as exc:
                         logger.warning(
-                            "signal_db_write_failed",
-                            signal_id=signal.signal_id,
+                            "feature_store_status_publish_failed",
                             error=str(exc),
                             exc_type=type(exc).__name__,
                         )
-                    signal_count += 1
-                    logger.info(
-                        "signal_emitted",
-                        strategy=strategy.name,
-                        instrument=signal.instrument,
-                        direction=signal.direction.value,
-                        conviction=signal.conviction,
-                        conviction_band=signal.metadata.get("conviction_band"),
-                        entry=str(signal.entry_price),
-                    )
-
-            await consumer.ack(channel, "signals_agent", msg_id)
-
-            if snapshot_count % 500 == 0:
-                sample_counts = {
-                    iid: s.sample_count for iid, s in stores.items()
-                }
-                logger.info(
-                    "signals_progress",
-                    snapshots=snapshot_count,
-                    signals_emitted=signal_count,
-                    store_samples=sample_counts,
+            except Exception as e:
+                logger.error(
+                    "message_processing_failed",
+                    error=str(e),
+                    exc_type=type(e).__name__,
                 )
-                # Publish to Redis hash for dashboard visibility
-                await publisher._redis.hset(
-                    "phantom:feature_store_status",
-                    mapping={k: str(v) for k, v in sample_counts.items()},
-                )
+                # Best-effort ack to avoid re-processing the same bad message
+                with contextlib.suppress(Exception):
+                    await consumer.ack(channel, "signals_agent", msg_id)
     finally:
         await consumer.close()
         await publisher.close()

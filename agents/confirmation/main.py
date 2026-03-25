@@ -236,15 +236,29 @@ async def run_agent() -> None:
                 logger.info("auto_approved", order_id=order.order_id)
 
                 if bot:
-                    direction = "LONG" if order.side.value == "BUY" else "SHORT"
-                    await bot.send_notification(
-                        f"Auto-approved: {order.instrument} {direction} "
-                        f"{order.size} ETH (conviction {order.conviction:.2f})"
-                    )
+                    try:
+                        direction = "LONG" if order.side.value == "BUY" else "SHORT"
+                        await bot.send_notification(
+                            f"Auto-approved: {order.instrument} {direction} "
+                            f"{order.size} ETH (conviction {order.conviction:.2f})"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "telegram_notification_failed",
+                            order_id=order.order_id,
+                            error=str(e),
+                        )
             elif bot:
                 # Register in state machine and send Telegram confirmation
                 sm.receive(order)
-                await bot.send_confirmation(order)
+                try:
+                    await bot.send_confirmation(order)
+                except Exception as e:
+                    logger.warning(
+                        "telegram_confirmation_failed",
+                        order_id=order.order_id,
+                        error=str(e),
+                    )
             else:
                 # No Telegram, no auto-approve — auto-approve as fallback
                 approved = _auto_approve(order)
@@ -269,10 +283,16 @@ async def run_agent() -> None:
             for pending in expired:
                 logger.info("order_expired", order_id=pending.order.order_id)
                 if bot:
-                    await bot.send_expiry_notice(pending.order)
+                    try:
+                        await bot.send_expiry_notice(pending.order)
+                    except Exception as e:
+                        logger.warning(
+                            "telegram_expiry_notice_failed",
+                            order_id=pending.order.order_id,
+                            error=str(e),
+                        )
             # Clean up terminal orders from memory
-            if expired:
-                sm.purge_terminal()
+            sm.purge_terminal()
 
     # -- Task: resend delayed orders ---------------------------------------
 
@@ -285,7 +305,15 @@ async def run_agent() -> None:
                 # Actionable means delay has expired — resend confirmation
                 if pending.delay_until is not None:
                     pending.delay_until = None  # Clear the delay
-                    await bot.send_confirmation(pending.order)
+                    try:
+                        await bot.send_confirmation(pending.order)
+                    except Exception as e:
+                        logger.warning(
+                            "telegram_resend_failed",
+                            order_id=pending.order.order_id,
+                            error=str(e),
+                        )
+                        continue
                     logger.info(
                         "delayed_order_resent",
                         order_id=pending.order.order_id,
