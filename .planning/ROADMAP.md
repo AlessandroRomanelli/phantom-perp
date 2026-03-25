@@ -52,7 +52,10 @@ Plans:
   3. Tuner computes max drawdown amount and duration per strategy
   4. All P&L metrics are fee-adjusted (trading fees and funding costs subtracted)
   5. Strategy/instrument combinations below minimum trade count return null, not a computed percentage
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 11-01-PLAN.md — Round-trip reconstruction: VWAP aggregation, FIFO pairing, P&L computation (TDD)
+- [ ] 11-02-PLAN.md — Metrics computation: expectancy, profit factor, drawdown, min-count gate (TDD)
 
 ### Phase 12: Safety & Bounds
 **Goal**: Every tunable parameter has hard-coded bounds and YAML writes are atomic, validated, and audited — all safety guarantees proven before Claude produces any output
@@ -63,7 +66,10 @@ Plans:
   2. YAML config writes use atomic rename (`os.replace`) — no partial writes possible even if the process is killed mid-write
   3. After every write, the tuner re-parses the written YAML and confirms all values match intent; mismatches leave the original file untouched
   4. Every parameter change (or no-change) produces a structured log entry with before/after values, strategy, instrument, and timestamp
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 11-01-PLAN.md — Round-trip reconstruction: VWAP aggregation, FIFO pairing, P&L computation (TDD)
+- [ ] 11-02-PLAN.md — Metrics computation: expectancy, profit factor, drawdown, min-count gate (TDD)
 
 ### Phase 13: Claude Integration
 **Goal**: Tuner calls Claude API with performance metrics and bounds context, validates all recommendations before applying
@@ -74,7 +80,10 @@ Plans:
   2. Claude response contains typed parameter recommendations with a per-parameter reasoning string
   3. Claude prompt includes current parameter values, hard bounds, and recent performance context for each recommendation slot
   4. Every Claude recommendation is clipped to hard bounds before being applied — no recommendation can bypass the bounds layer
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 11-01-PLAN.md — Round-trip reconstruction: VWAP aggregation, FIFO pairing, P&L computation (TDD)
+- [ ] 11-02-PLAN.md — Metrics computation: expectancy, profit factor, drawdown, min-count gate (TDD)
 **UI hint**: no
 
 ### Phase 14: Docker Infrastructure
@@ -86,7 +95,10 @@ Plans:
   2. YAML files written by the tuner container are readable by the signals container via a shared Docker named volume
   3. A daily cron job triggers the tuner container and restarts the signals agent after completion
   4. Tuner Dockerfile builds successfully using the same Python 3.13-slim base and layer-caching pattern as existing agent images
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 11-01-PLAN.md — Round-trip reconstruction: VWAP aggregation, FIFO pairing, P&L computation (TDD)
+- [ ] 11-02-PLAN.md — Metrics computation: expectancy, profit factor, drawdown, min-count gate (TDD)
 
 ### Phase 15: Telegram Notifications & End-to-End Acceptance
 **Goal**: Operator receives a Telegram message each day with every parameter change and Claude's reasoning, and the full pipeline passes end-to-end acceptance
@@ -97,7 +109,10 @@ Plans:
   2. Telegram message shows before and after values for each changed parameter (or an explicit no-change message when nothing changed)
   3. Every tuning run produces a structured log entry regardless of whether changes were applied
   4. End-to-end pipeline — data → metrics → bounds → Claude → config write → Telegram — completes successfully against live PostgreSQL data
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 11-01-PLAN.md — Round-trip reconstruction: VWAP aggregation, FIFO pairing, P&L computation (TDD)
+- [ ] 11-02-PLAN.md — Metrics computation: expectancy, profit factor, drawdown, min-count gate (TDD)
 **UI hint**: no
 
 ## Progress
@@ -108,7 +123,7 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 10. PostgreSQL Data Pipeline | v1.2 | 2/2 | Complete    | 2026-03-24 |
-| 11. Metrics Engine | v1.2 | 0/? | Not started | - |
+| 11. Metrics Engine | v1.2 | 0/2 | Planned | - |
 | 12. Safety & Bounds | v1.2 | 0/? | Not started | - |
 | 13. Claude Integration | v1.2 | 0/? | Not started | - |
 | 14. Docker Infrastructure | v1.2 | 0/? | Not started | - |
