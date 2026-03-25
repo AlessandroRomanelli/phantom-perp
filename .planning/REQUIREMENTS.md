@@ -23,10 +23,10 @@ Requirements for the AI-Powered Parameter Tuner milestone. Each maps to roadmap 
 
 ### Safety & Bounds
 
-- [ ] **SAFE-01**: Every tunable parameter has hard min/max bounds defined in a bounds registry YAML
+- [x] **SAFE-01**: Every tunable parameter has hard min/max bounds defined in a bounds registry YAML
 - [ ] **SAFE-02**: YAML config writes use atomic write pattern (write-tmp + os.replace)
 - [ ] **SAFE-03**: Post-write validation reloads written YAML and compares against intended values
-- [ ] **SAFE-04**: Tuner logs all parameter changes with before/after values in structured log
+- [x] **SAFE-04**: Tuner logs all parameter changes with before/after values in structured log
 
 ### Claude Integration
 
@@ -101,10 +101,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | METR-02 | Phase 11 | Complete |
 | METR-03 | Phase 11 | Complete |
 | METR-04 | Phase 11 | Complete |
-| SAFE-01 | Phase 12 | Pending |
+| SAFE-01 | Phase 12 | Complete |
 | SAFE-02 | Phase 12 | Pending |
 | SAFE-03 | Phase 12 | Pending |
-| SAFE-04 | Phase 12 | Pending |
+| SAFE-04 | Phase 12 | Complete |
 | CLAI-01 | Phase 13 | Pending |
 | CLAI-02 | Phase 13 | Pending |
 | CLAI-03 | Phase 13 | Pending |

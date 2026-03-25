@@ -68,8 +68,8 @@ Plans:
   4. Every parameter change (or no-change) produces a structured log entry with before/after values, strategy, instrument, and timestamp
 **Plans**: 2 plans
 Plans:
-- [x] 11-01-PLAN.md — Round-trip reconstruction: VWAP aggregation, FIFO pairing, P&L computation (TDD)
-- [ ] 11-02-PLAN.md — Metrics computation: expectancy, profit factor, drawdown, min-count gate (TDD)
+- [x] 12-01-PLAN.md — Bounds registry + audit logging: bounds.yaml, BoundsEntry, validate_value, ParameterChange, structlog wrappers (TDD)
+- [ ] 12-02-PLAN.md — Atomic YAML writer: apply_parameter_changes with os.replace, post-write validation, rollback, Schema A/B handling (TDD)
 
 ### Phase 13: Claude Integration
 **Goal**: Tuner calls Claude API with performance metrics and bounds context, validates all recommendations before applying
@@ -82,8 +82,8 @@ Plans:
   4. Every Claude recommendation is clipped to hard bounds before being applied — no recommendation can bypass the bounds layer
 **Plans**: 2 plans
 Plans:
-- [ ] 11-01-PLAN.md — Round-trip reconstruction: VWAP aggregation, FIFO pairing, P&L computation (TDD)
-- [ ] 11-02-PLAN.md — Metrics computation: expectancy, profit factor, drawdown, min-count gate (TDD)
+- [ ] 13-01-PLAN.md — [To be planned]
+- [ ] 13-02-PLAN.md — [To be planned]
 **UI hint**: no
 
 ### Phase 14: Docker Infrastructure
@@ -97,8 +97,8 @@ Plans:
   4. Tuner Dockerfile builds successfully using the same Python 3.13-slim base and layer-caching pattern as existing agent images
 **Plans**: 2 plans
 Plans:
-- [ ] 11-01-PLAN.md — Round-trip reconstruction: VWAP aggregation, FIFO pairing, P&L computation (TDD)
-- [ ] 11-02-PLAN.md — Metrics computation: expectancy, profit factor, drawdown, min-count gate (TDD)
+- [ ] 14-01-PLAN.md — [To be planned]
+- [ ] 14-02-PLAN.md — [To be planned]
 
 ### Phase 15: Telegram Notifications & End-to-End Acceptance
 **Goal**: Operator receives a Telegram message each day with every parameter change and Claude's reasoning, and the full pipeline passes end-to-end acceptance
@@ -111,8 +111,8 @@ Plans:
   4. End-to-end pipeline — data → metrics → bounds → Claude → config write → Telegram — completes successfully against live PostgreSQL data
 **Plans**: 2 plans
 Plans:
-- [ ] 11-01-PLAN.md — Round-trip reconstruction: VWAP aggregation, FIFO pairing, P&L computation (TDD)
-- [ ] 11-02-PLAN.md — Metrics computation: expectancy, profit factor, drawdown, min-count gate (TDD)
+- [ ] 15-01-PLAN.md — [To be planned]
+- [ ] 15-02-PLAN.md — [To be planned]
 **UI hint**: no
 
 ## Progress
@@ -123,8 +123,8 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 10. PostgreSQL Data Pipeline | v1.2 | 2/2 | Complete    | 2026-03-24 |
-| 11. Metrics Engine | v1.2 | 2/2 | Complete   | 2026-03-25 |
-| 12. Safety & Bounds | v1.2 | 0/? | Not started | - |
-| 13. Claude Integration | v1.2 | 0/? | Not started | - |
-| 14. Docker Infrastructure | v1.2 | 0/? | Not started | - |
-| 15. Telegram Notifications & End-to-End Acceptance | v1.2 | 0/? | Not started | - |
+| 11. Metrics Engine | v1.2 | 2/2 | Complete    | 2026-03-25 |
+| 12. Safety & Bounds | v1.2 | 1/2 | In Progress|  |
+| 13. Claude Integration | v1.2 | 0/2 | Not started | - |
+| 14. Docker Infrastructure | v1.2 | 0/2 | Not started | - |
+| 15. Telegram Notifications & End-to-End Acceptance | v1.2 | 0/2 | Not started | - |
