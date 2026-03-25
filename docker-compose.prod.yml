@@ -55,6 +55,8 @@ services:
     env_file: .env
     environment:
       REDIS_URL: redis://redis:6379
+    volumes:
+      - strategy_configs:/app/configs/strategies:ro
     depends_on:
       redis:
         condition: service_healthy
@@ -126,6 +128,26 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  tuner:
+    image: phantom-perp-tuner:amd64
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://phantom:${POSTGRES_PASSWORD:-phantom_dev}@postgres:5432/phantom_perp
+    volumes:
+      - strategy_configs:/app/configs/strategies
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  scheduler:
+    image: phantom-perp-scheduler:amd64
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.prod.yml:/app/docker-compose.prod.yml:ro
+    restart: unless-stopped
+
 volumes:
   redis_data:
   pg_data:
+  strategy_configs:

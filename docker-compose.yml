@@ -50,6 +50,8 @@ services:
     env_file: .env
     environment:
       REDIS_URL: redis://redis:6379
+    volumes:
+      - strategy_configs:/app/configs/strategies:ro
     depends_on:
       redis:
         condition: service_healthy
@@ -133,6 +135,20 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  tuner:
+    build:
+      context: .
+      dockerfile: agents/tuner/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://phantom:${POSTGRES_PASSWORD:-phantom_dev}@postgres:5432/phantom_perp
+    volumes:
+      - strategy_configs:/app/configs/strategies
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   dashboard:
     build:
       context: .
@@ -150,3 +166,4 @@ services:
 volumes:
   redis_data:
   pg_data:
+  strategy_configs:
