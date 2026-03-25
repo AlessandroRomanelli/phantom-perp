@@ -54,7 +54,7 @@ Plans:
   5. Strategy/instrument combinations below minimum trade count return null, not a computed percentage
 **Plans**: 2 plans
 Plans:
-- [ ] 11-01-PLAN.md — Round-trip reconstruction: VWAP aggregation, FIFO pairing, P&L computation (TDD)
+- [x] 11-01-PLAN.md — Round-trip reconstruction: VWAP aggregation, FIFO pairing, P&L computation (TDD)
 - [ ] 11-02-PLAN.md — Metrics computation: expectancy, profit factor, drawdown, min-count gate (TDD)
 
 ### Phase 12: Safety & Bounds
@@ -123,7 +123,7 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 10. PostgreSQL Data Pipeline | v1.2 | 2/2 | Complete    | 2026-03-24 |
-| 11. Metrics Engine | v1.2 | 0/2 | Planned | - |
+| 11. Metrics Engine | v1.2 | 1/2 | In Progress|  |
 | 12. Safety & Bounds | v1.2 | 0/? | Not started | - |
 | 13. Claude Integration | v1.2 | 0/? | Not started | - |
 | 14. Docker Infrastructure | v1.2 | 0/? | Not started | - |
