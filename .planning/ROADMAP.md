@@ -69,7 +69,7 @@ Plans:
 **Plans**: 2 plans
 Plans:
 - [x] 12-01-PLAN.md — Bounds registry + audit logging: bounds.yaml, BoundsEntry, validate_value, ParameterChange, structlog wrappers (TDD)
-- [ ] 12-02-PLAN.md — Atomic YAML writer: apply_parameter_changes with os.replace, post-write validation, rollback, Schema A/B handling (TDD)
+- [x] 12-02-PLAN.md — Atomic YAML writer: apply_parameter_changes with os.replace, post-write validation, rollback, Schema A/B handling (TDD)
 
 ### Phase 13: Claude Integration
 **Goal**: Tuner calls Claude API with performance metrics and bounds context, validates all recommendations before applying
@@ -124,7 +124,7 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15
 |-------|-----------|----------------|--------|-----------|
 | 10. PostgreSQL Data Pipeline | v1.2 | 2/2 | Complete    | 2026-03-24 |
 | 11. Metrics Engine | v1.2 | 2/2 | Complete    | 2026-03-25 |
-| 12. Safety & Bounds | v1.2 | 1/2 | In Progress|  |
+| 12. Safety & Bounds | v1.2 | 2/2 | Complete   | 2026-03-25 |
 | 13. Claude Integration | v1.2 | 0/2 | Not started | - |
 | 14. Docker Infrastructure | v1.2 | 0/2 | Not started | - |
 | 15. Telegram Notifications & End-to-End Acceptance | v1.2 | 0/2 | Not started | - |
