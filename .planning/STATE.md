@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: AI-Powered Parameter Tuner
-status: Ready to execute
-stopped_at: Completed 11-metrics-engine 11-01-PLAN.md
-last_updated: "2026-03-25T10:02:18.723Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 11-metrics-engine 11-02-PLAN.md
+last_updated: "2026-03-25T10:08:57.850Z"
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -44,6 +44,7 @@ Plan: 2 of 2
 | Phase 10 P01 | 425 | 2 tasks | 6 files |
 | Phase 10 P02 | 154 | 3 tasks | 3 files |
 | Phase 11-metrics-engine P01 | 3 | 2 tasks | 3 files |
+| Phase 11 P02 | 5 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -60,6 +61,8 @@ Plan: 2 of 2
 - [Phase 10]: FillRecord written for both paper and live modes — analytics captures all fills regardless of execution mode
 - [Phase 11-metrics-engine]: FIFO deque uses appendleft/pop for correct oldest-first pairing in overlapping entry scenarios
 - [Phase 11-metrics-engine]: build_round_trips excludes keys with no closed round-trips to avoid empty list entries in output
+- [Phase 11]: Zero-P&L round-trips classified as losses (conservative per net_pnl <= 0 -- fees make true breakeven negative)
+- [Phase 11]: funding_costs_usdc = Decimal(0) placeholder per D-08 -- position lifecycle not available in Phase 10, deferred to METR-05/06
 
 ### Blockers/Concerns
 
@@ -72,6 +75,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-25T10:02:18.719Z
-Stopped at: Completed 11-metrics-engine 11-01-PLAN.md
+Last session: 2026-03-25T10:08:57.847Z
+Stopped at: Completed 11-metrics-engine 11-02-PLAN.md
 Resume file: None

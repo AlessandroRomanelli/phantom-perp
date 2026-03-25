@@ -16,10 +16,10 @@ Requirements for the AI-Powered Parameter Tuner milestone. Each maps to roadmap 
 
 ### Metrics Engine
 
-- [ ] **METR-01**: Tuner computes expectancy (avg_win x win_rate - avg_loss x loss_rate) as primary metric per strategy
-- [ ] **METR-02**: Tuner computes profit factor per strategy per instrument
-- [ ] **METR-03**: Tuner computes max drawdown and drawdown duration per strategy
-- [ ] **METR-04**: Tuner computes fee-adjusted P&L (includes trading fees and funding costs)
+- [x] **METR-01**: Tuner computes expectancy (avg_win x win_rate - avg_loss x loss_rate) as primary metric per strategy
+- [x] **METR-02**: Tuner computes profit factor per strategy per instrument
+- [x] **METR-03**: Tuner computes max drawdown and drawdown duration per strategy
+- [x] **METR-04**: Tuner computes fee-adjusted P&L (includes trading fees and funding costs)
 
 ### Safety & Bounds
 
@@ -97,10 +97,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DATA-02 | Phase 10 | Complete |
 | DATA-03 | Phase 10 | Complete |
 | DATA-04 | Phase 10 | Complete |
-| METR-01 | Phase 11 | Pending |
-| METR-02 | Phase 11 | Pending |
-| METR-03 | Phase 11 | Pending |
-| METR-04 | Phase 11 | Pending |
+| METR-01 | Phase 11 | Complete |
+| METR-02 | Phase 11 | Complete |
+| METR-03 | Phase 11 | Complete |
+| METR-04 | Phase 11 | Complete |
 | SAFE-01 | Phase 12 | Pending |
 | SAFE-02 | Phase 12 | Pending |
 | SAFE-03 | Phase 12 | Pending |
