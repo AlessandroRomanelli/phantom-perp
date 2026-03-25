@@ -1,0 +1,43 @@
+# Tunable parameter bounds registry.
+# Only parameters listed here can be adjusted by the tuner.
+# Global bounds: same min/max at base level and per-instrument level (D-02, D-03).
+
+min_conviction:
+  min: 0.10
+  max: 0.90
+  type: float
+
+portfolio_a_min_conviction:
+  min: 0.30
+  max: 0.95
+  type: float
+
+cooldown_bars:
+  min: 1
+  max: 30
+  type: int
+
+stop_loss_atr_mult:
+  min: 1.0
+  max: 6.0
+  type: float
+
+take_profit_atr_mult:
+  min: 1.0
+  max: 8.0
+  type: float
+
+weight:
+  min: 0.05
+  max: 0.50
+  type: float
+
+funding_rate_boost:
+  min: 0.0
+  max: 0.20
+  type: float
+
+adx_threshold:
+  min: 10.0
+  max: 40.0
+  type: float
