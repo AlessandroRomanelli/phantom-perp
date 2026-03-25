@@ -256,6 +256,111 @@ class StrategyMetrics:
     max_drawdown_duration_hours: float  # METR-03 duration (D-07)
 
 
+def _compute_metrics(
+    source: str,
+    instrument: str,
+    round_trips: list[RoundTrip],
+) -> StrategyMetrics:
+    """Compute StrategyMetrics from a list of closed round-trips.
+
+    Args:
+        source: Strategy name (primary_source value).
+        instrument: Instrument identifier.
+        round_trips: Non-empty list of closed round-trips (already sorted by closed_at).
+
+    Returns:
+        StrategyMetrics frozen dataclass with all METR-01 through METR-04 fields.
+    """
+    # --- Win/Loss classification (net_pnl basis per D-09) ---
+    # Zero-P&L trades classified as losses (conservative -- fees make true breakeven negative)
+    wins = [rt for rt in round_trips if rt.net_pnl > Decimal("0")]
+    losses = [rt for rt in round_trips if rt.net_pnl <= Decimal("0")]
+    trade_count = len(round_trips)
+    win_count = len(wins)
+    loss_count = len(losses)
+    win_rate = win_count / trade_count  # float 0.0-1.0
+
+    # --- Expectancy (METR-01) ---
+    avg_win = (
+        sum((rt.net_pnl for rt in wins), Decimal("0")) / Decimal(win_count)
+        if wins
+        else Decimal("0")
+    )
+    avg_loss = (
+        sum((abs(rt.net_pnl) for rt in losses), Decimal("0")) / Decimal(loss_count)
+        if losses
+        else Decimal("0")
+    )
+    # Convert float rates to Decimal for monetary arithmetic (avoid Decimal * float)
+    expectancy = avg_win * Decimal(str(win_rate)) - avg_loss * Decimal(str(1.0 - win_rate))
+
+    # --- Profit Factor (METR-02) ---
+    gross_profit = sum(
+        (rt.gross_pnl for rt in round_trips if rt.gross_pnl > Decimal("0")),
+        Decimal("0"),
+    )
+    gross_loss_raw = sum(
+        (rt.gross_pnl for rt in round_trips if rt.gross_pnl < Decimal("0")),
+        Decimal("0"),
+    )
+    gross_loss = abs(gross_loss_raw)
+    # Breakeven trades (gross_pnl == 0) excluded from both sums
+    profit_factor: float | None = (
+        float(gross_profit / gross_loss) if gross_loss > Decimal("0") else None
+    )
+
+    # --- Drawdown (METR-03) ---
+    # Sort defensively by closed_at (build_round_trips already sorts, but guard here)
+    sorted_trips = sorted(round_trips, key=lambda rt: rt.closed_at)
+    cumulative = Decimal("0")
+    peak = Decimal("0")
+    peak_time = sorted_trips[0].closed_at
+    max_dd_amount = Decimal("0")
+    max_dd_duration_hours: float = 0.0
+
+    for rt in sorted_trips:
+        cumulative += rt.net_pnl
+        if cumulative > peak:
+            peak = cumulative
+            peak_time = rt.closed_at
+        dd = peak - cumulative
+        if dd > max_dd_amount:
+            max_dd_amount = dd
+            # Duration from peak to trough (current trade's close time)
+            max_dd_duration_hours = (rt.closed_at - peak_time).total_seconds() / 3600
+
+    # After loop: check if still in drawdown (D-07: use current time if no recovery)
+    if cumulative < peak:
+        still_dd_duration = (datetime.now(timezone.utc) - peak_time).total_seconds() / 3600
+        if still_dd_duration > max_dd_duration_hours:
+            max_dd_duration_hours = still_dd_duration
+
+    # --- Fee-adjusted aggregates (METR-04/D-09) with funding placeholder (D-08) ---
+    total_gross_pnl = sum((rt.gross_pnl for rt in round_trips), Decimal("0"))
+    total_fees_usdc = sum((rt.total_fees for rt in round_trips), Decimal("0"))
+    funding_costs_usdc = Decimal("0")  # D-08: deferred to METR-05/06
+    total_net_pnl = total_gross_pnl - total_fees_usdc - funding_costs_usdc
+
+    return StrategyMetrics(
+        primary_source=source,
+        instrument=instrument,
+        trade_count=trade_count,
+        win_count=win_count,
+        loss_count=loss_count,
+        win_rate=win_rate,
+        avg_win_usdc=avg_win,
+        avg_loss_usdc=avg_loss,
+        expectancy_usdc=expectancy,
+        profit_factor=profit_factor,
+        total_gross_pnl=total_gross_pnl,
+        total_fees_usdc=total_fees_usdc,
+        funding_costs_usdc=funding_costs_usdc,
+        total_net_pnl=total_net_pnl,
+        max_drawdown_usdc=max_dd_amount,
+        max_drawdown_duration_hours=max_dd_duration_hours,
+    )
+
+
 def compute_strategy_metrics(
     fills: list[AttributedFill],
     min_trades: int = 10,
@@ -275,4 +380,24 @@ def compute_strategy_metrics(
         Dict keyed by (primary_source, instrument). Value is StrategyMetrics if
         len(round_trips) >= min_trades, else None.
     """
-    raise NotImplementedError
+    if not fills:
+        return {}
+
+    round_trips_by_key = build_round_trips(fills)
+
+    # Also include keys from fills that had no closed round-trips (for gate tracking)
+    # We need to find all (source, instrument) pairs that appear in fills
+    all_keys: set[tuple[str, str]] = set()
+    for fill in fills:
+        all_keys.add((fill.primary_source, fill.instrument))
+
+    result: dict[tuple[str, str], StrategyMetrics | None] = {}
+    for key in all_keys:
+        trips = round_trips_by_key.get(key, [])
+        if len(trips) < min_trades:
+            result[key] = None
+        else:
+            source, instrument = key
+            result[key] = _compute_metrics(source, instrument, trips)
+
+    return result

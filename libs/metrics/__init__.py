@@ -3,7 +3,9 @@
 from libs.metrics.engine import (
     OrderResult,
     RoundTrip,
+    StrategyMetrics,
     build_round_trips,
+    compute_strategy_metrics,
     pair_round_trips,
     vwap_aggregate,
 )
@@ -11,7 +13,9 @@ from libs.metrics.engine import (
 __all__ = [
     "OrderResult",
     "RoundTrip",
+    "StrategyMetrics",
     "build_round_trips",
+    "compute_strategy_metrics",
     "pair_round_trips",
     "vwap_aggregate",
 ]
