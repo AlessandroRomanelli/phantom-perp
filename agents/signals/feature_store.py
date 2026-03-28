@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections import deque
 from datetime import datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -101,6 +102,89 @@ class FeatureStore:
         self._interval_low = price
 
         return True
+
+    def to_checkpoint(self) -> dict[str, Any]:
+        """Serialize store state to a JSON-compatible dict for persistence.
+
+        Returns:
+            Dict suitable for ``orjson.dumps``.  ``float('inf')`` is
+            encoded as ``None`` since orjson cannot serialize infinity.
+        """
+        return {
+            "version": 1,
+            "max_samples": self._max_samples,
+            "sample_interval_seconds": self._sample_interval.total_seconds(),
+            "last_sample_time": (
+                self._last_sample_time.isoformat() if self._last_sample_time else None
+            ),
+            "interval_high": self._interval_high,
+            "interval_low": (
+                self._interval_low if self._interval_low != float("inf") else None
+            ),
+            "closes": list(self._closes),
+            "highs": list(self._highs),
+            "lows": list(self._lows),
+            "timestamps": [t.isoformat() for t in self._timestamps],
+            "index_prices": list(self._index_prices),
+            "volumes": list(self._volumes),
+            "open_interests": list(self._open_interests),
+            "orderbook_imbalances": list(self._orderbook_imbalances),
+            "funding_rates": list(self._funding_rates),
+        }
+
+    @classmethod
+    def from_checkpoint(
+        cls,
+        data: dict[str, Any],
+        *,
+        max_samples: int = 500,
+        sample_interval: timedelta = timedelta(seconds=60),
+    ) -> FeatureStore:
+        """Restore a FeatureStore from a persisted checkpoint dict.
+
+        Args:
+            data: Checkpoint dict as produced by ``to_checkpoint()``.
+            max_samples: Maximum samples (should match original store).
+            sample_interval: Sampling interval (must match checkpoint).
+
+        Returns:
+            Restored FeatureStore instance.
+
+        Raises:
+            ValueError: If checkpoint version or sample_interval mismatch.
+        """
+        if data.get("version") != 1:
+            raise ValueError(f"Unsupported checkpoint version: {data.get('version')}")
+        if data["sample_interval_seconds"] != sample_interval.total_seconds():
+            raise ValueError(
+                f"sample_interval mismatch: checkpoint={data['sample_interval_seconds']}s, "
+                f"expected={sample_interval.total_seconds()}s"
+            )
+
+        store = cls(max_samples=max_samples, sample_interval=sample_interval)
+
+        last_sample = data.get("last_sample_time")
+        store._last_sample_time = (
+            datetime.fromisoformat(last_sample) if last_sample else None
+        )
+        store._interval_high = data["interval_high"]
+        store._interval_low = (
+            data["interval_low"] if data["interval_low"] is not None else float("inf")
+        )
+
+        store._closes.extend(data["closes"])
+        store._highs.extend(data["highs"])
+        store._lows.extend(data["lows"])
+        store._timestamps.extend(
+            datetime.fromisoformat(t) for t in data["timestamps"]
+        )
+        store._index_prices.extend(data["index_prices"])
+        store._volumes.extend(data["volumes"])
+        store._open_interests.extend(data["open_interests"])
+        store._orderbook_imbalances.extend(data["orderbook_imbalances"])
+        store._funding_rates.extend(data["funding_rates"])
+
+        return store
 
     @property
     def sample_count(self) -> int:

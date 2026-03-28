@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import orjson
+import redis.asyncio as aioredis
 import yaml
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -58,6 +60,64 @@ from agents.signals.strategies.regime_trend import RegimeTrendParams, RegimeTren
 from agents.signals.strategies.vwap import VWAPParams, VWAPStrategy
 
 logger = setup_logging("signals", json_output=False)
+
+# -- FeatureStore checkpoint persistence --
+_CHECKPOINT_KEY_PREFIX = "phantom:feature_store_checkpoint"
+_CHECKPOINT_TTL_SECONDS = 172_800  # 48 hours
+
+
+def _checkpoint_key(instrument: str, speed: str) -> str:
+    """Build Redis key for a feature store checkpoint."""
+    return f"{_CHECKPOINT_KEY_PREFIX}:{instrument}:{speed}"
+
+
+async def _restore_store(
+    redis: aioredis.Redis,  # type: ignore[type-arg]
+    instrument: str,
+    speed: str,
+    max_samples: int,
+    sample_interval: timedelta,
+) -> FeatureStore:
+    """Restore a FeatureStore from Redis checkpoint, or create an empty one."""
+    key = _checkpoint_key(instrument, speed)
+    try:
+        raw: bytes | None = await redis.get(key)
+        if raw is not None:
+            data: dict[str, Any] = orjson.loads(raw)
+            store = FeatureStore.from_checkpoint(
+                data,
+                max_samples=max_samples,
+                sample_interval=sample_interval,
+            )
+            logger.info(
+                "feature_store_restored",
+                instrument=instrument,
+                speed=speed,
+                sample_count=store.sample_count,
+            )
+            return store
+    except Exception as exc:
+        logger.warning(
+            "feature_store_restore_failed",
+            instrument=instrument,
+            speed=speed,
+            error=str(exc),
+            exc_type=type(exc).__name__,
+        )
+    return FeatureStore(max_samples=max_samples, sample_interval=sample_interval)
+
+
+async def _checkpoint_store(
+    redis: aioredis.Redis,  # type: ignore[type-arg]
+    store: FeatureStore,
+    instrument: str,
+    speed: str,
+) -> None:
+    """Persist a FeatureStore checkpoint to Redis with TTL."""
+    key = _checkpoint_key(instrument, speed)
+    payload = orjson.dumps(store.to_checkpoint())
+    await redis.set(key, payload, ex=_CHECKPOINT_TTL_SECONDS)
+
 
 # Strategy name -> class mapping.  Add new strategies here.
 STRATEGY_CLASSES: dict[str, type[SignalStrategy]] = {
@@ -353,14 +413,15 @@ async def run_agent() -> None:
     _FAST_INTERVAL = timedelta(seconds=30)   # 30s bars
     _FAST_STRATEGIES = frozenset({"orderbook_imbalance", "liquidation_cascade"})
 
-    slow_stores: dict[str, FeatureStore] = {
-        iid: FeatureStore(sample_interval=_SLOW_INTERVAL)
-        for iid in instrument_ids
-    }
-    fast_stores: dict[str, FeatureStore] = {
-        iid: FeatureStore(sample_interval=_FAST_INTERVAL)
-        for iid in instrument_ids
-    }
+    slow_stores: dict[str, FeatureStore] = {}
+    fast_stores: dict[str, FeatureStore] = {}
+    for iid in instrument_ids:
+        slow_stores[iid] = await _restore_store(
+            publisher._redis, iid, "slow", 500, _SLOW_INTERVAL,
+        )
+        fast_stores[iid] = await _restore_store(
+            publisher._redis, iid, "fast", 500, _FAST_INTERVAL,
+        )
 
     # Per-instrument strategy instances (each with merged params)
     strategies_by_instrument: dict[str, list[SignalStrategy]] = {
@@ -409,9 +470,31 @@ async def run_agent() -> None:
                     await consumer.ack(channel, "signals_agent", msg_id)
                     continue
 
-                slow_store.update(snapshot)
-                fast_store.update(snapshot)
+                slow_sampled = slow_store.update(snapshot)
+                fast_sampled = fast_store.update(snapshot)
                 snapshot_count += 1
+
+                # Checkpoint stores that just took a new sample
+                if slow_sampled:
+                    try:
+                        await _checkpoint_store(
+                            publisher._redis, slow_store, instrument, "slow",
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "feature_store_checkpoint_failed",
+                            instrument=instrument, speed="slow", error=str(exc),
+                        )
+                if fast_sampled:
+                    try:
+                        await _checkpoint_store(
+                            publisher._redis, fast_store, instrument, "fast",
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "feature_store_checkpoint_failed",
+                            instrument=instrument, speed="fast", error=str(exc),
+                        )
 
                 # Classify current session for session-aware overrides
                 session_info = classify_session(snapshot.timestamp)

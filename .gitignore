@@ -2,4 +2,9 @@
 /.planning
 .env
 /.DS_Store
-**/__pycache__
+**/**/__pycache__
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
