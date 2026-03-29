@@ -10,3 +10,9 @@ parameters:
   min_conviction: 0.6
   max_holding_hours: 4
   settle_before_close_minutes: 10
+  atr_period: 14
+  stop_loss_atr_mult: 2.5
+  take_profit_atr_mult: 1.5
+  cooldown_bars: 8
+  portfolio_a_min_conviction: 0.70
+  min_funding_samples: 10
