@@ -22,16 +22,14 @@ from typing import Any
 
 import numpy as np
 
+from agents.signals.feature_store import FeatureStore
+from agents.signals.strategies.base import SignalStrategy
 from libs.common.instruments import get_instrument
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
 from libs.common.utils import generate_id, round_to_tick, utc_now
 from libs.indicators.volatility import atr
-
-from agents.signals.feature_store import FeatureStore
-from agents.signals.strategies.base import SignalStrategy
-
 
 # Coinbase perps settle funding 3 times per day (every 8 hours).
 _SETTLEMENTS_PER_DAY = 3

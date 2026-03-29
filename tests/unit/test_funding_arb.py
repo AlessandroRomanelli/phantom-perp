@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import numpy as np
@@ -13,7 +13,6 @@ from agents.signals.strategies.funding_arb import FundingArbParams, FundingArbSt
 from libs.common.instruments import InstrumentConfig, _registry
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -41,7 +40,7 @@ def _make_snapshot(
 ) -> MarketSnapshot:
     """Build a minimal MarketSnapshot for testing."""
     if ts is None:
-        ts = datetime.now(tz=timezone.utc)
+        ts = datetime.now(tz=UTC)
     return MarketSnapshot(
         timestamp=ts,
         instrument="ETH-PERP",
@@ -79,7 +78,7 @@ def _build_store_with_history(
         max_samples=500,
         sample_interval=timedelta(seconds=sample_interval_sec),
     )
-    base_ts = datetime(2025, 6, 1, tzinfo=timezone.utc)
+    base_ts = datetime(2025, 6, 1, tzinfo=UTC)
     rng = np.random.default_rng(seed=42)
     for i in range(n_samples):
         # Small price variation for valid ATR computation
@@ -117,7 +116,7 @@ class TestFundingArbNoSignal:
         strategy = FundingArbStrategy(params=FundingArbParams())
         store = FeatureStore(sample_interval=timedelta(seconds=1))
         # Only 3 samples — min_history is atr_period + 5 = 19
-        base_ts = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        base_ts = datetime(2025, 6, 1, tzinfo=UTC)
         for i in range(3):
             snap = _make_snapshot(
                 funding_rate=0.001,
@@ -178,7 +177,7 @@ class TestFundingArbNoSignal:
         assert len(signals) == 1
 
         # Immediately try again — should be in cooldown
-        ts2 = datetime.now(tz=timezone.utc) + timedelta(seconds=1)
+        ts2 = datetime.now(tz=UTC) + timedelta(seconds=1)
         snap2 = _make_snapshot(funding_rate=0.005, ts=ts2)
         store.update(snap2)
         assert strategy.evaluate(snap2, store) == []
