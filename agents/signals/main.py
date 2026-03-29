@@ -46,6 +46,7 @@ from agents.signals.feature_store import FeatureStore
 from agents.signals.session_classifier import SessionType, classify_session
 from agents.signals.strategies.base import SignalStrategy
 from agents.signals.strategies.correlation import CorrelationParams, CorrelationStrategy
+from agents.signals.strategies.funding_arb import FundingArbParams, FundingArbStrategy
 from agents.signals.strategies.liquidation_cascade import (
     LiquidationCascadeParams,
     LiquidationCascadeStrategy,
@@ -128,6 +129,7 @@ STRATEGY_CLASSES: dict[str, type[SignalStrategy]] = {
     "regime_trend": RegimeTrendStrategy,
     "orderbook_imbalance": OrderbookImbalanceStrategy,
     "vwap": VWAPStrategy,
+    "funding_arb": FundingArbStrategy,
 }
 
 STRATEGY_PARAMS_CLASSES: dict[str, type] = {
@@ -138,6 +140,7 @@ STRATEGY_PARAMS_CLASSES: dict[str, type] = {
     "regime_trend": RegimeTrendParams,
     "orderbook_imbalance": OrderbookImbalanceParams,
     "vwap": VWAPParams,
+    "funding_arb": FundingArbParams,
 }
 
 
