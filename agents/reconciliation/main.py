@@ -302,6 +302,15 @@ async def run_agent() -> None:
     if is_paper:
         from agents.reconciliation.paper_simulator import run_paper_simulator
 
+        from libs.storage.relational import RelationalStore, init_db
+        from libs.storage.repository import TunerRepository
+
+        # Initialize PostgreSQL storage for fill record persistence
+        db_store = RelationalStore(settings.infra.database_url)
+        await init_db(db_store.engine)
+        repo = TunerRepository(db_store)
+        logger.info("reconciliation_db_initialized", mode="paper")
+
         logger.info(
             "reconciliation_agent_started",
             mode="paper",
@@ -314,8 +323,10 @@ async def run_agent() -> None:
                 redis_url=settings.infra.redis_url,
                 publisher=publisher,
                 include_portfolio_b=bool(portfolio_b_id),
+                repo=repo,
             )
         finally:
+            await db_store.close()
             await publisher.close()
             logger.info("reconciliation_agent_stopped", mode="paper")
         return

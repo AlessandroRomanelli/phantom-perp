@@ -27,6 +27,9 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
+
+from sqlalchemy.exc import SQLAlchemyError
 
 from libs.common.constants import FEE_MAKER, FEE_TAKER
 from libs.common.logging import setup_logging
@@ -45,13 +48,13 @@ from libs.common.models.position import PerpPosition
 from libs.common.utils import generate_id, utc_now
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
+from libs.storage.models import FillRecord
+from libs.storage.repository import TunerRepository
 
 from agents.reconciliation.main import (
     funding_payment_to_dict,
     portfolio_snapshot_to_dict,
 )
-
-from typing import Any
 
 logger = setup_logging("paper_simulator", json_output=False)
 
@@ -109,6 +112,46 @@ def fill_to_dict(fill: Fill) -> dict[str, Any]:
         "filled_at": fill.filled_at.isoformat(),
         "trade_id": fill.trade_id,
     }
+
+
+async def _persist_fill(repo: TunerRepository | None, fill: Fill) -> None:
+    """Persist a fill to PostgreSQL if a repository is available.
+
+    Logs a warning on failure but never raises — fill persistence is
+    best-effort and must not block the simulator's main loop.
+    """
+    if repo is None:
+        return
+    try:
+        await repo.write_fill(FillRecord(
+            fill_id=fill.fill_id,
+            order_id=fill.order_id,
+            portfolio_target=fill.portfolio_target.value,
+            instrument=fill.instrument,
+            side=fill.side.value,
+            size=fill.size,
+            price=fill.price,
+            fee_usdc=fill.fee_usdc,
+            is_maker=fill.is_maker,
+            filled_at=fill.filled_at,
+            trade_id=fill.trade_id,
+        ))
+    except SQLAlchemyError as exc:
+        logger.warning(
+            "paper_fill_db_write_failed",
+            fill_id=fill.fill_id,
+            order_id=fill.order_id,
+            error=str(exc),
+            exc_type=type(exc).__name__,
+        )
+    except Exception as exc:
+        logger.warning(
+            "paper_fill_db_write_failed",
+            fill_id=fill.fill_id,
+            order_id=fill.order_id,
+            error=str(exc),
+            exc_type=type(exc).__name__,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -420,11 +463,20 @@ async def run_paper_simulator(
     publisher: RedisPublisher,
     *,
     include_portfolio_b: bool = True,
+    repo: TunerRepository | None = None,
 ) -> None:
     """Run the paper trading simulator.
 
     Creates simulated portfolios, consumes approved orders, simulates fills,
     and publishes portfolio state — all without touching the Coinbase API.
+
+    Args:
+        redis_url: Redis connection URL.
+        publisher: RedisPublisher for publishing fills and snapshots.
+        include_portfolio_b: Whether to simulate Portfolio B.
+        repo: Optional TunerRepository for persisting fills to PostgreSQL.
+            When provided, every fill (entry and SL/TP exit) is written to
+            the fills table for historical tracking.
     """
     portfolios: dict[PortfolioTarget, PaperPortfolio] = {
         PortfolioTarget.A: PaperPortfolio(
@@ -530,6 +582,9 @@ async def run_paper_simulator(
             # Publish fill
             events_ch = Channel.exchange_events(portfolio.target)
             await publisher.publish(events_ch, fill_to_dict(fill))
+
+            # Persist entry fill to PostgreSQL
+            await _persist_fill(repo, fill)
 
             # Publish updated snapshot
             snapshot = portfolio.build_snapshot(mark_prices)
@@ -693,6 +748,9 @@ async def run_paper_simulator(
 
                 events_ch = Channel.exchange_events(portfolio.target)
                 await publisher.publish(events_ch, fill_to_dict(fill))
+
+                # Persist SL/TP exit fill to PostgreSQL
+                await _persist_fill(repo, fill)
 
                 snapshot = portfolio.build_snapshot(mark_prices)
                 state_ch = Channel.portfolio_state(portfolio.target)
