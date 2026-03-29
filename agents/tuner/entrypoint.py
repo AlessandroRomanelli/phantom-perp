@@ -1,8 +1,9 @@
 """Tuner container entrypoint.
 
 Run-to-completion script that fetches fills from PostgreSQL, calls
-run_tuning_cycle(), handles volume bootstrap, and exits with the
-appropriate exit code (0 on success, 1 on any exception).
+run_tuning_cycle(), handles volume bootstrap, sends a Telegram
+notification, and exits with the appropriate exit code (0 on success,
+1 on any exception).
 
 Usage:
     python -m agents.tuner.entrypoint
@@ -22,6 +23,8 @@ from libs.common.logging import setup_logging
 from libs.storage.relational import RelationalStore
 from libs.storage.repository import AttributedFill, TunerRepository
 from libs.tuner import run_tuning_cycle
+from libs.tuner.notifier import TunerNotifier
+from libs.tuner.recommender import TuningResult
 
 # Paths used inside the container. IMAGE_STRATEGIES holds the backup of
 # strategy YAMLs baked into the image for first-run volume bootstrap (D-03).
@@ -75,11 +78,28 @@ def _fetch_fills(lookback_days: int) -> list[AttributedFill]:
     )
 
 
+async def _notify(result: TuningResult) -> None:
+    """Send a Telegram notification with the tuning run result.
+
+    Reads TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID from environment.
+    Errors are logged but never propagated — the tuner must complete
+    regardless of Telegram availability.
+
+    Args:
+        result: The TuningResult from the completed tuning cycle.
+    """
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    notifier = TunerNotifier(token=token, chat_id=chat_id)
+    await notifier.send(result)
+
+
 def main() -> None:
     """Tuner container entry point.
 
     Runs setup_logging first, then orchestrates bootstrap, fill fetch,
-    and the full tuning cycle. Exits 0 on success, 1 on any exception.
+    the full tuning cycle, and Telegram notification. Exits 0 on success,
+    1 on any exception.
     """
     logger = setup_logging("tuner")
     logger.info("tuner_starting")
@@ -94,6 +114,17 @@ def main() -> None:
 
         result = run_tuning_cycle(fills, config_dir=CONFIG_DIR, bounds_path=BOUNDS_PATH, model=model)
         logger.info("tuner_completed", changes=len(result.changes), summary=result.summary[:200])
+
+        # Send Telegram notification (errors logged, never propagate)
+        try:
+            asyncio.run(_notify(result))
+        except Exception as notify_exc:
+            logger.warning(
+                "tuner_notify_failed",
+                error=str(notify_exc),
+                exc_type=type(notify_exc).__name__,
+            )
+
         sys.exit(0)
 
     except Exception as exc:
