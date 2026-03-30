@@ -282,7 +282,12 @@ def validate_claude_response(
     direction_str = raw.get("direction", "NO_SIGNAL")
     if direction_str == "NO_SIGNAL":
         _logger.debug("claude_no_signal", instrument=raw.get("instrument"))
-        return None
+        # Return partial dict so callers can persist Claude's reasoning for observability
+        return {
+            "direction": "NO_SIGNAL",
+            "conviction": 0.0,
+            "reasoning": str(raw.get("reasoning", "No clear trade opportunity.")),
+        }
 
     if direction_str not in ("LONG", "SHORT"):
         _logger.warning(
@@ -480,7 +485,7 @@ async def call_claude_analysis(
     )
 
     validated = validate_claude_response(raw, snapshot, store)
-    if validated is not None:
+    if validated is not None and validated.get("direction") != "NO_SIGNAL":
         _logger.info(
             "claude_analysis_complete",
             instrument=instrument_id,

@@ -498,6 +498,7 @@ async def run_agent() -> None:
             regime_detector=regime_detector,
             settings=settings,
             latest_snapshots=latest_snapshots,
+            redis_client=publisher._redis,
         ),
         name="claude_scheduler",
     )

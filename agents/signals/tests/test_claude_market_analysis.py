@@ -256,8 +256,8 @@ class TestValidateClaudeResponse:
         assert result["take_profit"] is not None
         assert result["take_profit"] > result["entry_price"]
 
-    def test_no_signal_returns_none(self) -> None:
-        """direction=NO_SIGNAL is silently converted to None (not an error)."""
+    def test_no_signal_returns_no_signal_dict(self) -> None:
+        """direction=NO_SIGNAL returns a tagged dict with reasoning (not None)."""
         raw = {
             "instrument": TEST_INSTRUMENT,
             "direction": "NO_SIGNAL",
@@ -272,7 +272,10 @@ class TestValidateClaudeResponse:
         store = self._store_with_atr()
 
         result = validate_claude_response(raw, snap, store)
-        assert result is None
+        assert result is not None
+        assert result["direction"] == "NO_SIGNAL"
+        assert result["reasoning"] == "No clear setup."
+        assert result["conviction"] == 0.0
 
     def test_entry_price_too_far_from_mark_falls_back_to_mark(self) -> None:
         """entry_price 20% off mark_price → validation falls back to mark price."""
@@ -517,8 +520,8 @@ class TestCallClaudeAnalysis:
         assert result["entry_price"] is not None
 
     @pytest.mark.asyncio
-    async def test_no_signal_direction_returns_none(self) -> None:
-        """direction=NO_SIGNAL from Claude → call returns None."""
+    async def test_no_signal_direction_returns_no_signal_dict(self) -> None:
+        """direction=NO_SIGNAL from Claude → call returns tagged dict with reasoning."""
         raw_response = {
             "instrument": TEST_INSTRUMENT,
             "direction": "NO_SIGNAL",
@@ -548,7 +551,9 @@ class TestCallClaudeAnalysis:
                 regime=MarketRegime.RANGING,
             )
 
-        assert result is None
+        assert result is not None
+        assert result["direction"] == "NO_SIGNAL"
+        assert result["reasoning"] == "No clear opportunity."
 
     @pytest.mark.asyncio
     async def test_missing_api_key_returns_none(self) -> None:

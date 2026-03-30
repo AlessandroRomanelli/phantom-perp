@@ -46,7 +46,7 @@
     <div class="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
       <div class="flex items-center gap-3">
         <h1 class="text-lg font-semibold text-white font-mono tracking-tight">phantom-perp</h1>
-        <span class="text-xs font-mono text-gray-500">v1.1</span>
+        <span class="text-xs font-mono text-gray-500">v1.2</span>
         <span id="ws-status" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-800 text-gray-400">
           <span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
           connecting
@@ -92,8 +92,14 @@
 
     <!-- Feature Stores -->
     <section>
-      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Feature Stores</h2>
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Feature Stores <span class="text-gray-600 font-normal normal-case text-xs">(slow / fast bars)</span></h2>
       <div class="flex gap-2" id="feature-stores"></div>
+    </section>
+
+    <!-- Claude Market Analysis -->
+    <section>
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Claude Market Analysis</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3" id="claude-state"></div>
     </section>
 
     <!-- Portfolio Performance -->
@@ -196,7 +202,7 @@
   </main>
 
   <footer class="max-w-[1600px] mx-auto px-4 py-3 text-xs text-gray-600 font-mono">
-    phantom-perp v1.1 &middot; 7 strategies &middot; 5 instruments &middot; WebSocket live
+    phantom-perp v1.2 &middot; 10 strategies &middot; 3 crypto instruments &middot; WebSocket live
   </footer>
 
 <script>
@@ -206,7 +212,8 @@ const STRATEGIES = [
   {id:'momentum',label:'MOM'},{id:'mean_reversion',label:'MR'},
   {id:'liquidation_cascade',label:'LIQ'},{id:'correlation',label:'CORR'},
   {id:'regime_trend',label:'RT'},{id:'orderbook_imbalance',label:'OBI'},
-  {id:'vwap',label:'VWAP'}
+  {id:'vwap',label:'VWAP'},{id:'funding_arb',label:'FUND'},
+  {id:'claude_market_analysis',label:'CLAUDE'},{id:'oi_divergence',label:'OID'}
 ];
 
 let prevLengths = {};
@@ -303,16 +310,88 @@ function renderFeatureStores(stores) {
     el.innerHTML = '<span class="text-gray-600 text-sm font-mono">Awaiting signals agent data</span>';
     return;
   }
-  el.innerHTML = INSTRUMENTS.map(id => {
-    const count = stores[id] || 0;
-    const color = count > 0 ? 'border-accent-green/30 text-accent-green' : 'border-gray-700 text-gray-600';
+  el.innerHTML = ['ETH-PERP','BTC-PERP','SOL-PERP'].map(id => {
+    const d = stores[id];
+    const slow = d?.slow ?? 0;
+    const fast = d?.fast ?? 0;
+    const ok = slow > 0 || fast > 0;
+    const color = ok ? 'border-accent-green/30 text-accent-green' : 'border-gray-700 text-gray-600';
     return `<div class="px-3 py-1.5 rounded border ${color} text-xs font-mono">
-      ${id} <span class="font-semibold ml-1">${count}</span>
+      ${id.replace('-PERP','')}
+      <span class="font-semibold ml-1" title="slow bars">${slow}</span>
+      <span class="text-gray-600 mx-0.5">/</span>
+      <span class="font-semibold" title="fast bars">${fast}</span>
     </div>`;
   }).join('');
 }
 
-function renderPortfolio(containerId, label, streams) {
+function renderClaudeState(claudeState) {
+  const el = document.getElementById('claude-state');
+  const instruments = ['ETH-PERP', 'BTC-PERP', 'SOL-PERP'];
+  el.innerHTML = instruments.map(id => {
+    const s = claudeState[id];
+    if (!s) return `<div class="bg-surface-100 rounded-lg border border-gray-800/60 p-3">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-white font-medium text-sm font-mono">${id}</span>
+        <span class="text-gray-600 text-xs">awaiting</span>
+      </div>
+      <div class="text-gray-600 text-xs font-mono">No analysis yet</div>
+    </div>`;
+
+    const dir = s.direction || 'NO_SIGNAL';
+    let dirCls, dirBg;
+    if (dir === 'LONG') { dirCls = 'text-accent-green glow-green'; dirBg = 'bg-green-900/20 border-green-800/40'; }
+    else if (dir === 'SHORT') { dirCls = 'text-accent-red glow-red'; dirBg = 'bg-red-900/20 border-red-800/40'; }
+    else { dirCls = 'text-gray-500'; dirBg = 'bg-surface-100 border-gray-800/60'; }
+
+    const conviction = s.conviction ? parseFloat(s.conviction) : 0;
+    const convBar = conviction > 0 ? convictionBar(conviction) : '<span class="text-gray-600">—</span>';
+    const regime = s.regime || '?';
+    const trigger = s.trigger || '';
+    const ts = s.timestamp ? agoFromISO(s.timestamp) : '--';
+    const vol = s.volatility_1h ? parseFloat(s.volatility_1h).toFixed(3) : '--';
+    const reasoning = s.reasoning || '';
+    const belowThreshold = s.below_threshold;
+    const emitted = s.signal_emitted;
+
+    // Status badge
+    let badge = '';
+    if (emitted) badge = '<span class="px-1.5 py-0.5 rounded text-[10px] bg-green-900/40 text-accent-green font-semibold">SIGNAL</span>';
+    else if (belowThreshold) badge = '<span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-900/40 text-accent-amber font-semibold">LOW CONV</span>';
+    else if (dir === 'NO_SIGNAL') badge = '<span class="px-1.5 py-0.5 rounded text-[10px] bg-gray-800 text-gray-500 font-semibold">PASS</span>';
+
+    // Entry/stop/tp if present
+    let priceRow = '';
+    if (s.entry_price) {
+      priceRow = `<div class="flex gap-3 text-[10px] font-mono mt-1">
+        <span class="text-gray-500">Entry <span class="text-gray-300">$${s.entry_price}</span></span>
+        ${s.stop_loss ? `<span class="text-gray-500">SL <span class="text-accent-red">$${s.stop_loss}</span></span>` : ''}
+        ${s.take_profit ? `<span class="text-gray-500">TP <span class="text-accent-green">$${s.take_profit}</span></span>` : ''}
+      </div>`;
+    }
+
+    return `<div class="bg-surface-100 rounded-lg border ${dirBg} p-3">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+          <span class="text-white font-medium text-sm font-mono">${id.replace('-PERP','')}</span>
+          <span class="${dirCls} font-bold text-sm font-mono">${dir}</span>
+          ${badge}
+        </div>
+        <span class="text-gray-600 text-xs font-mono">${ts}</span>
+      </div>
+      <div class="flex items-center gap-3 text-xs font-mono mb-2">
+        ${conviction > 0 ? `<div>${convBar}</div>` : ''}
+        <span class="text-gray-500">regime <span class="text-gray-300">${regime}</span></span>
+        <span class="text-gray-500">vol <span class="text-gray-300">${vol}</span></span>
+        ${trigger ? `<span class="text-gray-600">${trigger}</span>` : ''}
+      </div>
+      ${priceRow}
+      ${reasoning ? `<div class="text-gray-500 text-[11px] font-mono leading-tight mt-1.5 border-t border-gray-800/40 pt-1.5 line-clamp-3" title="${reasoning}">${reasoning}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+
   const el = document.getElementById(containerId);
   const suffix = containerId === 'portfolio-a' ? 'a' : 'b';
   const stream = streams[`stream:portfolio_state:${suffix}`];
@@ -601,6 +680,7 @@ function connect() {
       const data = JSON.parse(new TextDecoder().decode(e.data));
       renderInstruments(data.instruments || {});
       renderFeatureStores(data.feature_stores || {});
+      renderClaudeState(data.claude_state || {});
       renderPortfolio('portfolio-a', 'A (Autonomous)', data.streams || {});
       renderPortfolio('portfolio-b', 'B (User-Confirmed)', data.streams || {});
       renderFills(data.fills || []);

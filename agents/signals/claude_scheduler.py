@@ -59,6 +59,7 @@ async def run_claude_scheduler(
     vol_spike_threshold: float = 0.20,
     oi_shift_threshold_pct: float = 5.0,
     min_interval_minutes: float = 3.0,
+    redis_client: object | None = None,  # Optional redis for persisting analysis state
 ) -> None:
     """Async scheduler that emits Claude-sourced signals for all instruments.
 
@@ -124,6 +125,7 @@ async def run_claude_scheduler(
                     oi_shift_threshold_pct=oi_shift_threshold_pct,
                     load_params_fn=_load_params,
                     latest_snapshots=latest_snapshots,
+                    redis_client=redis_client,
                 )
             except Exception as exc:
                 _logger.error(
@@ -156,6 +158,7 @@ async def _process_instrument(
     oi_shift_threshold_pct: float,
     load_params_fn: object,
     latest_snapshots: dict[str, object],
+    redis_client: object | None = None,
 ) -> None:
     """Evaluate triggers and call Claude for a single instrument."""
     store = slow_stores.get(instrument_id)
@@ -280,14 +283,27 @@ async def _process_instrument(
 
     last_call_time[instrument_id] = now
 
-    if validated is None:
+    if validated is None or validated.get("direction") == "NO_SIGNAL":
         _logger.info(
             "claude_scheduler_no_signal",
             instrument=instrument_id,
             trigger=trigger_reason,
         )
+        # Persist NO_SIGNAL state to Redis — include Claude's actual reasoning
+        _persist_claude_state(
+            redis_client=redis_client,
+            instrument_id=instrument_id,
+            state={
+                "direction": "NO_SIGNAL",
+                "conviction": 0.0,
+                "reasoning": validated.get("reasoning", "No clear trade opportunity.") if validated else "No clear trade opportunity.",
+                "regime": current_regime.value,
+                "trigger": trigger_reason,
+                "timestamp": utc_now().isoformat(),
+                "volatility_1h": round(current_vol, 4),
+            },
+        )
         return
-
     # Filter by conviction threshold
     conviction = float(validated["conviction"])
     if conviction < min_conviction:
@@ -296,6 +312,21 @@ async def _process_instrument(
             instrument=instrument_id,
             conviction=round(conviction, 3),
             threshold=min_conviction,
+        )
+        # Persist low-conviction state to Redis
+        _persist_claude_state(
+            redis_client=redis_client,
+            instrument_id=instrument_id,
+            state={
+                "direction": str(validated.get("direction", "?")),
+                "conviction": round(conviction, 3),
+                "reasoning": str(validated.get("reasoning", "")),
+                "regime": current_regime.value,
+                "trigger": trigger_reason,
+                "timestamp": utc_now().isoformat(),
+                "volatility_1h": round(current_vol, 4),
+                "below_threshold": True,
+            },
         )
         return
 
@@ -346,6 +377,61 @@ async def _process_instrument(
             signal_id=signal.signal_id,
             queue_maxsize=queue.maxsize,
         )
+
+    # Persist signal state to Redis for dashboard visibility (fire-and-forget)
+    _persist_claude_state(
+        redis_client=redis_client,
+        instrument_id=instrument_id,
+        state={
+            "direction": direction.value,
+            "conviction": round(conviction, 3),
+            "reasoning": str(validated.get("reasoning", "")),
+            "regime": current_regime.value,
+            "trigger": trigger_reason,
+            "timestamp": utc_now().isoformat(),
+            "volatility_1h": round(current_vol, 4),
+            "entry_price": str(validated["entry_price"]) if validated.get("entry_price") else None,
+            "stop_loss": str(validated["stop_loss"]) if validated.get("stop_loss") else None,
+            "take_profit": str(validated["take_profit"]) if validated.get("take_profit") else None,
+            "signal_emitted": True,
+        },
+    )
+
+
+def _persist_claude_state(
+    redis_client: object | None,
+    instrument_id: str,
+    state: dict,
+) -> None:
+    """Fire-and-forget Redis write of last Claude analysis per instrument.
+
+    Uses asyncio.ensure_future so we never block the scheduler tick on I/O.
+    Silently ignores all errors — Redis is an optional observability mirror.
+
+    Args:
+        redis_client: Optional async Redis client (None = skip).
+        instrument_id: Instrument key (e.g. 'ETH-PERP').
+        state: Dict of analysis state to serialise and store.
+    """
+    if redis_client is None:
+        return
+    import orjson  # noqa: PLC0415
+
+    async def _write() -> None:
+        try:
+            await redis_client.hset(  # type: ignore[union-attr]
+                "phantom:claude:last_analysis",
+                instrument_id,
+                orjson.dumps(state).decode(),
+            )
+        except Exception as exc:
+            _logger.warning(
+                "claude_scheduler_redis_persist_failed",
+                instrument=instrument_id,
+                error=str(exc),
+            )
+
+    asyncio.ensure_future(_write())
 
 
 def _load_params(instrument_id: str) -> ClaudeMarketAnalysisParams:
