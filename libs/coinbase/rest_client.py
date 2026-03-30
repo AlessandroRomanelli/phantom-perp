@@ -270,10 +270,12 @@ class CoinbaseRESTClient:
         perp_details = future_details.get("perpetual_details") or {}
         funding_rate = perp_details.get("funding_rate", "0")
         mark_price_str = data.get("price", "0")
+        open_interest_str = perp_details.get("open_interest", "0")
         return FundingRateResponse(
             product_id=product_id,
             funding_rate=Decimal(str(funding_rate)),
             mark_price=Decimal(str(mark_price_str)),
+            open_interest=Decimal(str(open_interest_str)),
         )
 
     # -- Portfolio-scoped endpoints -----------------------------------------

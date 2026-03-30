@@ -58,6 +58,10 @@ async def poll_funding_once(
         if state.index_price is None and state.last_price is not None:
             state.index_price = state.last_price
 
+        # Open interest is not available from WS; update from product details.
+        if resp.open_interest > 0:
+            state.open_interest = resp.open_interest
+
         logger.debug(
             "funding_fetched",
             instrument=instrument_id,
