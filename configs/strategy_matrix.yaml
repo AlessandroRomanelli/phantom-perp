@@ -65,3 +65,11 @@ strategies:
       - SOL-PERP
       # - QQQ-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
       # - SPY-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
+
+  claude_market_analysis:
+    enabled: true
+    instruments:
+      - ETH-PERP
+      - BTC-PERP
+      - SOL-PERP
+      # QQQ/SPY excluded: Claude analysis targets crypto perps only

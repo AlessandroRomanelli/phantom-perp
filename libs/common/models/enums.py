@@ -65,6 +65,7 @@ class SignalSource(str, Enum):
     REGIME_TREND = "regime_trend"
     VWAP = "vwap"
     VOLUME_PROFILE = "volume_profile"
+    CLAUDE_MARKET_ANALYSIS = "claude_market_analysis"
 
 
 class MarketRegime(str, Enum):
