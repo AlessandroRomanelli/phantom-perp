@@ -325,73 +325,114 @@ function renderFeatureStores(stores) {
   }).join('');
 }
 
-function renderClaudeState(claudeState) {
-  const el = document.getElementById('claude-state');
-  const instruments = ['ETH-PERP', 'BTC-PERP', 'SOL-PERP'];
-  el.innerHTML = instruments.map(id => {
-    const s = claudeState[id];
-    if (!s) return `<div class="bg-surface-100 rounded-lg border border-gray-800/60 p-3">
-      <div class="flex items-center justify-between mb-2">
-        <span class="text-white font-medium text-sm font-mono">${id}</span>
-        <span class="text-gray-600 text-xs">awaiting</span>
-      </div>
-      <div class="text-gray-600 text-xs font-mono">No analysis yet</div>
+// Track which Claude cards are expanded (persists across re-renders)
+const claudeExpanded = {};
+
+function toggleClaude(id) {
+  claudeExpanded[id] = !claudeExpanded[id];
+  // Re-render just this card so other cards aren't disturbed
+  const card = document.querySelector(`[data-claude-id="${id}"]`);
+  if (card) card.outerHTML = buildClaudeCard(id, window._lastClaudeState?.[id] || null);
+}
+
+function buildClaudeCard(id, s) {
+  const expanded = !!claudeExpanded[id];
+
+  if (!s) return `<div data-claude-id="${id}" class="bg-surface-100 rounded-lg border border-gray-800/60 p-3">
+    <div class="flex items-center justify-between">
+      <span class="text-white font-medium text-sm font-mono">${id}</span>
+      <span class="text-gray-600 text-xs">awaiting</span>
+    </div>
+    <div class="text-gray-600 text-xs font-mono mt-2">No analysis yet</div>
+  </div>`;
+
+  const dir = s.direction || 'NO_SIGNAL';
+  let dirCls, dirBg;
+  if (dir === 'LONG') { dirCls = 'text-accent-green glow-green'; dirBg = 'bg-green-900/20 border-green-800/40'; }
+  else if (dir === 'SHORT') { dirCls = 'text-accent-red glow-red'; dirBg = 'bg-red-900/20 border-red-800/40'; }
+  else { dirCls = 'text-gray-500'; dirBg = 'bg-surface-100 border-gray-800/60'; }
+
+  const conviction = s.conviction ? parseFloat(s.conviction) : 0;
+  const convBar = conviction > 0 ? convictionBar(conviction) : '<span class="text-gray-600">—</span>';
+  const regime = s.regime || '?';
+  const trigger = s.trigger || '';
+  const ts = s.timestamp ? agoFromISO(s.timestamp) : '--';
+  const vol = s.volatility_1h ? parseFloat(s.volatility_1h).toFixed(3) : '--';
+  const reasoning = s.reasoning || '';
+  const belowThreshold = s.below_threshold;
+  const emitted = s.signal_emitted;
+
+  // Status badge
+  let badge = '';
+  if (emitted) badge = '<span class="px-1.5 py-0.5 rounded text-[10px] bg-green-900/40 text-accent-green font-semibold">SIGNAL</span>';
+  else if (belowThreshold) badge = '<span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-900/40 text-accent-amber font-semibold">LOW CONV</span>';
+  else if (dir === 'NO_SIGNAL') badge = '<span class="px-1.5 py-0.5 rounded text-[10px] bg-gray-800 text-gray-500 font-semibold">PASS</span>';
+
+  // Entry/stop/tp
+  let priceRow = '';
+  if (s.entry_price) {
+    priceRow = `<div class="flex gap-3 text-[10px] font-mono mt-1">
+      <span class="text-gray-500">Entry <span class="text-gray-300">$${s.entry_price}</span></span>
+      ${s.stop_loss ? `<span class="text-gray-500">SL <span class="text-accent-red">$${s.stop_loss}</span></span>` : ''}
+      ${s.take_profit ? `<span class="text-gray-500">TP <span class="text-accent-green">$${s.take_profit}</span></span>` : ''}
     </div>`;
+  }
 
-    const dir = s.direction || 'NO_SIGNAL';
-    let dirCls, dirBg;
-    if (dir === 'LONG') { dirCls = 'text-accent-green glow-green'; dirBg = 'bg-green-900/20 border-green-800/40'; }
-    else if (dir === 'SHORT') { dirCls = 'text-accent-red glow-red'; dirBg = 'bg-red-900/20 border-red-800/40'; }
-    else { dirCls = 'text-gray-500'; dirBg = 'bg-surface-100 border-gray-800/60'; }
+  // Chevron icon
+  const chevron = expanded
+    ? `<svg class="w-3.5 h-3.5 text-gray-500 transition-transform rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>`
+    : `<svg class="w-3.5 h-3.5 text-gray-500 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>`;
 
-    const conviction = s.conviction ? parseFloat(s.conviction) : 0;
-    const convBar = conviction > 0 ? convictionBar(conviction) : '<span class="text-gray-600">—</span>';
-    const regime = s.regime || '?';
-    const trigger = s.trigger || '';
-    const ts = s.timestamp ? agoFromISO(s.timestamp) : '--';
-    const vol = s.volatility_1h ? parseFloat(s.volatility_1h).toFixed(3) : '--';
-    const reasoning = s.reasoning || '';
-    const belowThreshold = s.below_threshold;
-    const emitted = s.signal_emitted;
+  // Reasoning: 2-line clamp when collapsed, full when expanded
+  const reasoningBlock = reasoning ? `
+    <div class="text-gray-500 text-[11px] font-mono leading-relaxed mt-1.5 border-t border-gray-800/40 pt-1.5 ${expanded ? '' : 'line-clamp-2'}">${reasoning}</div>
+  ` : '';
 
-    // Status badge
-    let badge = '';
-    if (emitted) badge = '<span class="px-1.5 py-0.5 rounded text-[10px] bg-green-900/40 text-accent-green font-semibold">SIGNAL</span>';
-    else if (belowThreshold) badge = '<span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-900/40 text-accent-amber font-semibold">LOW CONV</span>';
-    else if (dir === 'NO_SIGNAL') badge = '<span class="px-1.5 py-0.5 rounded text-[10px] bg-gray-800 text-gray-500 font-semibold">PASS</span>';
+  // Extra detail rows shown only when expanded
+  let expandedDetail = '';
+  if (expanded) {
+    const extras = [];
+    if (s.market_context) extras.push(`<div class="text-gray-500 text-[11px] font-mono leading-relaxed"><span class="text-gray-600">context</span> ${s.market_context}</div>`);
+    if (s.risk_factors) extras.push(`<div class="text-gray-500 text-[11px] font-mono leading-relaxed"><span class="text-gray-600">risk</span> ${Array.isArray(s.risk_factors) ? s.risk_factors.join(', ') : s.risk_factors}</div>`);
+    if (s.time_horizon) extras.push(`<div class="font-mono text-[11px]"><span class="text-gray-600">horizon</span> <span class="text-gray-400">${s.time_horizon}</span></div>`);
+    if (s.trigger) extras.push(`<div class="font-mono text-[11px]"><span class="text-gray-600">trigger</span> <span class="text-gray-400">${s.trigger}</span></div>`);
+    if (extras.length) expandedDetail = `<div class="mt-2 space-y-1 border-t border-gray-800/30 pt-2">${extras.join('')}</div>`;
+  }
 
-    // Entry/stop/tp if present
-    let priceRow = '';
-    if (s.entry_price) {
-      priceRow = `<div class="flex gap-3 text-[10px] font-mono mt-1">
-        <span class="text-gray-500">Entry <span class="text-gray-300">$${s.entry_price}</span></span>
-        ${s.stop_loss ? `<span class="text-gray-500">SL <span class="text-accent-red">$${s.stop_loss}</span></span>` : ''}
-        ${s.take_profit ? `<span class="text-gray-500">TP <span class="text-accent-green">$${s.take_profit}</span></span>` : ''}
-      </div>`;
-    }
-
-    return `<div class="bg-surface-100 rounded-lg border ${dirBg} p-3">
+  return `<div data-claude-id="${id}" class="bg-surface-100 rounded-lg border ${dirBg} p-3">
+    <button onclick="toggleClaude('${id}')" class="w-full text-left focus:outline-none">
       <div class="flex items-center justify-between mb-2">
         <div class="flex items-center gap-2">
           <span class="text-white font-medium text-sm font-mono">${id.replace('-PERP','')}</span>
           <span class="${dirCls} font-bold text-sm font-mono">${dir}</span>
           ${badge}
         </div>
-        <span class="text-gray-600 text-xs font-mono">${ts}</span>
+        <div class="flex items-center gap-2">
+          <span class="text-gray-600 text-xs font-mono">${ts}</span>
+          ${chevron}
+        </div>
       </div>
       <div class="flex items-center gap-3 text-xs font-mono mb-2">
         ${conviction > 0 ? `<div>${convBar}</div>` : ''}
         <span class="text-gray-500">regime <span class="text-gray-300">${regime}</span></span>
         <span class="text-gray-500">vol <span class="text-gray-300">${vol}</span></span>
-        ${trigger ? `<span class="text-gray-600">${trigger}</span>` : ''}
+        ${!expanded && trigger ? `<span class="text-gray-600">${trigger}</span>` : ''}
       </div>
       ${priceRow}
-      ${reasoning ? `<div class="text-gray-500 text-[11px] font-mono leading-tight mt-1.5 border-t border-gray-800/40 pt-1.5 line-clamp-3" title="${reasoning}">${reasoning}</div>` : ''}
-    </div>`;
-  }).join('');
+    </button>
+    ${reasoningBlock}
+    ${expandedDetail}
+  </div>`;
 }
 
+function renderClaudeState(claudeState) {
+  window._lastClaudeState = claudeState;
+  const el = document.getElementById('claude-state');
+  const instruments = ['ETH-PERP', 'BTC-PERP', 'SOL-PERP'];
+  el.innerHTML = instruments.map(id => buildClaudeCard(id, claudeState[id] || null)).join('');
+}
 
+function renderPortfolio(containerId, label, streams) {
   const el = document.getElementById(containerId);
   const suffix = containerId === 'portfolio-a' ? 'a' : 'b';
   const stream = streams[`stream:portfolio_state:${suffix}`];
