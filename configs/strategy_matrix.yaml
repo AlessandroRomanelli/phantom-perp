@@ -73,3 +73,11 @@ strategies:
       - BTC-PERP
       - SOL-PERP
       # QQQ/SPY excluded: Claude analysis targets crypto perps only
+
+  oi_divergence:
+    enabled: true
+    instruments:
+      - ETH-PERP
+      - BTC-PERP
+      - SOL-PERP
+      # QQQ/SPY excluded: OI divergence is crypto-native (perpetuals OI data)

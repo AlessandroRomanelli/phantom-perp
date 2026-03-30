@@ -42,6 +42,7 @@ from agents.signals.strategies.liquidation_cascade import (
 )
 from agents.signals.strategies.mean_reversion import MeanReversionParams, MeanReversionStrategy
 from agents.signals.strategies.momentum import MomentumParams, MomentumStrategy
+from agents.signals.strategies.oi_divergence import OIDivergenceParams, OIDivergenceStrategy
 from agents.signals.strategies.orderbook_imbalance import (
     OrderbookImbalanceParams,
     OrderbookImbalanceStrategy,
@@ -137,6 +138,7 @@ STRATEGY_CLASSES: dict[str, type[SignalStrategy]] = {
     "vwap": VWAPStrategy,
     "funding_arb": ContrarianFundingStrategy,
     "claude_market_analysis": ClaudeMarketAnalysisStrategy,
+    "oi_divergence": OIDivergenceStrategy,
 }
 
 STRATEGY_PARAMS_CLASSES: dict[str, type] = {
@@ -149,6 +151,7 @@ STRATEGY_PARAMS_CLASSES: dict[str, type] = {
     "vwap": VWAPParams,
     "funding_arb": ContrarianFundingParams,
     "claude_market_analysis": ClaudeMarketAnalysisParams,
+    "oi_divergence": OIDivergenceParams,
 }
 
 
