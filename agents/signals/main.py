@@ -25,6 +25,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from agents.alpha.regime_detector import RegimeDetector
 from agents.signals.claude_scheduler import run_claude_scheduler
+from agents.signals.coinglass_poller import run_coinglass_poller
 from agents.signals.conviction_normalizer import normalize_conviction, should_route_portfolio_a
 from agents.signals.feature_store import FeatureStore
 from agents.signals.session_classifier import SessionType, classify_session
@@ -493,6 +494,35 @@ async def run_agent() -> None:
         name="claude_scheduler",
     )
     logger.info("claude_scheduler_task_launched", instruments=instrument_ids)
+
+    # --- Coinglass heatmap poller integration ---
+    # Shared mutable dict updated by poller; LiquidationCascadeStrategy reads from it.
+    import os  # noqa: PLC0415
+    latest_heatmaps: dict[str, list] = {}
+    coinglass_api_key = os.environ.get("COINGLASS_API_KEY", "")
+    if coinglass_api_key:
+        asyncio.create_task(
+            run_coinglass_poller(
+                instrument_ids=instrument_ids,
+                latest_heatmaps=latest_heatmaps,
+                latest_snapshots=latest_snapshots,  # type: ignore[arg-type]
+                api_key=coinglass_api_key,
+            ),
+            name="coinglass_poller",
+        )
+        logger.info("coinglass_poller_task_launched", instruments=instrument_ids)
+    else:
+        logger.info("coinglass_poller_skipped", reason="COINGLASS_API_KEY not set")
+
+    # Wire heatmap store into each LiquidationCascadeStrategy instance.
+    for iid, strats in strategies_by_instrument.items():
+        for s in strats:
+            if isinstance(s, LiquidationCascadeStrategy):
+                s.set_heatmap_store(latest_heatmaps)
+                logger.info(
+                    "liquidation_cascade_heatmap_wired",
+                    instrument=iid,
+                )
 
     await consumer.subscribe(
         channels=[Channel.MARKET_SNAPSHOTS],

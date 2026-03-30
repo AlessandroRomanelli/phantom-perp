@@ -28,6 +28,13 @@ parameters:
   vol_lookback: 10
   vol_surge_min_ratio: 1.5
 
+  # Coinglass heatmap magnet mode (S03)
+  heatmap_magnet_enabled: true
+  cluster_min_notional_usd: 500000
+  magnet_proximity_pct: 3.0
+  cluster_score_weight: 0.20
+  heatmap_fallback_on_missing: true
+
 instruments:
   ETH-PERP:
     parameters:
@@ -47,6 +54,8 @@ instruments:
       vol_spike_mult: 1.4
       min_conviction: 0.40
       cooldown_bars: 12
+      # BTC has large absolute liquidation walls — raise min notional threshold
+      cluster_min_notional_usd: 5000000
 
   SOL-PERP:
     parameters:
@@ -63,6 +72,8 @@ instruments:
       tier3_tp_atr_mult: 5.0
       min_conviction: 0.35
       cooldown_bars: 8
+      # SOL has smaller per-liquidation notional — lower threshold to capture walls
+      cluster_min_notional_usd: 200000
 
   QQQ-PERP:
     enabled: false

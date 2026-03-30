@@ -11,6 +11,8 @@ Signal logic:
   8. Conviction scales with OI drop rate, volatility spike, imbalance, and tier.
   9. Tier-specific stop/TP widths: Tier 3 gets widest stops and biggest targets.
   10. Short time horizon (<=2h) -> routes to Portfolio A (autonomous).
+  11. Heatmap magnet mode (optional): nearby liquidation clusters boost conviction
+      and add metadata when Coinglass heatmap data is wired via set_heatmap_store().
 """
 
 from __future__ import annotations
@@ -18,9 +20,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import structlog
 
 from libs.common.instruments import get_instrument
 from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
@@ -31,6 +34,11 @@ from libs.indicators.volatility import atr
 
 from agents.signals.feature_store import FeatureStore
 from agents.signals.strategies.base import SignalStrategy
+
+if TYPE_CHECKING:
+    from agents.signals.coinglass_poller import LiquidationCluster
+
+_logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -60,6 +68,13 @@ class LiquidationCascadeParams:
     # Volume surge confirmation (LIQ-02)
     vol_lookback: int = 10
     vol_surge_min_ratio: float = 1.5
+
+    # Heatmap magnet mode — conviction boost from Coinglass cluster proximity
+    heatmap_magnet_enabled: bool = True
+    cluster_min_notional_usd: float = 500_000.0
+    magnet_proximity_pct: float = 3.0
+    cluster_score_weight: float = 0.20
+    heatmap_fallback_on_missing: bool = True
 
     # Backward compatibility aliases
     @property
@@ -136,10 +151,28 @@ class LiquidationCascadeStrategy(SignalStrategy):
                 vol_surge_min_ratio=p.get(
                     "vol_surge_min_ratio", self._params.vol_surge_min_ratio,
                 ),
+                # Heatmap magnet
+                heatmap_magnet_enabled=p.get(
+                    "heatmap_magnet_enabled", self._params.heatmap_magnet_enabled,
+                ),
+                cluster_min_notional_usd=p.get(
+                    "cluster_min_notional_usd", self._params.cluster_min_notional_usd,
+                ),
+                magnet_proximity_pct=p.get(
+                    "magnet_proximity_pct", self._params.magnet_proximity_pct,
+                ),
+                cluster_score_weight=p.get(
+                    "cluster_score_weight", self._params.cluster_score_weight,
+                ),
+                heatmap_fallback_on_missing=p.get(
+                    "heatmap_fallback_on_missing", self._params.heatmap_fallback_on_missing,
+                ),
             )
 
         self._enabled = True
         self._bars_since_signal = self._params.cooldown_bars
+        # Heatmap store — wired externally via set_heatmap_store()
+        self._heatmap_store: dict[str, list[LiquidationCluster]] | None = None
 
     @property
     def name(self) -> str:
@@ -152,6 +185,49 @@ class LiquidationCascadeStrategy(SignalStrategy):
     @property
     def min_history(self) -> int:
         return max(self._params.oi_lookback, self._params.atr_period) + 5
+
+    # ------------------------------------------------------------------
+    # Heatmap store injection
+    # ------------------------------------------------------------------
+
+    def set_heatmap_store(
+        self, store: dict[str, list[LiquidationCluster]]
+    ) -> None:
+        """Wire the shared heatmap cluster dict from the Coinglass poller.
+
+        Must be called before the first ``evaluate()`` tick if heatmap-boosted
+        conviction is desired.  Idempotent — calling again replaces the ref.
+
+        Args:
+            store: Shared mutable dict mapping instrument IDs to their latest
+                ``LiquidationCluster`` lists (maintained by the poller).
+        """
+        self._heatmap_store = store
+        _logger.info("heatmap_store_wired", strategy=self.name)
+
+    @staticmethod
+    def _find_nearby_clusters(
+        clusters: list[LiquidationCluster],
+        current_price: float,
+        proximity_pct: float,
+    ) -> list[LiquidationCluster]:
+        """Return clusters within ``proximity_pct`` of ``current_price``, sorted by notional.
+
+        Args:
+            clusters: Full cluster list for the instrument.
+            current_price: Current mark/last price.
+            proximity_pct: Distance threshold in percent.
+
+        Returns:
+            Filtered list sorted descending by notional.
+        """
+        nearby = [c for c in clusters if c.distance_pct <= proximity_pct]
+        nearby.sort(key=lambda c: c.notional_usd, reverse=True)
+        return nearby
+
+    # ------------------------------------------------------------------
+    # Tier classification
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _classify_tier(abs_oi_drop_pct: float) -> int:
@@ -235,6 +311,62 @@ class LiquidationCascadeStrategy(SignalStrategy):
             oi_change_pct, price_change_pct, cur_imbalance,
             snapshot.volatility_1h, p, tier=tier,
         )
+
+        # ── Heatmap magnet mode ──────────────────────────────────────────────
+        # Runs AFTER base conviction is computed, BEFORE min_conviction gate.
+        heatmap_metadata: dict[str, Any] = {}
+        current_price = float(snapshot.last_price)
+
+        if p.heatmap_magnet_enabled:
+            instrument_clusters: list[LiquidationCluster] | None = None
+
+            if self._heatmap_store is not None:
+                instrument_clusters = self._heatmap_store.get(snapshot.instrument)
+
+            if instrument_clusters is None:
+                # No heatmap data available
+                if not p.heatmap_fallback_on_missing:
+                    return []
+                # else: proceed with base conviction (graceful fallback)
+            else:
+                nearby = self._find_nearby_clusters(
+                    instrument_clusters, current_price, p.magnet_proximity_pct,
+                )
+                if nearby:
+                    largest = nearby[0]
+                    # Boost scales with cluster size, capped at cluster_score_weight
+                    raw_boost = (largest.notional_usd / 10_000_000.0) * p.cluster_score_weight
+                    boost = min(p.cluster_score_weight, raw_boost)
+
+                    # Directional alignment bonus: cluster on the "target" side
+                    # SHORT follow: cluster below current price (liq wall beneath)
+                    # LONG fade: cluster above current price (liq wall overhead)
+                    if (
+                        direction == PositionSide.SHORT
+                        and largest.price_level < current_price
+                    ) or (
+                        direction == PositionSide.LONG
+                        and largest.price_level > current_price
+                    ):
+                        boost = min(p.cluster_score_weight, boost * 1.25)
+
+                    conviction = min(1.0, conviction + boost)
+
+                    heatmap_metadata = {
+                        "heatmap_clusters_nearby": len(nearby),
+                        "nearest_cluster_price": round(largest.price_level, 2),
+                        "nearest_cluster_notional": round(largest.notional_usd, 0),
+                        "heatmap_conviction_boost": round(boost, 4),
+                    }
+                else:
+                    heatmap_metadata = {
+                        "heatmap_clusters_nearby": 0,
+                        "nearest_cluster_price": None,
+                        "nearest_cluster_notional": None,
+                        "heatmap_conviction_boost": 0.0,
+                    }
+        # ────────────────────────────────────────────────────────────────────
+
         if conviction < p.min_conviction:
             return []
 
@@ -258,6 +390,17 @@ class LiquidationCascadeStrategy(SignalStrategy):
             f"price {price_change_pct:+.2f}%, imbalance={cur_imbalance:+.2f}"
         )
 
+        metadata: dict[str, Any] = {
+            "tier": tier,
+            "oi_change_pct": round(oi_change_pct, 3),
+            "price_change_pct": round(price_change_pct, 3),
+            "orderbook_imbalance": round(cur_imbalance, 3),
+            "vol_surge_ratio": round(vol_surge_ratio, 3),
+            "mode": mode,
+            "atr": round(cur_atr, 2),
+        }
+        metadata.update(heatmap_metadata)
+
         signal = StandardSignal(
             signal_id=generate_id("sig"),
             timestamp=utc_now(),
@@ -271,15 +414,7 @@ class LiquidationCascadeStrategy(SignalStrategy):
             entry_price=entry,
             stop_loss=stop_loss,
             take_profit=take_profit,
-            metadata={
-                "tier": tier,
-                "oi_change_pct": round(oi_change_pct, 3),
-                "price_change_pct": round(price_change_pct, 3),
-                "orderbook_imbalance": round(cur_imbalance, 3),
-                "vol_surge_ratio": round(vol_surge_ratio, 3),
-                "mode": mode,
-                "atr": round(cur_atr, 2),
-            },
+            metadata=metadata,
         )
 
         self._bars_since_signal = 0

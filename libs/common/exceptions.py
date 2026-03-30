@@ -83,6 +83,17 @@ class FundingRateCircuitBreakerError(PhantomPerpError):
     """Funding rate exceeds the circuit breaker threshold."""
 
 
+# ── External API Errors ─────────────────────────────────────────────────
+
+
+class CoinglassAPIError(PhantomPerpError):
+    """Error returned by the Coinglass API."""
+
+    def __init__(self, status_code: int, message: str) -> None:
+        self.status_code = status_code
+        super().__init__(f"Coinglass API error {status_code}: {message}")
+
+
 # ── Data Errors ──────────────────────────────────────────────────────────
 
 
