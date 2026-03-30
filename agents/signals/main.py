@@ -28,14 +28,19 @@ from agents.signals.claude_scheduler import run_claude_scheduler
 from agents.signals.coinglass_poller import run_coinglass_poller
 from agents.signals.conviction_normalizer import normalize_conviction, should_route_portfolio_a
 from agents.signals.feature_store import FeatureStore
+from agents.signals.orch_client import OrchestratorParams
+from agents.signals.orch_scheduler import run_orchestrator_scheduler
 from agents.signals.session_classifier import SessionType, classify_session
 from agents.signals.strategies.base import SignalStrategy  # noqa: TC001
 from agents.signals.strategies.claude_market_analysis import (
     ClaudeMarketAnalysisParams,
     ClaudeMarketAnalysisStrategy,
 )
+from agents.signals.strategies.contrarian_funding import (
+    ContrarianFundingParams,
+    ContrarianFundingStrategy,
+)
 from agents.signals.strategies.correlation import CorrelationParams, CorrelationStrategy
-from agents.signals.strategies.contrarian_funding import ContrarianFundingParams, ContrarianFundingStrategy
 from agents.signals.strategies.liquidation_cascade import (
     LiquidationCascadeParams,
     LiquidationCascadeStrategy,
@@ -527,6 +532,33 @@ async def run_agent() -> None:
                     instrument=iid,
                 )
 
+    # --- LLM Strategy Orchestrator ---
+    # Shared mutable dicts — no locks needed (asyncio single-threaded; scheduler
+    # is sole writer, main loop is sole reader).
+    orchestrator_gate_map: dict[tuple[str, str], bool] = {}
+    orchestrator_param_adj: dict[tuple[str, str], dict[str, Any]] = {}
+
+    orch_config = load_strategy_config("orchestrator")
+    orch_params = OrchestratorParams(**(orch_config or {}).get("parameters", {}))
+
+    if orch_params.enabled:
+        asyncio.create_task(
+            run_orchestrator_scheduler(
+                instrument_ids=instrument_ids,
+                slow_stores=slow_stores,
+                latest_snapshots=latest_snapshots,
+                regime_detector=regime_detector,
+                redis_client=publisher._redis,
+                gate_map=orchestrator_gate_map,
+                param_adjustments=orchestrator_param_adj,
+                params=orch_params,
+            ),
+            name="orchestrator_scheduler",
+        )
+        logger.info("orchestrator_scheduler_task_launched", instruments=instrument_ids)
+    else:
+        logger.info("orchestrator_scheduler_skipped", reason="disabled in config")
+
     await consumer.subscribe(
         channels=[Channel.MARKET_SNAPSHOTS],
         group="signals_agent",
@@ -593,10 +625,18 @@ async def run_agent() -> None:
                     if store.sample_count < strategy.min_history:
                         continue
 
+                    # Orchestrator gate map check (ORCH-12) — safe default True
+                    if not orchestrator_gate_map.get((instrument, strategy.name), True):
+                        continue  # strategy disabled by orchestrator for this instrument
+
                     # Apply session overrides temporarily
                     overrides = get_session_overrides(
                         session_config, strategy.name, session_info.session_type, instrument,
                     )
+                    # Merge orchestrator param adjustments (ORCH-11) — orchestrator wins
+                    orch_adj = orchestrator_param_adj.get((instrument, strategy.name), {})
+                    if orch_adj:
+                        overrides = {**overrides, **orch_adj}
                     originals = _apply_session_overrides(strategy, overrides)
 
                     try:
