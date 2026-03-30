@@ -42,7 +42,7 @@
 <body class="text-gray-300 min-h-screen overflow-y-auto scrollbar-thin">
 
   <!-- Header -->
-  <header class="sticky top-0 z-50 bg-surface-50/90 backdrop-blur-md border-b border-gray-800/60">
+  <header id="site-header" class="sticky top-0 z-50 bg-surface-50/90 backdrop-blur-md border-b border-gray-800/60">
     <div class="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
       <div class="flex items-center gap-3">
         <h1 class="text-lg font-semibold text-white font-mono tracking-tight">phantom-perp</h1>
@@ -63,30 +63,30 @@
         </button>
       </div>
     </div>
+  </header>
 
-    <!-- Mobile menu drawer — hidden by default, shown below header -->
-    <div id="mobile-menu"
-         class="sm:hidden hidden border-t border-gray-800/60 bg-surface-50/80 backdrop-blur-xl"
-         style="backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);">
-      <div class="max-w-[1600px] mx-auto px-4 py-3 space-y-3">
-        <!-- Clock + message count -->
-        <div class="flex items-center justify-between text-xs font-mono text-gray-400">
-          <span id="clock-mobile"></span>
-          <span id="msg-count-mobile"></span>
-        </div>
-        <!-- Strategy pills -->
-        <div>
-          <span class="text-gray-600 text-xs font-mono uppercase tracking-wider">Strategies</span>
-          <div class="flex flex-wrap gap-1.5 mt-1.5" id="strat-pills-mobile"></div>
-        </div>
-        <!-- Session -->
-        <div class="flex items-center gap-2 text-xs font-mono">
-          <span class="text-gray-500">Session:</span>
-          <span id="session-label-mobile" class="px-2 py-0.5 rounded text-xs font-medium"></span>
-        </div>
+  <!-- Mobile menu drawer — fixed, sits just below the header, full viewport width -->
+  <div id="mobile-menu"
+       class="sm:hidden hidden fixed left-0 right-0 z-40 border-b border-gray-800/60"
+       style="top: 49px; background: rgba(10,10,15,0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);">
+    <div class="px-4 py-3 space-y-3">
+      <!-- Clock + message count -->
+      <div class="flex items-center justify-between text-xs font-mono text-gray-400">
+        <span id="clock-mobile"></span>
+        <span id="msg-count-mobile"></span>
+      </div>
+      <!-- Strategy pills -->
+      <div>
+        <span class="text-gray-600 text-xs font-mono uppercase tracking-wider">Strategies</span>
+        <div class="flex flex-wrap gap-1.5 mt-1.5" id="strat-pills-mobile"></div>
+      </div>
+      <!-- Session -->
+      <div class="flex items-center gap-2 text-xs font-mono">
+        <span class="text-gray-500">Session:</span>
+        <span id="session-label-mobile" class="px-2 py-0.5 rounded text-xs font-medium"></span>
       </div>
     </div>
-  </header>
+  </div>
 
   <main class="max-w-[1600px] mx-auto px-4 py-4 space-y-4">
 
@@ -305,6 +305,9 @@ function toggleMobileMenu() {
     bars[1].style.opacity = '';
     bars[2].style.transform = '';
   } else {
+    // Pin the drawer top to the actual rendered header height
+    const headerH = document.getElementById('site-header').getBoundingClientRect().height;
+    menu.style.top = headerH + 'px';
     menu.classList.remove('hidden');
     // Animate to X
     bars[0].style.transform = 'translateY(6px) rotate(45deg)';
