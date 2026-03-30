@@ -57,6 +57,7 @@ class SignalSource(str, Enum):
     MOMENTUM = "momentum"
     MEAN_REVERSION = "mean_reversion"
     FUNDING_ARB = "funding_arb"
+    CONTRARIAN_FUNDING = "contrarian_funding"
     ORDERBOOK_IMBALANCE = "orderbook_imbalance"
     LIQUIDATION_CASCADE = "liquidation_cascade"
     SENTIMENT = "sentiment"

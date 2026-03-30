@@ -34,7 +34,7 @@ from agents.signals.strategies.claude_market_analysis import (
     ClaudeMarketAnalysisStrategy,
 )
 from agents.signals.strategies.correlation import CorrelationParams, CorrelationStrategy
-from agents.signals.strategies.funding_arb import FundingArbParams, FundingArbStrategy
+from agents.signals.strategies.contrarian_funding import ContrarianFundingParams, ContrarianFundingStrategy
 from agents.signals.strategies.liquidation_cascade import (
     LiquidationCascadeParams,
     LiquidationCascadeStrategy,
@@ -134,7 +134,7 @@ STRATEGY_CLASSES: dict[str, type[SignalStrategy]] = {
     "regime_trend": RegimeTrendStrategy,
     "orderbook_imbalance": OrderbookImbalanceStrategy,
     "vwap": VWAPStrategy,
-    "funding_arb": FundingArbStrategy,
+    "funding_arb": ContrarianFundingStrategy,
     "claude_market_analysis": ClaudeMarketAnalysisStrategy,
 }
 
@@ -146,7 +146,7 @@ STRATEGY_PARAMS_CLASSES: dict[str, type] = {
     "regime_trend": RegimeTrendParams,
     "orderbook_imbalance": OrderbookImbalanceParams,
     "vwap": VWAPParams,
-    "funding_arb": FundingArbParams,
+    "funding_arb": ContrarianFundingParams,
     "claude_market_analysis": ClaudeMarketAnalysisParams,
 }
 
