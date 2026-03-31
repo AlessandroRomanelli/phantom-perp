@@ -293,8 +293,7 @@ async def run_agent() -> None:
     """
     settings = get_settings()
 
-    portfolio_a_id = settings.portfolios.portfolio_a_id
-    portfolio_b_id = settings.portfolios.portfolio_b_id
+    portfolio_id = settings.portfolios.portfolio_id
     is_paper = settings.infra.environment == "paper"
 
     publisher = RedisPublisher(redis_url=settings.infra.redis_url)
@@ -314,15 +313,14 @@ async def run_agent() -> None:
         logger.info(
             "reconciliation_agent_started",
             mode="paper",
-            portfolio_a_id=portfolio_a_id,
-            portfolio_b_id=portfolio_b_id or "(not configured)",
+            portfolio_id=portfolio_id,
         )
 
         try:
             await run_paper_simulator(
                 redis_url=settings.infra.redis_url,
                 publisher=publisher,
-                include_portfolio_b=bool(portfolio_b_id),
+                include_portfolio_b=True,
                 repo=repo,
             )
         finally:
@@ -332,13 +330,13 @@ async def run_agent() -> None:
         return
 
     # --- Live mode: poll Coinbase API ---
-    auth_a = CoinbaseAuth(
+    auth = CoinbaseAuth(
         api_key=settings.coinbase.api_key_a,
         api_secret=settings.coinbase.api_secret_a,
     )
 
-    client_a = CoinbaseRESTClient(
-        auth=auth_a,
+    client = CoinbaseRESTClient(
+        auth=auth,
         base_url=settings.coinbase.rest_url,
         rate_limiter=RateLimiter(),
     )
@@ -346,55 +344,35 @@ async def run_agent() -> None:
     logger.info(
         "reconciliation_agent_started",
         mode="live",
-        portfolio_a_id=portfolio_a_id,
-        portfolio_b_id=portfolio_b_id or "(not configured)",
+        portfolio_id=portfolio_id,
         poll_interval=POLL_INTERVAL,
     )
 
     try:
         async with asyncio.TaskGroup() as tg:
-            # Always poll Route A
+            # Poll Route A
             tg.create_task(
                 run_portfolio_poller(
-                    client_a, Route.A, publisher,
-                    expected_portfolio_id=portfolio_a_id,
+                    client, Route.A, publisher,
+                    expected_portfolio_id=portfolio_id,
                 ),
             )
 
-            # Poll Route B only if configured with its own dedicated API key
-            if portfolio_b_id:
-                if settings.coinbase.api_key_b:
-                    auth_b = CoinbaseAuth(
-                        api_key=settings.coinbase.api_key_b,
-                        api_secret=settings.coinbase.api_secret_b,
-                    )
-                    client_b = CoinbaseRESTClient(
-                        auth=auth_b,
-                        base_url=settings.coinbase.rest_url,
-                        rate_limiter=RateLimiter(),
-                    )
-                    tg.create_task(
-                        run_portfolio_poller(
-                            client_b, Route.B, publisher,
-                            expected_portfolio_id=portfolio_b_id,
-                        ),
-                    )
-                else:
-                    logger.critical(
-                        "portfolio_b_missing_api_key",
-                        msg="Route B ID is configured but API key is missing. "
-                        "Refusing to start Route B poller — would query Route A data.",
-                        portfolio_b_id=portfolio_b_id,
-                    )
-            else:
-                logger.info("portfolio_b_not_configured", msg="skipping Route B polling")
+            # Also publish the same portfolio state to Route B stream so downstream
+            # agents consuming stream:portfolio_state:b continue to receive updates.
+            tg.create_task(
+                run_portfolio_poller(
+                    client, Route.B, publisher,
+                    expected_portfolio_id=portfolio_id,
+                ),
+            )
 
     except* Exception as eg:
         for exc in eg.exceptions:
             logger.error("reconciliation_task_failed", error=str(exc), exc_type=type(exc).__name__)
         raise
     finally:
-        await client_a.close()
+        await client.close()
         await publisher.close()
         logger.info("reconciliation_agent_stopped", mode="live")
 
