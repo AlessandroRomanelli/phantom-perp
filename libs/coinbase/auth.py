@@ -4,9 +4,17 @@ from __future__ import annotations
 
 import secrets
 import time
+from typing import cast
 
 import jwt
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed448 import Ed448PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
+
+# Matches jwt.AllowedPrivateKeyTypes — the union of key types jwt.encode accepts.
+_JwtPrivateKey = RSAPrivateKey | EllipticCurvePrivateKey | Ed25519PrivateKey | Ed448PrivateKey
 
 
 class CoinbaseAuth:
@@ -28,7 +36,7 @@ class CoinbaseAuth:
         self._private_key = self._load_key(api_secret)
 
     @staticmethod
-    def _load_key(raw: str) -> object:
+    def _load_key(raw: str) -> _JwtPrivateKey:
         """Load an EC private key from various formats.
 
         Coinbase CDP portal may provide the key as:
@@ -39,8 +47,9 @@ class CoinbaseAuth:
 
         # Already has PEM headers — load directly
         if normalized.startswith("-----"):
-            return serialization.load_pem_private_key(
-                normalized.encode("utf-8"), password=None,
+            return cast(
+                _JwtPrivateKey,
+                serialization.load_pem_private_key(normalized.encode("utf-8"), password=None),
             )
 
         # Raw base64 — try wrapping with both PKCS8 and SEC1 headers
@@ -55,7 +64,10 @@ class CoinbaseAuth:
 
         # Try PKCS8 DER first (most common from CDP)
         try:
-            return serialization.load_der_private_key(der_bytes, password=None)
+            return cast(
+                _JwtPrivateKey,
+                serialization.load_der_private_key(der_bytes, password=None),
+            )
         except Exception:
             pass
 
@@ -66,8 +78,9 @@ class CoinbaseAuth:
             + "\n-----END PRIVATE KEY-----"
         )
         try:
-            return serialization.load_pem_private_key(
-                pem_pkcs8.encode("utf-8"), password=None,
+            return cast(
+                _JwtPrivateKey,
+                serialization.load_pem_private_key(pem_pkcs8.encode("utf-8"), password=None),
             )
         except Exception:
             pass
@@ -78,8 +91,9 @@ class CoinbaseAuth:
             + normalized
             + "\n-----END EC PRIVATE KEY-----"
         )
-        return serialization.load_pem_private_key(
-            pem_ec.encode("utf-8"), password=None,
+        return cast(
+            _JwtPrivateKey,
+            serialization.load_pem_private_key(pem_ec.encode("utf-8"), password=None),
         )
 
     def sign(self, method: str, path: str, body: str = "") -> dict[str, str]:
