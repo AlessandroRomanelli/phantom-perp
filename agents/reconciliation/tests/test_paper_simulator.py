@@ -27,7 +27,7 @@ from agents.reconciliation.paper_simulator import (
 
 
 @pytest.fixture
-def portfolio_a() -> PaperPortfolio:
+def route_a() -> PaperPortfolio:
     return PaperPortfolio(
         target=Route.A,
         initial_equity=Decimal("10000"),
@@ -82,8 +82,8 @@ class TestSimulatedPosition:
 
 
 class TestPaperPortfolioFills:
-    def test_open_long_position(self, portfolio_a: PaperPortfolio) -> None:
-        fill = portfolio_a.apply_fill(
+    def test_open_long_position(self, route_a: PaperPortfolio) -> None:
+        fill = route_a.apply_fill(
             order_id="ord-1",
             instrument="ETH-PERP",
             side=OrderSide.BUY,
@@ -98,13 +98,13 @@ class TestPaperPortfolioFills:
         assert fill.is_maker is True
         assert fill.fee_usdc == (Decimal("2000") * FEE_MAKER).quantize(Decimal("0.01"))
 
-        assert portfolio_a.position is not None
-        assert portfolio_a.position.side == PositionSide.LONG
-        assert portfolio_a.position.size == Decimal("1.0")
-        assert portfolio_a.position.entry_price == Decimal("2000")
+        assert route_a.position is not None
+        assert route_a.position.side == PositionSide.LONG
+        assert route_a.position.size == Decimal("1.0")
+        assert route_a.position.entry_price == Decimal("2000")
 
-    def test_open_short_position(self, portfolio_a: PaperPortfolio) -> None:
-        portfolio_a.apply_fill(
+    def test_open_short_position(self, route_a: PaperPortfolio) -> None:
+        route_a.apply_fill(
             order_id="ord-1",
             instrument="ETH-PERP",
             side=OrderSide.SELL,
@@ -113,15 +113,15 @@ class TestPaperPortfolioFills:
             is_maker=False,
         )
 
-        assert portfolio_a.position is not None
-        assert portfolio_a.position.side == PositionSide.SHORT
-        assert portfolio_a.position.size == Decimal("0.5")
+        assert route_a.position is not None
+        assert route_a.position.side == PositionSide.SHORT
+        assert route_a.position.size == Decimal("0.5")
         # Taker fee
         expected_fee = (Decimal("1250") * FEE_TAKER).quantize(Decimal("0.01"))
-        assert portfolio_a.fees_paid == expected_fee
+        assert route_a.fees_paid == expected_fee
 
-    def test_add_to_position_averages_entry(self, portfolio_a: PaperPortfolio) -> None:
-        portfolio_a.apply_fill(
+    def test_add_to_position_averages_entry(self, route_a: PaperPortfolio) -> None:
+        route_a.apply_fill(
             order_id="ord-1",
             instrument="ETH-PERP",
             side=OrderSide.BUY,
@@ -129,7 +129,7 @@ class TestPaperPortfolioFills:
             fill_price=Decimal("2000"),
             is_maker=True,
         )
-        portfolio_a.apply_fill(
+        route_a.apply_fill(
             order_id="ord-2",
             instrument="ETH-PERP",
             side=OrderSide.BUY,
@@ -138,12 +138,12 @@ class TestPaperPortfolioFills:
             is_maker=True,
         )
 
-        assert portfolio_a.position is not None
-        assert portfolio_a.position.size == Decimal("2.0")
-        assert portfolio_a.position.entry_price == Decimal("2100")  # avg
+        assert route_a.position is not None
+        assert route_a.position.size == Decimal("2.0")
+        assert route_a.position.entry_price == Decimal("2100")  # avg
 
-    def test_close_position_realizes_profit(self, portfolio_a: PaperPortfolio) -> None:
-        portfolio_a.apply_fill(
+    def test_close_position_realizes_profit(self, route_a: PaperPortfolio) -> None:
+        route_a.apply_fill(
             order_id="ord-1",
             instrument="ETH-PERP",
             side=OrderSide.BUY,
@@ -151,7 +151,7 @@ class TestPaperPortfolioFills:
             fill_price=Decimal("2000"),
             is_maker=True,
         )
-        portfolio_a.apply_fill(
+        route_a.apply_fill(
             order_id="ord-2",
             instrument="ETH-PERP",
             side=OrderSide.SELL,
@@ -160,11 +160,11 @@ class TestPaperPortfolioFills:
             is_maker=True,
         )
 
-        assert portfolio_a.position is None
-        assert portfolio_a.realized_pnl == Decimal("100")
+        assert route_a.position is None
+        assert route_a.realized_pnl == Decimal("100")
 
-    def test_close_position_realizes_loss(self, portfolio_a: PaperPortfolio) -> None:
-        portfolio_a.apply_fill(
+    def test_close_position_realizes_loss(self, route_a: PaperPortfolio) -> None:
+        route_a.apply_fill(
             order_id="ord-1",
             instrument="ETH-PERP",
             side=OrderSide.BUY,
@@ -172,7 +172,7 @@ class TestPaperPortfolioFills:
             fill_price=Decimal("2000"),
             is_maker=True,
         )
-        portfolio_a.apply_fill(
+        route_a.apply_fill(
             order_id="ord-2",
             instrument="ETH-PERP",
             side=OrderSide.SELL,
@@ -181,11 +181,11 @@ class TestPaperPortfolioFills:
             is_maker=True,
         )
 
-        assert portfolio_a.position is None
-        assert portfolio_a.realized_pnl == Decimal("-100")
+        assert route_a.position is None
+        assert route_a.realized_pnl == Decimal("-100")
 
-    def test_partial_close(self, portfolio_a: PaperPortfolio) -> None:
-        portfolio_a.apply_fill(
+    def test_partial_close(self, route_a: PaperPortfolio) -> None:
+        route_a.apply_fill(
             order_id="ord-1",
             instrument="ETH-PERP",
             side=OrderSide.BUY,
@@ -193,7 +193,7 @@ class TestPaperPortfolioFills:
             fill_price=Decimal("2000"),
             is_maker=True,
         )
-        portfolio_a.apply_fill(
+        route_a.apply_fill(
             order_id="ord-2",
             instrument="ETH-PERP",
             side=OrderSide.SELL,
@@ -202,14 +202,14 @@ class TestPaperPortfolioFills:
             is_maker=True,
         )
 
-        assert portfolio_a.position is not None
-        assert portfolio_a.position.size == Decimal("1.0")
-        assert portfolio_a.position.side == PositionSide.LONG
-        assert portfolio_a.realized_pnl == Decimal("200")  # (2200-2000)*1
+        assert route_a.position is not None
+        assert route_a.position.size == Decimal("1.0")
+        assert route_a.position.side == PositionSide.LONG
+        assert route_a.realized_pnl == Decimal("200")  # (2200-2000)*1
 
-    def test_flip_position(self, portfolio_a: PaperPortfolio) -> None:
+    def test_flip_position(self, route_a: PaperPortfolio) -> None:
         # Open long 1.0
-        portfolio_a.apply_fill(
+        route_a.apply_fill(
             order_id="ord-1",
             instrument="ETH-PERP",
             side=OrderSide.BUY,
@@ -218,7 +218,7 @@ class TestPaperPortfolioFills:
             is_maker=True,
         )
         # Sell 2.0 — closes 1.0 long + opens 1.0 short
-        portfolio_a.apply_fill(
+        route_a.apply_fill(
             order_id="ord-2",
             instrument="ETH-PERP",
             side=OrderSide.SELL,
@@ -227,15 +227,15 @@ class TestPaperPortfolioFills:
             is_maker=True,
         )
 
-        assert portfolio_a.position is not None
-        assert portfolio_a.position.side == PositionSide.SHORT
-        assert portfolio_a.position.size == Decimal("1.0")
-        assert portfolio_a.position.entry_price == Decimal("2100")
-        assert portfolio_a.realized_pnl == Decimal("100")  # from closing the long
+        assert route_a.position is not None
+        assert route_a.position.side == PositionSide.SHORT
+        assert route_a.position.size == Decimal("1.0")
+        assert route_a.position.entry_price == Decimal("2100")
+        assert route_a.realized_pnl == Decimal("100")  # from closing the long
 
-    def test_fill_count_increments(self, portfolio_a: PaperPortfolio) -> None:
+    def test_fill_count_increments(self, route_a: PaperPortfolio) -> None:
         for i in range(3):
-            portfolio_a.apply_fill(
+            route_a.apply_fill(
                 order_id=f"ord-{i}",
                 instrument="ETH-PERP",
                 side=OrderSide.BUY,
@@ -243,16 +243,16 @@ class TestPaperPortfolioFills:
                 fill_price=Decimal("2000"),
                 is_maker=True,
             )
-        assert portfolio_a.fill_count == 3
+        assert route_a.fill_count == 3
 
 
 class TestPaperPortfolioFunding:
-    def test_no_position_no_funding(self, portfolio_a: PaperPortfolio) -> None:
-        result = portfolio_a.apply_funding("ETH-PERP", Decimal("0.0001"), Decimal("2000"))
+    def test_no_position_no_funding(self, route_a: PaperPortfolio) -> None:
+        result = route_a.apply_funding("ETH-PERP", Decimal("0.0001"), Decimal("2000"))
         assert result is None
 
-    def test_long_pays_positive_rate(self, portfolio_a: PaperPortfolio) -> None:
-        portfolio_a.apply_fill(
+    def test_long_pays_positive_rate(self, route_a: PaperPortfolio) -> None:
+        route_a.apply_fill(
             order_id="ord-1",
             instrument="ETH-PERP",
             side=OrderSide.BUY,
@@ -261,16 +261,16 @@ class TestPaperPortfolioFunding:
             is_maker=True,
         )
 
-        payment = portfolio_a.apply_funding("ETH-PERP", Decimal("0.0001"), Decimal("2000"))
+        payment = route_a.apply_funding("ETH-PERP", Decimal("0.0001"), Decimal("2000"))
 
         assert payment is not None
         # rate=0.0001 * notional=2000 = 0.20, long pays → -0.20
         assert payment.payment_usdc == Decimal("-0.20")
         assert payment.position_side == PositionSide.LONG
-        assert portfolio_a.funding_pnl == Decimal("-0.20")
+        assert route_a.funding_pnl == Decimal("-0.20")
 
-    def test_short_receives_positive_rate(self, portfolio_a: PaperPortfolio) -> None:
-        portfolio_a.apply_fill(
+    def test_short_receives_positive_rate(self, route_a: PaperPortfolio) -> None:
+        route_a.apply_fill(
             order_id="ord-1",
             instrument="ETH-PERP",
             side=OrderSide.SELL,
@@ -279,15 +279,15 @@ class TestPaperPortfolioFunding:
             is_maker=True,
         )
 
-        payment = portfolio_a.apply_funding("ETH-PERP", Decimal("0.0001"), Decimal("2000"))
+        payment = route_a.apply_funding("ETH-PERP", Decimal("0.0001"), Decimal("2000"))
 
         assert payment is not None
         assert payment.payment_usdc == Decimal("0.20")
         assert payment.position_side == PositionSide.SHORT
-        assert portfolio_a.funding_pnl == Decimal("0.20")
+        assert route_a.funding_pnl == Decimal("0.20")
 
-    def test_long_receives_negative_rate(self, portfolio_a: PaperPortfolio) -> None:
-        portfolio_a.apply_fill(
+    def test_long_receives_negative_rate(self, route_a: PaperPortfolio) -> None:
+        route_a.apply_fill(
             order_id="ord-1",
             instrument="ETH-PERP",
             side=OrderSide.BUY,
@@ -296,15 +296,15 @@ class TestPaperPortfolioFunding:
             is_maker=True,
         )
 
-        payment = portfolio_a.apply_funding("ETH-PERP", Decimal("-0.0002"), Decimal("2000"))
+        payment = route_a.apply_funding("ETH-PERP", Decimal("-0.0002"), Decimal("2000"))
 
         assert payment is not None
         # -rate * notional = -(-0.0002)*2000 = +0.40 for longs
         assert payment.payment_usdc == Decimal("0.40")
-        assert portfolio_a.funding_pnl == Decimal("0.40")
+        assert route_a.funding_pnl == Decimal("0.40")
 
-    def test_cumulative_funding_on_position(self, portfolio_a: PaperPortfolio) -> None:
-        portfolio_a.apply_fill(
+    def test_cumulative_funding_on_position(self, route_a: PaperPortfolio) -> None:
+        route_a.apply_fill(
             order_id="ord-1",
             instrument="ETH-PERP",
             side=OrderSide.BUY,
@@ -313,16 +313,16 @@ class TestPaperPortfolioFunding:
             is_maker=True,
         )
 
-        portfolio_a.apply_funding("ETH-PERP", Decimal("0.0001"), Decimal("2000"))
-        portfolio_a.apply_funding("ETH-PERP", Decimal("0.0001"), Decimal("2000"))
+        route_a.apply_funding("ETH-PERP", Decimal("0.0001"), Decimal("2000"))
+        route_a.apply_funding("ETH-PERP", Decimal("0.0001"), Decimal("2000"))
 
-        assert portfolio_a.position is not None
-        assert portfolio_a.position.cumulative_funding_usdc == Decimal("-0.40")
+        assert route_a.position is not None
+        assert route_a.position.cumulative_funding_usdc == Decimal("-0.40")
 
 
 class TestPaperPortfolioSnapshot:
-    def test_empty_portfolio_snapshot(self, portfolio_a: PaperPortfolio) -> None:
-        snapshot = portfolio_a.build_snapshot({"ETH-PERP": Decimal("2000")})
+    def test_empty_portfolio_snapshot(self, route_a: PaperPortfolio) -> None:
+        snapshot = route_a.build_snapshot({"ETH-PERP": Decimal("2000")})
 
         assert snapshot.equity_usdc == Decimal("10000.00")
         assert snapshot.used_margin_usdc == Decimal("0")
@@ -330,8 +330,8 @@ class TestPaperPortfolioSnapshot:
         assert len(snapshot.positions) == 0
         assert len(snapshot.open_positions) == 0
 
-    def test_snapshot_with_position(self, portfolio_a: PaperPortfolio) -> None:
-        portfolio_a.apply_fill(
+    def test_snapshot_with_position(self, route_a: PaperPortfolio) -> None:
+        route_a.apply_fill(
             order_id="ord-1",
             instrument="ETH-PERP",
             side=OrderSide.BUY,
@@ -340,7 +340,7 @@ class TestPaperPortfolioSnapshot:
             is_maker=True,
         )
 
-        snapshot = portfolio_a.build_snapshot({"ETH-PERP": Decimal("2100")})
+        snapshot = route_a.build_snapshot({"ETH-PERP": Decimal("2100")})
 
         assert len(snapshot.open_positions) == 1
         assert snapshot.unrealized_pnl_usdc == Decimal("100.00")
@@ -353,8 +353,8 @@ class TestPaperPortfolioSnapshot:
         assert pos.entry_price == Decimal("2000")
         assert pos.mark_price == Decimal("2100")
 
-    def test_equity_reflects_fees(self, portfolio_a: PaperPortfolio) -> None:
-        portfolio_a.apply_fill(
+    def test_equity_reflects_fees(self, route_a: PaperPortfolio) -> None:
+        route_a.apply_fill(
             order_id="ord-1",
             instrument="ETH-PERP",
             side=OrderSide.BUY,
@@ -363,7 +363,7 @@ class TestPaperPortfolioSnapshot:
             is_maker=True,
         )
 
-        snapshot = portfolio_a.build_snapshot({"ETH-PERP": Decimal("2000")})
+        snapshot = route_a.build_snapshot({"ETH-PERP": Decimal("2000")})
 
         # Equity should be initial - fees (no unrealized P&L at same price)
         expected_fee = (Decimal("2000") * FEE_MAKER).quantize(Decimal("0.01"))
@@ -371,8 +371,8 @@ class TestPaperPortfolioSnapshot:
         # equity = 10000 - fee + unrealized(0)
         assert snapshot.equity_usdc == (Decimal("10000") - expected_fee).quantize(Decimal("0.01"))
 
-    def test_equity_reflects_realized_pnl(self, portfolio_a: PaperPortfolio) -> None:
-        portfolio_a.apply_fill(
+    def test_equity_reflects_realized_pnl(self, route_a: PaperPortfolio) -> None:
+        route_a.apply_fill(
             order_id="ord-1",
             instrument="ETH-PERP",
             side=OrderSide.BUY,
@@ -380,7 +380,7 @@ class TestPaperPortfolioSnapshot:
             fill_price=Decimal("2000"),
             is_maker=True,
         )
-        portfolio_a.apply_fill(
+        route_a.apply_fill(
             order_id="ord-2",
             instrument="ETH-PERP",
             side=OrderSide.SELL,
@@ -389,15 +389,15 @@ class TestPaperPortfolioSnapshot:
             is_maker=True,
         )
 
-        snapshot = portfolio_a.build_snapshot({"ETH-PERP": Decimal("2100")})
+        snapshot = route_a.build_snapshot({"ETH-PERP": Decimal("2100")})
 
         assert snapshot.realized_pnl_today_usdc == Decimal("100.00")
         assert snapshot.fees_paid_today_usdc > Decimal("0")
         # No position, so no unrealized P&L
         assert snapshot.unrealized_pnl_usdc == Decimal("0.00")
 
-    def test_snapshot_portfolio_metadata(self, portfolio_a: PaperPortfolio) -> None:
-        snapshot = portfolio_a.build_snapshot({"ETH-PERP": Decimal("2000")})
+    def test_snapshot_portfolio_metadata(self, route_a: PaperPortfolio) -> None:
+        snapshot = route_a.build_snapshot({"ETH-PERP": Decimal("2000")})
 
         assert snapshot.route == Route.A
 

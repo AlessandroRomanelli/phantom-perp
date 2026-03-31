@@ -633,7 +633,7 @@ class TestConvictionModel:
 class TestPortfolioRouting:
     """Tests for Portfolio A vs B routing via conviction threshold."""
 
-    def test_portfolio_a_routing_at_high_conviction(self) -> None:
+    def test_route_a_routing_at_high_conviction(self) -> None:
         """Conviction >= route_a_min_conviction → suggested_route = Route A."""
         # Set a very low A threshold so any signal qualifies.
         # Disable accel mode to avoid mode conflicts with the divergence direction.
@@ -654,7 +654,7 @@ class TestPortfolioRouting:
         assert len(signals) == 1
         assert signals[0].suggested_route == Route.A
 
-    def test_portfolio_b_routing_at_medium_conviction(self) -> None:
+    def test_route_b_routing_at_medium_conviction(self) -> None:
         """Conviction < route_a_min_conviction → suggested_route = Route B."""
         # Set an impossibly high A threshold to force routing to B
         params = _permissive_params(

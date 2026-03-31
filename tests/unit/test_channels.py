@@ -20,13 +20,13 @@ class TestChannelNames:
             Route.B
         )
 
-    def test_portfolio_a_suffix(self) -> None:
+    def test_route_a_suffix(self) -> None:
         assert Channel.ranked_ideas(Route.A).endswith(":a")
         assert Channel.approved_orders(Route.A).endswith(":a")
         assert Channel.portfolio_state(Route.A).endswith(":a")
         assert Channel.funding_payments(Route.A).endswith(":a")
 
-    def test_portfolio_b_suffix(self) -> None:
+    def test_route_b_suffix(self) -> None:
         assert Channel.ranked_ideas(Route.B).endswith(":b")
         assert Channel.approved_orders(Route.B).endswith(":b")
 

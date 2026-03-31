@@ -314,7 +314,7 @@ class TestRegimeTrendStrategy:
         assert sig.time_horizon == timedelta(hours=6)
         assert sig.suggested_route == Route.B
 
-    def test_portfolio_a_routing_on_high_conviction_breakout(self) -> None:
+    def test_route_a_routing_on_high_conviction_breakout(self) -> None:
         """High-conviction breakouts should emit a Portfolio A signal too."""
         params = _relaxed_params()
         params.route_a_enabled = True
@@ -348,7 +348,7 @@ class TestRegimeTrendStrategy:
         assert b_sig.metadata["route"] == "B"
         assert a_sig.metadata["entry_type"] == "breakout"
 
-    def test_portfolio_a_not_emitted_when_disabled(self) -> None:
+    def test_route_a_not_emitted_when_disabled(self) -> None:
         """When route_a_enabled is False, only B signals should emit."""
         params = _relaxed_params()
         params.route_a_enabled = False
@@ -367,7 +367,7 @@ class TestRegimeTrendStrategy:
         a_signals = [s for s in signals if s.suggested_route == Route.A]
         assert len(a_signals) == 0
 
-    def test_portfolio_a_requires_min_conviction(self) -> None:
+    def test_route_a_requires_min_conviction(self) -> None:
         """Portfolio A signal should not emit if conviction is below threshold."""
         params = _relaxed_params()
         params.route_a_enabled = True

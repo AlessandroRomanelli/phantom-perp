@@ -24,7 +24,7 @@ class TestSystemCircuitBreaker:
         assert cb.is_halted(Route.B) is False
         assert cb.is_globally_halted() is False
 
-    def test_trip_portfolio_a(self) -> None:
+    def test_trip_route_a(self) -> None:
         cb = SystemCircuitBreaker()
         event = cb.trip_portfolio(
             Route.A, KillSwitchReason.DAILY_LOSS,
@@ -34,7 +34,7 @@ class TestSystemCircuitBreaker:
         assert cb.is_halted(Route.B) is False
         assert event.route == Route.A
 
-    def test_trip_portfolio_b(self) -> None:
+    def test_trip_route_b(self) -> None:
         cb = SystemCircuitBreaker()
         cb.trip_portfolio(
             Route.B, KillSwitchReason.MAX_DRAWDOWN,
@@ -121,52 +121,52 @@ class TestSystemCircuitBreaker:
 
 
 class TestEvaluateDailyLoss:
-    def test_portfolio_a_below_threshold(self) -> None:
+    def test_route_a_below_threshold(self) -> None:
         event = evaluate_daily_loss(5.0, Route.A, T0)
         assert event is None  # A's threshold is 10%
 
-    def test_portfolio_a_at_threshold(self) -> None:
+    def test_route_a_at_threshold(self) -> None:
         event = evaluate_daily_loss(10.0, Route.A, T0)
         assert event is not None
         assert event.reason == KillSwitchReason.DAILY_LOSS
         assert event.route == Route.A
 
-    def test_portfolio_a_above_threshold(self) -> None:
+    def test_route_a_above_threshold(self) -> None:
         event = evaluate_daily_loss(12.0, Route.A, T0)
         assert event is not None
 
-    def test_portfolio_b_below_threshold(self) -> None:
+    def test_route_b_below_threshold(self) -> None:
         event = evaluate_daily_loss(3.0, Route.B, T0)
         assert event is None  # B's threshold is 5%
 
-    def test_portfolio_b_at_threshold(self) -> None:
+    def test_route_b_at_threshold(self) -> None:
         event = evaluate_daily_loss(5.0, Route.B, T0)
         assert event is not None
         assert event.route == Route.B
 
-    def test_portfolio_b_stricter_than_a(self) -> None:
+    def test_route_b_stricter_than_a(self) -> None:
         # 7% loss: kills B but not A
         assert evaluate_daily_loss(7.0, Route.A, T0) is None
         assert evaluate_daily_loss(7.0, Route.B, T0) is not None
 
 
 class TestEvaluateDrawdown:
-    def test_portfolio_a_below_threshold(self) -> None:
+    def test_route_a_below_threshold(self) -> None:
         assert evaluate_drawdown(20.0, Route.A, T0) is None
 
-    def test_portfolio_a_at_threshold(self) -> None:
+    def test_route_a_at_threshold(self) -> None:
         event = evaluate_drawdown(25.0, Route.A, T0)
         assert event is not None
         assert event.reason == KillSwitchReason.MAX_DRAWDOWN
 
-    def test_portfolio_b_below_threshold(self) -> None:
+    def test_route_b_below_threshold(self) -> None:
         assert evaluate_drawdown(10.0, Route.B, T0) is None
 
-    def test_portfolio_b_at_threshold(self) -> None:
+    def test_route_b_at_threshold(self) -> None:
         event = evaluate_drawdown(15.0, Route.B, T0)
         assert event is not None
 
-    def test_portfolio_b_stricter_than_a(self) -> None:
+    def test_route_b_stricter_than_a(self) -> None:
         # 20% drawdown: kills B but not A
         assert evaluate_drawdown(20.0, Route.A, T0) is None
         assert evaluate_drawdown(20.0, Route.B, T0) is not None

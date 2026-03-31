@@ -48,8 +48,8 @@ DEFAULT_CONFIG = {
 }
 
 
-class TestLimitsForPortfolio:
-    def test_portfolio_a_defaults(self) -> None:
+class TestLimitsForRoute:
+    def test_route_a_defaults(self) -> None:
         limits = limits_for_route(Route.A, DEFAULT_CONFIG)
         assert limits.max_leverage == Decimal("5.0")
         assert limits.max_position_size_eth == Decimal("3.0")
@@ -60,7 +60,7 @@ class TestLimitsForPortfolio:
         assert limits.stop_loss_required is True
         assert limits.max_concurrent_positions == 3
 
-    def test_portfolio_b_defaults(self) -> None:
+    def test_route_b_defaults(self) -> None:
         limits = limits_for_route(Route.B, DEFAULT_CONFIG)
         assert limits.max_leverage == Decimal("3.0")
         assert limits.max_position_size_eth == Decimal("8.0")

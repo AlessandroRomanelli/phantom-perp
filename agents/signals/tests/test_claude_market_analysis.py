@@ -929,7 +929,7 @@ class TestProcessInstrument:
         mock_claude.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_high_conviction_routes_to_portfolio_a(self) -> None:
+    async def test_high_conviction_routes_to_route_a(self) -> None:
         """conviction >= route_a_min_conviction → suggested_route=A."""
         store = _build_store_with_prices([2200.0 + i for i in range(10)])
         queue = self._make_queue()
@@ -982,7 +982,7 @@ class TestProcessInstrument:
         assert signal.suggested_route == Route.A
 
     @pytest.mark.asyncio
-    async def test_low_conviction_routes_to_portfolio_b(self) -> None:
+    async def test_low_conviction_routes_to_route_b(self) -> None:
         """conviction < route_a_min_conviction → suggested_route=None (routed to B)."""
         store = _build_store_with_prices([2200.0] * 5)
         queue = self._make_queue()

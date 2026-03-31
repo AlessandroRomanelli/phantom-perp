@@ -669,7 +669,7 @@ class TestFundingRateIntegration:
 class TestPortfolioARouting:
     """Tests for Portfolio A routing (CORR-03)."""
 
-    def test_high_conviction_routes_to_portfolio_a(self) -> None:
+    def test_high_conviction_routes_to_route_a(self) -> None:
         """D-10: conviction >= route_a_min_conviction -> Portfolio A."""
         params = CorrelationParams(
             basis_short_lookback=30,
@@ -696,7 +696,7 @@ class TestPortfolioARouting:
             # If conviction didn't reach 0.70, it routes to B (also valid)
             assert signals[0].suggested_route == Route.B
 
-    def test_low_conviction_routes_to_portfolio_b(self) -> None:
+    def test_low_conviction_routes_to_route_b(self) -> None:
         """conviction < route_a_min_conviction -> Portfolio B."""
         params = CorrelationParams(
             basis_short_lookback=30,

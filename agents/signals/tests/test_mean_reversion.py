@@ -610,7 +610,7 @@ class TestMRExtendedTargets:
 class TestMRPortfolioRouting:
     """Test Portfolio A routing for high-conviction signals."""
 
-    def test_high_conviction_routes_to_portfolio_a(self) -> None:
+    def test_high_conviction_routes_to_route_a(self) -> None:
         """Signals with conviction >= 0.65 should route to Portfolio A."""
         params = MeanReversionParams(
             min_conviction=0.0,
@@ -677,7 +677,7 @@ class TestMRPortfolioRouting:
         assert signals[0].conviction >= 0.65
         assert signals[0].suggested_route == Route.A
 
-    def test_low_conviction_routes_to_portfolio_b(self) -> None:
+    def test_low_conviction_routes_to_route_b(self) -> None:
         """Signals with conviction < 0.65 should route to Portfolio B."""
         params = MeanReversionParams(
             min_conviction=0.0,

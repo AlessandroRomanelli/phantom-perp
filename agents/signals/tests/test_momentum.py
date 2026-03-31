@@ -669,7 +669,7 @@ class TestMomentumSwingStops:
 class TestMomentumPortfolioRouting:
     """High-conviction signals route to Portfolio A."""
 
-    def test_high_conviction_routes_to_portfolio_a(self) -> None:
+    def test_high_conviction_routes_to_route_a(self) -> None:
         """Signals with conviction >= 0.75 have suggested_route=Route.A."""
         strategy = MomentumStrategy(params=MomentumParams(
             route_a_min_conviction=0.75,
@@ -690,7 +690,7 @@ class TestMomentumPortfolioRouting:
         # Should produce high conviction: 0.35+0.175+0.15+0.15 = 0.825
         assert conv >= 0.75
 
-    def test_low_conviction_routes_to_portfolio_b(self) -> None:
+    def test_low_conviction_routes_to_route_b(self) -> None:
         """Signals with conviction < 0.75 have suggested_route=Route.B."""
         strategy = MomentumStrategy(params=MomentumParams(
             route_a_min_conviction=0.75,

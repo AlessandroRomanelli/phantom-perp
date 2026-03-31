@@ -556,7 +556,7 @@ class TestVWAPProperties:
         assert "session_progress" in m
         assert "atr" in m
 
-    def test_portfolio_a_routing(self) -> None:
+    def test_route_a_routing(self) -> None:
         from agents.signals.strategies.vwap import VWAPParams, VWAPStrategy
 
         params = VWAPParams(

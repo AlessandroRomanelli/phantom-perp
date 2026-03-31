@@ -243,7 +243,7 @@ class TestStopLossRequired:
 # ---------------------------------------------------------------------------
 
 class TestDailyLossKillSwitch:
-    def test_portfolio_a_daily_loss_exceeded(self) -> None:
+    def test_route_a_daily_loss_exceeded(self) -> None:
         """A daily loss > 10% → Portfolio A halted."""
         engine = _engine()
         # net_pnl = -1500 on 10000 equity → 15% loss > 10% limit
@@ -255,7 +255,7 @@ class TestDailyLossKillSwitch:
         assert result.approved is False
         assert "Daily loss" in (result.rejection_reason or "")
 
-    def test_portfolio_b_daily_loss_exceeded(self) -> None:
+    def test_route_b_daily_loss_exceeded(self) -> None:
         """B has stricter limit: > 5% → halted."""
         engine = _engine()
         # 6% loss on B (> 5% limit)
@@ -314,7 +314,7 @@ class TestMaxConcurrentPositions:
 # ---------------------------------------------------------------------------
 
 class TestLeverageLimits:
-    def test_portfolio_a_exceeds_5x_rejected(self) -> None:
+    def test_route_a_exceeds_5x_rejected(self) -> None:
         """Existing position already at 5x leverage → any new trade rejected."""
         engine = _engine()
         # Existing: 2.5 ETH × 2000 = 5000 notional on 1000 equity → exactly 5x
@@ -331,7 +331,7 @@ class TestLeverageLimits:
         )
         assert result.approved is False
 
-    def test_portfolio_b_3x_limit_stricter(self) -> None:
+    def test_route_b_3x_limit_stricter(self) -> None:
         """Portfolio B limit is 3x, stricter than A's 5x."""
         engine = _engine()
         # Equity 5000, existing 2 ETH × 2000 = 4000 notional → leverage already ~0.8x
@@ -384,7 +384,7 @@ class TestMarginUtilization:
 # ---------------------------------------------------------------------------
 
 class TestLiquidationDistance:
-    def test_portfolio_a_8pct_floor(self) -> None:
+    def test_route_a_8pct_floor(self) -> None:
         """Portfolio A requires at least 8% liquidation distance."""
         engine = _engine()
         # At 5x leverage LONG, liq distance is ~19.5% → passes 8%
@@ -394,7 +394,7 @@ class TestLiquidationDistance:
         )
         assert "Liquidation distance" not in (result.rejection_reason or "")
 
-    def test_portfolio_b_15pct_floor(self) -> None:
+    def test_route_b_15pct_floor(self) -> None:
         """Portfolio B requires at least 15% liquidation distance.
         At 3x leverage, distance is ~32% → should pass."""
         engine = _engine()
@@ -474,7 +474,7 @@ class TestFundingCostProjection:
 # ---------------------------------------------------------------------------
 
 class TestHappyPath:
-    def test_portfolio_a_order_approved(self) -> None:
+    def test_route_a_order_approved(self) -> None:
         """Standard Portfolio A trade passes all checks."""
         engine = _engine()
         result = engine.evaluate(
@@ -495,7 +495,7 @@ class TestHappyPath:
         assert order.estimated_margin_required_usdc > Decimal("0")
         assert order.estimated_liquidation_price > Decimal("0")
 
-    def test_portfolio_b_order_approved(self) -> None:
+    def test_route_b_order_approved(self) -> None:
         """Standard Portfolio B trade passes all checks."""
         engine = _engine()
         result = engine.evaluate(

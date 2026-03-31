@@ -54,7 +54,7 @@ def test_preserves_raw_conviction() -> None:
     assert result.normalized_conviction == 0.73  # Identity mapping
 
 
-def test_portfolio_a_threshold_value() -> None:
+def test_route_a_threshold_value() -> None:
     """ROUTE_A_UNIFIED_THRESHOLD should be 0.70."""
     assert ROUTE_A_UNIFIED_THRESHOLD == 0.70
 

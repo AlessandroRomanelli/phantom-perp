@@ -104,7 +104,7 @@ class TestPlaceOrderLive:
     """_place_order() live branch routes to the correct portfolio client."""
 
     @pytest.mark.asyncio
-    async def test_limit_order_routes_to_portfolio_a(self) -> None:
+    async def test_limit_order_routes_to_route_a(self) -> None:
         """LIMIT order for Portfolio A calls pool.get_client(A).create_order()."""
         mock_pool = _make_mock_pool(Route.A)
         expected_response = _make_order_response(order_id="live-limit-a")
@@ -146,7 +146,7 @@ class TestPlaceOrderLive:
         )
 
     @pytest.mark.asyncio
-    async def test_limit_order_routes_to_portfolio_b(self) -> None:
+    async def test_limit_order_routes_to_route_b(self) -> None:
         """LIMIT order for Portfolio B calls pool.get_client(B).create_order()."""
         mock_pool = _make_mock_pool(Route.B)
         expected_response = _make_order_response(order_id="live-limit-b")
@@ -337,7 +337,7 @@ class TestCancelOrderLive:
     """_cancel_order() routes to the correct portfolio client in live mode."""
 
     @pytest.mark.asyncio
-    async def test_cancel_routes_to_portfolio_a(self) -> None:
+    async def test_cancel_routes_to_route_a(self) -> None:
         """cancel_order() calls pool.get_client(A).cancel_order(order_id)."""
         mock_pool = _make_mock_pool(Route.A)
 
@@ -354,7 +354,7 @@ class TestCancelOrderLive:
         )
 
     @pytest.mark.asyncio
-    async def test_cancel_routes_to_portfolio_b(self) -> None:
+    async def test_cancel_routes_to_route_b(self) -> None:
         """cancel_order() calls pool.get_client(B).cancel_order(order_id)."""
         mock_pool = _make_mock_pool(Route.B)
 

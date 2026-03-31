@@ -211,7 +211,7 @@ class TestOrderbookImbalanceStrategy:
 
         assert len(signals) == 1
 
-    def test_portfolio_a_high_conviction(self) -> None:
+    def test_route_a_high_conviction(self) -> None:
         """When conviction >= route_a_min_conviction, target is Portfolio A."""
         params = OrderbookImbalanceParams(
             lookback_bars=10,
@@ -237,7 +237,7 @@ class TestOrderbookImbalanceStrategy:
             # If conviction didn't reach threshold, route to B
             assert signals[0].suggested_route == Route.B
 
-    def test_portfolio_b_low_conviction(self) -> None:
+    def test_route_b_low_conviction(self) -> None:
         """OBI is Portfolio A only — when conviction < route_a_min_conviction, no signal."""
         params = OrderbookImbalanceParams(
             lookback_bars=10,
