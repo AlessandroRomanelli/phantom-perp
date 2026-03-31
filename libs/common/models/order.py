@@ -8,7 +8,7 @@ from libs.common.models.enums import (
     OrderSide,
     OrderStatus,
     OrderType,
-    PortfolioTarget,
+    Route,
     SignalSource,
 )
 
@@ -17,14 +17,14 @@ from libs.common.models.enums import (
 class ProposedOrder:
     """An order that has been sized, risk-checked, and is ready for routing.
 
-    For Portfolio A: goes directly to execution.
-    For Portfolio B: goes to the confirmation agent first.
+    For Route A: goes directly to execution.
+    For Route B: goes to the confirmation agent first.
     """
 
     order_id: str
     signal_id: str
     instrument: str
-    portfolio_target: PortfolioTarget
+    route: Route
     side: OrderSide
     size: Decimal
     order_type: OrderType
@@ -62,7 +62,7 @@ class ApprovedOrder:
     """An order that has been approved (auto for A, user-confirmed for B)."""
 
     order_id: str
-    portfolio_target: PortfolioTarget
+    route: Route
     instrument: str
     side: OrderSide
     size: Decimal
@@ -81,7 +81,7 @@ class Fill:
 
     fill_id: str
     order_id: str
-    portfolio_target: PortfolioTarget
+    route: Route
     instrument: str
     side: OrderSide
     size: Decimal

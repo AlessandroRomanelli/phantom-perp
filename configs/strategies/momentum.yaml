@@ -15,10 +15,10 @@ parameters:
   stop_loss_atr_mult: 3.0
   take_profit_atr_mult: 4.5
   min_conviction: 0.40
-  cooldown_bars: 5
+  cooldown_bars: 10
   vol_lookback: 10
   vol_min_ratio: 0.5
-  portfolio_a_min_conviction: 0.60
+  portfolio_a_min_conviction: 0.85
   swing_lookback: 20
   swing_order: 3
   funding_rate_boost: 0.08
@@ -30,7 +30,7 @@ instruments:
     parameters:
       # ETH: Mid-vol crypto, moderate liquidity. Lower volume gate for more signals.
       min_conviction: 0.35
-      cooldown_bars: 4
+      cooldown_bars: 8
       vol_lookback: 10
       vol_min_ratio: 0.4
       swing_lookback: 20
@@ -42,7 +42,7 @@ instruments:
     parameters:
       # BTC: Lower vol, deepest liquidity, longer trends. Higher quality filters.
       min_conviction: 0.35
-      cooldown_bars: 8
+      cooldown_bars: 16
       vol_lookback: 15
       vol_min_ratio: 0.6
       swing_lookback: 30
@@ -54,7 +54,7 @@ instruments:
     parameters:
       # SOL: Highest vol, thinner book, fastest moves. Widest stops, lowest gates.
       min_conviction: 0.30
-      cooldown_bars: 3
+      cooldown_bars: 6
       vol_lookback: 8
       vol_min_ratio: 0.35
       swing_lookback: 15
@@ -68,7 +68,7 @@ instruments:
     parameters:
       # QQQ: Equity derivative, session-bound. Conservative settings.
       min_conviction: 0.35
-      cooldown_bars: 10
+      cooldown_bars: 20
       vol_lookback: 12
       vol_min_ratio: 0.5
       swing_lookback: 25
@@ -80,7 +80,7 @@ instruments:
     parameters:
       # SPY: Most liquid equity, steady trends. Most conservative.
       min_conviction: 0.35
-      cooldown_bars: 12
+      cooldown_bars: 24
       vol_lookback: 15
       vol_min_ratio: 0.55
       swing_lookback: 25

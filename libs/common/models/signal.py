@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import PositionSide, Route, SignalSource
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,7 +22,7 @@ class StandardSignal:
     source: SignalSource
     time_horizon: timedelta
     reasoning: str
-    suggested_target: PortfolioTarget | None = None
+    suggested_route: Route | None = None
     entry_price: Decimal | None = None
     stop_loss: Decimal | None = None
     take_profit: Decimal | None = None

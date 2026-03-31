@@ -907,14 +907,14 @@ class TestConfigLoading:
         # ETH-PERP overrides
         assert eth_strategy._params.divergence_lookback == 18
         assert eth_strategy._params.div_threshold_pct == 1.5
-        assert eth_strategy._params.cooldown_bars == 12
+        assert eth_strategy._params.cooldown_bars == 24
         # ETH-PERP does NOT override accel_threshold — must equal base
         assert eth_strategy._params.accel_threshold == 2.0
 
         # BTC-PERP overrides
         assert btc_strategy._params.divergence_lookback == 24
         assert btc_strategy._params.min_conviction == 0.60
-        assert btc_strategy._params.cooldown_bars == 16
+        assert btc_strategy._params.cooldown_bars == 32
         # BTC-PERP does NOT override div_threshold_pct (stays 2.0) — same as base
         assert btc_strategy._params.div_threshold_pct == 2.0
 
@@ -924,7 +924,7 @@ class TestConfigLoading:
         assert sol_strategy._params.accel_threshold == 3.0
         assert sol_strategy._params.stop_loss_atr_mult == 2.5
         assert sol_strategy._params.take_profit_atr_mult == 4.0
-        assert sol_strategy._params.cooldown_bars == 10
+        assert sol_strategy._params.cooldown_bars == 20
         # Instruments differ from each other
         assert eth_strategy._params.divergence_lookback != btc_strategy._params.divergence_lookback
         assert btc_strategy._params.cooldown_bars > eth_strategy._params.cooldown_bars

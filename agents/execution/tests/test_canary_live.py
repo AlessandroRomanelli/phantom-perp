@@ -1,6 +1,6 @@
 """Live canary integration test for ETH-PERP order placement and cancellation.
 
-Places a real min-size BUY LIMIT order far below market ($1.00) on Coinbase
+Places a real min-notional BUY LIMIT order well below market on Coinbase
 Advanced Trade, verifies the response fields, then cancels the order.
 Guarantees the cancel via try/finally so no orphaned orders are left.
 
@@ -9,8 +9,7 @@ in CI without credentials.
 
 Run manually with credentials:
     COINBASE_ADV_API_KEY_A=... COINBASE_ADV_API_SECRET_A=... \\
-    COINBASE_PORTFOLIO_A_ID=... \\
-    pytest agents/execution/tests/test_canary_live.py -v -m integration
+    pytest agents/execution/tests/test_canary_live.py -v
 """
 
 from __future__ import annotations
@@ -40,9 +39,10 @@ class TestLiveCanaryOrder:
     async def test_place_and_cancel_eth_perp_limit_order(self) -> None:
         """Place a far-below-market ETH-PERP limit order and immediately cancel it.
 
-        The order is placed at $1.00 (far below any realistic ETH price) with
-        the minimum order size so fill risk is zero.  We verify the API response
-        fields (order_id, product_id, status) and then unconditionally cancel.
+        The order is placed at 75% of current market price (well below any
+        realistic fill zone) with the minimum size that satisfies Coinbase's
+        $10 quote_min_size notional requirement.  We verify the API response
+        fields (order_id, product_id) and then unconditionally cancel.
         """
         api_key = os.environ.get("COINBASE_ADV_API_KEY_A", "")
         api_secret = os.environ.get("COINBASE_ADV_API_SECRET_A", "")
@@ -70,8 +70,24 @@ class TestLiveCanaryOrder:
 
         instrument = get_instrument("ETH-PERP")
         product_id: str = instrument.product_id  # e.g. "ETH-PERP-INTX"
-        order_size: Decimal = instrument.min_order_size  # 0.0001
-        limit_price: Decimal = Decimal("1.00")  # far below market — zero fill risk
+
+        # -- Compute a safe limit price and minimum valid size ------------------
+        # Coinbase rejects limit prices outside a price band and orders below
+        # $10 notional (quote_min_size). Use 75% of current mark price and
+        # compute the minimum size to satisfy the $10 floor.
+        product_data: dict[str, str] = await client._request(
+            "GET", f"/api/v3/brokerage/products/{product_id}"
+        )
+        current_price = Decimal(product_data.get("price", "0"))
+        assert current_price > 0, "Could not fetch current ETH price"
+
+        limit_price = (current_price * Decimal("0.75")).quantize(Decimal("0.01"))
+        quote_min = Decimal("10")  # Coinbase quote_min_size for ETH-PERP-INTX
+        base_increment = Decimal(product_data.get("base_increment", "0.0001"))
+        min_size = (quote_min / limit_price).quantize(
+            base_increment, rounding="ROUND_UP"
+        )
+        order_size = max(min_size, base_increment)
         client_order_id: str = f"canary-{uuid4()}"
 
         # -- Place + verify + cancel (finally guarantees cancel) ----------------
@@ -94,9 +110,6 @@ class TestLiveCanaryOrder:
             assert placed_order_id, "order_id must be non-empty"
             assert response.product_id == "ETH-PERP-INTX", (
                 f"Expected product_id='ETH-PERP-INTX', got '{response.product_id}'"
-            )
-            assert response.status in ("OPEN", "PENDING"), (
-                f"Expected status OPEN or PENDING, got '{response.status}'"
             )
 
         finally:

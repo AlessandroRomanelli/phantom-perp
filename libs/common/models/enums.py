@@ -3,8 +3,8 @@
 from enum import Enum
 
 
-class PortfolioTarget(str, Enum):
-    """Target portfolio for trade routing."""
+class Route(str, Enum):
+    """Target route for trade routing."""
 
     A = "autonomous"
     B = "user_confirmed"

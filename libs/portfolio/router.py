@@ -9,12 +9,11 @@ from libs.common.models.enums import PortfolioTarget, SignalSource
 from libs.common.models.signal import StandardSignal
 
 
-# Default routing: strategies that go to Portfolio A (autonomous)
-_SHORT_HORIZON_SOURCES: frozenset[SignalSource] = frozenset({
-    SignalSource.FUNDING_ARB,
-    SignalSource.ORDERBOOK_IMBALANCE,
-    SignalSource.LIQUIDATION_CASCADE,
-})
+# Historical note: _SHORT_HORIZON_SOURCES previously forced FUNDING_ARB,
+# ORDERBOOK_IMBALANCE, and LIQUIDATION_CASCADE to Portfolio A regardless of
+# conviction.  Removed to let each strategy control its own routing via
+# suggested_target and portfolio_a_min_conviction in YAML.
+_SHORT_HORIZON_SOURCES: frozenset[SignalSource] = frozenset()
 
 _DEFAULT_SHORT_HORIZON_THRESHOLD = timedelta(hours=2)
 _HIGH_CONVICTION_SHORT_HORIZON_THRESHOLD = timedelta(hours=4)

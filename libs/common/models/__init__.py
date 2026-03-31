@@ -2,8 +2,8 @@ from libs.common.models.enums import (
     OrderSide,
     OrderStatus,
     OrderType,
-    PortfolioTarget,
     PositionSide,
+    Route,
     SignalSource,
 )
 from libs.common.models.funding import FundingPayment, FundingRate
@@ -24,9 +24,9 @@ __all__ = [
     "OrderType",
     "PerpPosition",
     "PortfolioSnapshot",
-    "PortfolioTarget",
     "PositionSide",
     "ProposedOrder",
+    "Route",
     "SignalSource",
     "StandardSignal",
     "SystemSnapshot",

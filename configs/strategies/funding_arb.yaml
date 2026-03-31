@@ -16,18 +16,18 @@ parameters:
   atr_period: 14
   stop_loss_atr_mult: 1.5
   take_profit_atr_mult: 3.0
-  cooldown_bars: 12
-  portfolio_a_min_conviction: 0.70
+  cooldown_bars: 24
+  portfolio_a_min_conviction: 0.85
 
 instruments:
   ETH-PERP:
     # ETH funding spikes faster — lower threshold and shorter cooldown
     zscore_threshold: 1.8
-    cooldown_bars: 10
+    cooldown_bars: 20
   BTC-PERP:
     # BTC moves slower — require stronger signal and stricter conviction
     zscore_threshold: 2.2
-    cooldown_bars: 14
+    cooldown_bars: 28
     min_conviction: 0.60
   SOL-PERP:
     # SOL has extreme swings — wider stops to absorb volatility

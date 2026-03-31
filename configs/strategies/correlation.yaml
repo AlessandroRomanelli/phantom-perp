@@ -15,11 +15,11 @@ parameters:
   stop_loss_atr_mult: 3.0
   take_profit_atr_mult: 4.0
   min_conviction: 0.35
-  cooldown_bars: 12
+  cooldown_bars: 24
   # Funding rate integration (CORR-02)
   funding_rate_boost: 0.10
   # Portfolio A routing (CORR-03)
-  portfolio_a_min_conviction: 0.55
+  portfolio_a_min_conviction: 0.85
 
 instruments:
   ETH-PERP:

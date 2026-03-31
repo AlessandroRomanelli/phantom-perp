@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from libs.common.models.enums import PortfolioTarget, PositionSide
+from libs.common.models.enums import PositionSide, Route
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,11 +31,11 @@ class FundingRate:
 
 @dataclass(frozen=True, slots=True)
 class FundingPayment:
-    """A single hourly funding settlement for a portfolio's position."""
+    """A single hourly funding settlement for a route's position."""
 
     timestamp: datetime
     instrument: str
-    portfolio_target: PortfolioTarget
+    route: Route
     rate: Decimal
     payment_usdc: Decimal
     position_size: Decimal

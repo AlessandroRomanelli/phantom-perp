@@ -76,6 +76,9 @@ class LiquidationCascadeParams:
     cluster_score_weight: float = 0.20
     heatmap_fallback_on_missing: bool = True
 
+    # Portfolio A routing — require high conviction for autonomous execution
+    portfolio_a_min_conviction: float = 0.85
+
     # Backward compatibility aliases
     @property
     def oi_drop_threshold_pct(self) -> float:
@@ -166,6 +169,9 @@ class LiquidationCascadeStrategy(SignalStrategy):
                 ),
                 heatmap_fallback_on_missing=p.get(
                     "heatmap_fallback_on_missing", self._params.heatmap_fallback_on_missing,
+                ),
+                portfolio_a_min_conviction=p.get(
+                    "portfolio_a_min_conviction", self._params.portfolio_a_min_conviction,
                 ),
             )
 
@@ -401,6 +407,12 @@ class LiquidationCascadeStrategy(SignalStrategy):
         }
         metadata.update(heatmap_metadata)
 
+        suggested_target = (
+            PortfolioTarget.A
+            if conviction >= p.portfolio_a_min_conviction
+            else PortfolioTarget.B
+        )
+
         signal = StandardSignal(
             signal_id=generate_id("sig"),
             timestamp=utc_now(),
@@ -410,7 +422,7 @@ class LiquidationCascadeStrategy(SignalStrategy):
             source=SignalSource.LIQUIDATION_CASCADE,
             time_horizon=timedelta(hours=2),
             reasoning=reasoning,
-            suggested_target=PortfolioTarget.A,
+            suggested_target=suggested_target,
             entry_price=entry,
             stop_loss=stop_loss,
             take_profit=take_profit,

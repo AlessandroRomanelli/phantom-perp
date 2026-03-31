@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 
-from libs.common.models.enums import PortfolioTarget
+from libs.common.models.enums import Route
 from libs.common.models.position import PerpPosition
 
 
@@ -13,7 +13,7 @@ class PortfolioSnapshot:
     """Point-in-time state of a single Coinbase Advanced portfolio."""
 
     timestamp: datetime
-    portfolio_target: PortfolioTarget
+    route: Route
     equity_usdc: Decimal
     used_margin_usdc: Decimal
     available_margin_usdc: Decimal
@@ -42,23 +42,23 @@ class PortfolioSnapshot:
 
 @dataclass(slots=True)
 class SystemSnapshot:
-    """Combined view of both portfolios — used by monitoring only."""
+    """Combined view of both routes — used by monitoring only."""
 
     timestamp: datetime
-    portfolio_a: PortfolioSnapshot
-    portfolio_b: PortfolioSnapshot
+    route_a: PortfolioSnapshot
+    route_b: PortfolioSnapshot
 
     @property
     def combined_equity_usdc(self) -> Decimal:
-        return self.portfolio_a.equity_usdc + self.portfolio_b.equity_usdc
+        return self.route_a.equity_usdc + self.route_b.equity_usdc
 
     @property
     def combined_unrealized_pnl_usdc(self) -> Decimal:
         return (
-            self.portfolio_a.unrealized_pnl_usdc + self.portfolio_b.unrealized_pnl_usdc
+            self.route_a.unrealized_pnl_usdc + self.route_b.unrealized_pnl_usdc
         )
 
     @property
     def all_positions(self) -> list[PerpPosition]:
-        """All open positions across both portfolios."""
-        return self.portfolio_a.open_positions + self.portfolio_b.open_positions
+        """All open positions across both routes."""
+        return self.route_a.open_positions + self.route_b.open_positions

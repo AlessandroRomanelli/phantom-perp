@@ -6,21 +6,21 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import PositionSide, Route, SignalSource
 
 
 @dataclass(frozen=True, slots=True)
 class RankedTradeIdea:
-    """A trade idea ranked by the alpha combiner and routed to a portfolio.
+    """A trade idea ranked by the alpha combiner and routed to a route.
 
-    Unlike StandardSignal, portfolio_target is always set (never None) and
+    Unlike StandardSignal, route is always set (never None) and
     sources may contain multiple contributing signal sources.
 
     Args:
         idea_id: Unique identifier.
         timestamp: When the idea was created.
         instrument: Instrument identifier (e.g. "ETH-PERP").
-        portfolio_target: Definitive portfolio assignment (A or B).
+        route: Definitive route assignment (A or B).
         direction: LONG or SHORT.
         conviction: Weighted conviction from contributing signals (0–1).
         sources: Signal sources that contributed to this idea.
@@ -35,7 +35,7 @@ class RankedTradeIdea:
     idea_id: str
     timestamp: datetime
     instrument: str
-    portfolio_target: PortfolioTarget
+    route: Route
     direction: PositionSide
     conviction: float
     sources: list[SignalSource]

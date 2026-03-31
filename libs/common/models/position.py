@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
-from libs.common.models.enums import PortfolioTarget, PositionSide
+from libs.common.models.enums import PositionSide, Route
 
 
 @dataclass(slots=True)
@@ -14,7 +14,7 @@ class PerpPosition:
     """
 
     instrument: str
-    portfolio_target: PortfolioTarget
+    route: Route
     side: PositionSide
     size: Decimal
     entry_price: Decimal

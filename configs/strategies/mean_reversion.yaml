@@ -14,10 +14,10 @@ parameters:
   atr_period: 14
   stop_loss_atr_mult: 2.5
   min_conviction: 0.35
-  cooldown_bars: 8
+  cooldown_bars: 16
   trend_reject_threshold: 0.6
   extended_deviation_threshold: 0.5
-  portfolio_a_min_conviction: 0.55
+  portfolio_a_min_conviction: 0.85
   vol_lookback: 10
 
 instruments:
@@ -29,7 +29,7 @@ instruments:
       rsi_overbought: 68
       adx_max: 35.0
       min_conviction: 0.30
-      cooldown_bars: 6
+      cooldown_bars: 12
       # Phase 2+4 params: permissive trend reject, moderate funding boost
       trend_reject_threshold: 0.6
       extended_deviation_threshold: 0.5
@@ -44,7 +44,7 @@ instruments:
       rsi_overbought: 67
       adx_max: 35.0
       min_conviction: 0.30
-      cooldown_bars: 12
+      cooldown_bars: 24
       # Phase 2+4 params: stricter trend reject (BTC trends persist), wider bands
       trend_reject_threshold: 0.7
       extended_deviation_threshold: 0.55
@@ -59,7 +59,7 @@ instruments:
       adx_max: 45.0
       stop_loss_atr_mult: 2.5
       min_conviction: 0.25
-      cooldown_bars: 5
+      cooldown_bars: 10
       # Phase 2+4 params: most permissive trend reject, SOL reverts fast
       trend_reject_threshold: 0.55
       extended_deviation_threshold: 0.45
@@ -74,7 +74,7 @@ instruments:
       rsi_overbought: 65
       adx_max: 30.0
       min_conviction: 0.30
-      cooldown_bars: 12
+      cooldown_bars: 24
       # Phase 2+4 params: moderate trend rejection, conservative funding
       trend_reject_threshold: 0.65
       extended_deviation_threshold: 0.5
@@ -89,7 +89,7 @@ instruments:
       rsi_overbought: 65
       adx_max: 28.0
       min_conviction: 0.30
-      cooldown_bars: 15
+      cooldown_bars: 30
       # Phase 2+4 params: moderate trend rejection, most conservative funding
       trend_reject_threshold: 0.65
       extended_deviation_threshold: 0.5

@@ -43,7 +43,7 @@ class CoinbaseAuth:
         - Full PEM with headers (-----BEGIN ... -----)
         - Raw base64 DER (no headers) in SEC1 or PKCS8 format
         """
-        normalized = raw.replace("\\n", "\n").strip()
+        normalized = raw.replace("\\\\n", "\n").replace("\\n", "\n").strip()
 
         # Already has PEM headers — load directly
         if normalized.startswith("-----"):
