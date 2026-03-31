@@ -462,7 +462,7 @@ async def run_paper_simulator(
     redis_url: str,
     publisher: RedisPublisher,
     *,
-    include_portfolio_b: bool = True,
+    include_route_b: bool = True,
     repo: TunerRepository | None = None,
 ) -> None:
     """Run the paper trading simulator.
@@ -473,7 +473,7 @@ async def run_paper_simulator(
     Args:
         redis_url: Redis connection URL.
         publisher: RedisPublisher for publishing fills and snapshots.
-        include_portfolio_b: Whether to simulate Route B.
+        include_route_b: Whether to simulate Route B.
         repo: Optional TunerRepository for persisting fills to PostgreSQL.
             When provided, every fill (entry and SL/TP exit) is written to
             the fills table for historical tracking.
@@ -485,7 +485,7 @@ async def run_paper_simulator(
         ),
     }
 
-    if include_portfolio_b:
+    if include_route_b:
         portfolios[Route.B] = PaperPortfolio(
             target=Route.B,
             initial_equity=PAPER_INITIAL_EQUITY,
@@ -509,7 +509,7 @@ async def run_paper_simulator(
 
     # --- Consumer: approved orders ---
     order_channels = [Channel.approved_orders(Route.A)]
-    if include_portfolio_b:
+    if include_route_b:
         order_channels.append(Channel.approved_orders(Route.B))
 
     order_consumer = RedisConsumer(redis_url=redis_url, block_ms=2000)

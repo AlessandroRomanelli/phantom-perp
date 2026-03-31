@@ -266,7 +266,7 @@ async def run_portfolio_poller(
             if consecutive_failures >= 5:
                 backoff = min(consecutive_failures * POLL_INTERVAL, 300)
                 logger.warning(
-                    "poll_portfolio_backoff",
+                    "poll_route_backoff",
                     portfolio=label,
                     backoff_seconds=backoff,
                     consecutive_failures=consecutive_failures,
@@ -320,7 +320,7 @@ async def run_agent() -> None:
             await run_paper_simulator(
                 redis_url=settings.infra.redis_url,
                 publisher=publisher,
-                include_portfolio_b=True,
+                include_route_b=True,
                 repo=repo,
             )
         finally:

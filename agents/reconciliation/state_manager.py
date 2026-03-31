@@ -152,15 +152,15 @@ def build_portfolio_snapshot(
 
 
 def build_system_snapshot(
-    portfolio_a: PortfolioSnapshot,
-    portfolio_b: PortfolioSnapshot,
+    route_a: PortfolioSnapshot,
+    route_b: PortfolioSnapshot,
     now: datetime | None = None,
 ) -> SystemSnapshot:
     """Combine both portfolio snapshots into a system-wide view."""
     return SystemSnapshot(
         timestamp=now or utc_now(),
-        route_a=portfolio_a,
-        route_b=portfolio_b,
+        route_a=route_a,
+        route_b=route_b,
     )
 
 

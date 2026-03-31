@@ -1,5 +1,5 @@
-from libs.portfolio.router import PortfolioRouter
+from libs.portfolio.router import RouteRouter
 
 __all__ = [
-    "PortfolioRouter",
+    "RouteRouter",
 ]

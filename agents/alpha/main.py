@@ -22,7 +22,7 @@ from libs.common.models.signal import StandardSignal
 from libs.common.models.trade_idea import RankedTradeIdea
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
-from libs.portfolio.router import PortfolioRouter
+from libs.portfolio.router import RouteRouter
 
 from agents.alpha.combiner import AlphaCombiner
 from agents.alpha.regime_detector import RegimeDetector
@@ -113,7 +113,7 @@ async def run_agent() -> None:
     publisher = RedisPublisher(redis_url=settings.infra.redis_url)
 
     routing_config = config.get("portfolio", {}).get("routing")
-    router = PortfolioRouter(config=routing_config)
+    router = RouteRouter(config=routing_config)
     regime_detector = RegimeDetector()
     scorecard = StrategyScorecard()
     combiner = AlphaCombiner(

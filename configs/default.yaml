@@ -30,14 +30,6 @@ funding:
   settlements_per_day: 24
 
 portfolio:
-  a:
-    name: "Autonomous"
-    coinbase_portfolio_id: "75b5eaf1-53a6-483a-8ac0-d1da897dff2c"
-    requires_confirmation: false
-  b:
-    name: "User-Confirmed"
-    requires_confirmation: true
-
   transfers:
     automatic: false
     system_initiated: false

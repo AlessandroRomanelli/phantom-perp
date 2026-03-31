@@ -20,7 +20,7 @@ _HIGH_CONVICTION_SHORT_HORIZON_THRESHOLD = timedelta(hours=4)
 _HIGH_CONVICTION_MIN = 0.85
 
 
-class PortfolioRouter:
+class RouteRouter:
     """Route signals to Route A or B based on configurable rules.
 
     Rules are evaluated in order. First match wins.

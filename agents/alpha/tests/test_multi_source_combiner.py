@@ -20,7 +20,7 @@ from libs.common.models.enums import (
     SignalSource,
 )
 from libs.common.models.signal import StandardSignal
-from libs.portfolio.router import PortfolioRouter
+from libs.portfolio.router import RouteRouter
 
 from agents.alpha.combiner import AlphaCombiner
 from agents.alpha.regime_detector import RegimeDetector
@@ -73,7 +73,7 @@ def _build_combiner(
     to block burst signals arriving a few seconds apart.
     """
     return AlphaCombiner(
-        router=PortfolioRouter(),
+        router=RouteRouter(),
         regime_detector=RegimeDetector(),
         scorecard=StrategyScorecard(),
         combination_window=timedelta(seconds=window_seconds),
