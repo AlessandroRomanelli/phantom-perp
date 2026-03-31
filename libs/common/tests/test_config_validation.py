@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from libs.common.config import CoinbaseSettings, log_config_diff, validate_strategy_config
+from libs.common.config import CoinbaseSettings, PortfolioIDSettings, log_config_diff, validate_strategy_config
 
 
 @dataclass
@@ -124,15 +124,11 @@ class TestCoinbaseSettingsEnvPrefix:
         env = {
             "COINBASE_ADV_API_KEY_A": "test-key-a-uuid",
             "COINBASE_ADV_API_SECRET_A": "test-secret-a-pem",
-            "COINBASE_ADV_API_KEY_B": "test-key-b-uuid",
-            "COINBASE_ADV_API_SECRET_B": "test-secret-b-pem",
         }
         with patch.dict(os.environ, env, clear=False):
             settings = CoinbaseSettings()
             assert settings.api_key_a == "test-key-a-uuid"
             assert settings.api_secret_a == "test-secret-a-pem"
-            assert settings.api_key_b == "test-key-b-uuid"
-            assert settings.api_secret_b == "test-secret-b-pem"
 
     def test_old_intx_prefix_not_read(self) -> None:
         """Old COINBASE_INTX_ prefixed vars are NOT picked up."""
@@ -159,3 +155,34 @@ class TestCoinbaseSettingsEnvPrefix:
         """Default rest_url points to api.coinbase.com."""
         settings = CoinbaseSettings()
         assert settings.rest_url == "https://api.coinbase.com"
+
+    def test_b_credential_fields_removed(self) -> None:
+        """api_key_b and api_secret_b no longer exist on CoinbaseSettings (D-single-client)."""
+        settings = CoinbaseSettings()
+        assert not hasattr(settings, "api_key_b"), \
+            "api_key_b should not exist after single-client collapse"
+        assert not hasattr(settings, "api_secret_b"), \
+            "api_secret_b should not exist after single-client collapse"
+
+
+class TestPortfolioIDSettingsSingleField:
+    """PortfolioIDSettings exposes a single portfolio_id field (D-single-client)."""
+
+    def test_portfolio_id_field_exists(self) -> None:
+        """PortfolioIDSettings has portfolio_id attribute."""
+        settings = PortfolioIDSettings()
+        assert hasattr(settings, "portfolio_id")
+
+    def test_portfolio_a_id_and_portfolio_b_id_removed(self) -> None:
+        """portfolio_a_id and portfolio_b_id do not exist after single-client collapse."""
+        settings = PortfolioIDSettings()
+        assert not hasattr(settings, "portfolio_a_id"), \
+            "portfolio_a_id should not exist"
+        assert not hasattr(settings, "portfolio_b_id"), \
+            "portfolio_b_id should not exist"
+
+    def test_portfolio_id_env_binding(self) -> None:
+        """COINBASE_PORTFOLIO_ID env var is read into portfolio_id."""
+        with patch.dict(os.environ, {"COINBASE_PORTFOLIO_ID": "test-uuid"}, clear=False):
+            settings = PortfolioIDSettings()
+            assert settings.portfolio_id == "test-uuid"
