@@ -66,7 +66,7 @@ class PaperPortfolioStateFetcher:
     """
 
     def __init__(self, redis_url: str) -> None:
-        self._redis: aioredis.Redis = aioredis.from_url(
+        self._redis: aioredis.Redis = aioredis.from_url(  # type: ignore[no-untyped-call]
             redis_url, decode_responses=False,
         )
         self._defaults = {
@@ -529,6 +529,7 @@ async def run_agent() -> None:
 
     is_paper = settings.infra.environment == "paper"
     client_pool: CoinbaseClientPool | None = None
+    fetcher: PaperPortfolioStateFetcher | PortfolioStateFetcher
 
     if is_paper:
         fetcher = PaperPortfolioStateFetcher(settings.infra.redis_url)

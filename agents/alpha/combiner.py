@@ -16,6 +16,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
+from typing import cast
 
 from libs.common.models.enums import PositionSide
 from libs.common.models.signal import StandardSignal
@@ -199,7 +200,7 @@ class AlphaCombiner:
         for s in sorted(signals, key=lambda x: x.conviction, reverse=True):
             val = getattr(s, attr, None)
             if val is not None:
-                return val
+                return cast("Decimal | None", val)
         return None
 
     @staticmethod

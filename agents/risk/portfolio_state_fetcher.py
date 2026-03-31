@@ -58,27 +58,34 @@ class PortfolioStateFetcher:
 
         positions_resp = await client.get_positions()
 
+        position_count = len(positions_resp) if positions_resp else 1
+        maint_margin_per_pos = (
+            Decimal(portfolio_resp.portfolio_maintenance_margin) / position_count
+            if position_count > 0
+            else Decimal("0")
+        )
+
         positions = [
             PerpPosition(
-                instrument=p.instrument_id,
+                instrument=p.product_id,
                 route=target,
-                side=PositionSide(p.side) if p.side in ("LONG", "SHORT") else PositionSide.FLAT,
-                size=abs(p.net_size),
-                entry_price=p.average_entry_price,
-                mark_price=p.mark_price,
-                unrealized_pnl_usdc=p.unrealized_pnl,
+                side=PositionSide(p.position_side) if p.position_side in ("LONG", "SHORT") else PositionSide.FLAT,
+                size=abs(Decimal(p.net_size)),
+                entry_price=Decimal(p.entry_vwap.value) if p.entry_vwap else Decimal("0"),
+                mark_price=Decimal(p.mark_price.value) if p.mark_price else Decimal("0"),
+                unrealized_pnl_usdc=Decimal(p.unrealized_pnl.value) if p.unrealized_pnl else Decimal("0"),
                 realized_pnl_usdc=Decimal("0"),
                 leverage=(
-                    abs(p.net_size) * p.mark_price / portfolio_resp.total_equity
-                    if portfolio_resp.total_equity > 0 and abs(p.net_size) > 0
+                    abs(Decimal(p.net_size)) * Decimal(p.mark_price.value) / Decimal(portfolio_resp.collateral)
+                    if Decimal(portfolio_resp.collateral) > 0 and abs(Decimal(p.net_size)) > 0 and p.mark_price
                     else Decimal("0")
                 ),
-                initial_margin_usdc=p.initial_margin,
-                maintenance_margin_usdc=p.maintenance_margin,
-                liquidation_price=p.liquidation_price or Decimal("0"),
+                initial_margin_usdc=Decimal(p.im_contribution),
+                maintenance_margin_usdc=maint_margin_per_pos,
+                liquidation_price=Decimal(p.liquidation_price.value) if p.liquidation_price else Decimal("0"),
                 margin_ratio=(
-                    float(p.maintenance_margin / portfolio_resp.total_equity)
-                    if portfolio_resp.total_equity > 0
+                    float(maint_margin_per_pos / Decimal(portfolio_resp.collateral))
+                    if Decimal(portfolio_resp.collateral) > 0
                     else 0.0
                 ),
                 cumulative_funding_usdc=Decimal("0"),
@@ -87,20 +94,22 @@ class PortfolioStateFetcher:
             for p in positions_resp
         ]
 
+        equity = Decimal(portfolio_resp.collateral)
+        used_margin = Decimal(portfolio_resp.portfolio_initial_margin)
+        available_margin = equity - used_margin
+        margin_utilization = used_margin / equity if equity > 0 else Decimal("0")
+        unrealized_pnl = Decimal(portfolio_resp.unrealized_pnl.value) if portfolio_resp.unrealized_pnl else Decimal("0")
+
         now = utc_now()
         return PortfolioSnapshot(
             timestamp=now,
             route=target,
-            equity_usdc=portfolio_resp.total_equity,
-            used_margin_usdc=portfolio_resp.used_margin,
-            available_margin_usdc=portfolio_resp.available_margin,
-            margin_utilization_pct=(
-                float(portfolio_resp.margin_utilization * 100)
-                if portfolio_resp.margin_utilization
-                else 0.0
-            ),
+            equity_usdc=equity,
+            used_margin_usdc=used_margin,
+            available_margin_usdc=available_margin,
+            margin_utilization_pct=float(margin_utilization * 100),
             positions=positions,
-            unrealized_pnl_usdc=portfolio_resp.unrealized_pnl,
+            unrealized_pnl_usdc=unrealized_pnl,
             # Coinbase /intx/portfolio does not expose daily realized P&L,
             # funding P&L, or fee totals. These remain zero in live mode;
             # the monitoring agent tracks them from fills and funding events.
