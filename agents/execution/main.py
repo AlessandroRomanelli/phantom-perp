@@ -583,7 +583,7 @@ async def run_agent() -> None:
 
     consumer = RedisConsumer(redis_url=settings.infra.redis_url)
     publisher = RedisPublisher(redis_url=settings.infra.redis_url)
-    redis = aioredis.from_url(settings.infra.redis_url, decode_responses=False)
+    redis = aioredis.from_url(settings.infra.redis_url, decode_responses=False)  # type: ignore[no-untyped-call]
 
     cb = CircuitBreaker()
 
