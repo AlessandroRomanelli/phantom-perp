@@ -14,8 +14,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from libs.common.constants import PORTFOLIO_B_AUTO_APPROVE_MAX_NOTIONAL_USDC
-from libs.common.models.enums import OrderStatus, PortfolioTarget
+from libs.common.constants import ROUTE_B_AUTO_APPROVE_MAX_NOTIONAL_USDC
+from libs.common.models.enums import OrderStatus, Route
 from libs.common.models.order import ApprovedOrder, ProposedOrder
 from libs.common.utils import utc_now
 
@@ -43,7 +43,7 @@ class PendingOrder:
 
 @dataclass
 class OrderStateMachine:
-    """Manages confirmation state for Portfolio B orders."""
+    """Manages confirmation state for Route B orders."""
 
     config: ConfirmationConfig
     _pending: dict[str, PendingOrder] = field(default_factory=dict)
@@ -156,7 +156,7 @@ class OrderStateMachine:
         if order.conviction < aa.min_conviction:
             return False
         # Enforce the hard-coded constant as a ceiling over any YAML-configured value
-        effective_cap = min(aa.max_notional_usdc, PORTFOLIO_B_AUTO_APPROVE_MAX_NOTIONAL_USDC)
+        effective_cap = min(aa.max_notional_usdc, ROUTE_B_AUTO_APPROVE_MAX_NOTIONAL_USDC)
         if order.notional_usdc > effective_cap:
             return False
         return True
@@ -192,7 +192,7 @@ class OrderStateMachine:
 def _to_approved(order: ProposedOrder, now: datetime) -> ApprovedOrder:
     return ApprovedOrder(
         order_id=order.order_id,
-        portfolio_target=order.portfolio_target,
+        route=order.route,
         instrument=order.instrument,
         side=order.side,
         size=order.size,

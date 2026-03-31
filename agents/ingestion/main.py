@@ -96,7 +96,7 @@ async def run_agent() -> None:
     settings = get_settings()
 
     # Auth -- ingestion only uses public endpoints (market data, candles,
-    # funding rate), so any portfolio's API key works. We use Portfolio A's.
+    # funding rate), so any portfolio's API key works. We use Route A's.
     auth = CoinbaseAuth(
         api_key=settings.coinbase.api_key_a,
         api_secret=settings.coinbase.api_secret_a,

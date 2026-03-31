@@ -4,7 +4,7 @@ Uses an in-memory SQLite sync engine wrapped in async context managers.
 This avoids requiring aiosqlite while still testing the actual query logic.
 
 Coverage:
-- DATA-01: get_fills_by_strategy() filters by portfolio_target and time window
+- DATA-01: get_fills_by_strategy() filters by route and time window
 - DATA-02: Per-strategy grouping across multiple instruments
 - DATA-03: get_fills_by_instrument() returns fills ordered by instrument
 - DATA-04: Attribution JOIN path: fills.order_id -> order_signals.order_id -> primary_source
@@ -109,13 +109,13 @@ def _make_order_signal(
     signal_id: str,
     instrument: str,
     primary_source: str,
-    portfolio_target: str = "autonomous",
+    route: str = "autonomous",
     proposed_at: datetime | None = None,
 ) -> OrderSignalRecord:
     return OrderSignalRecord(
         order_id=order_id,
         signal_id=signal_id,
-        portfolio_target=portfolio_target,
+        portfolio_target=route,
         instrument=instrument,
         conviction=0.82,
         primary_source=primary_source,
@@ -133,13 +133,13 @@ def _make_fill(
     fill_id: str,
     order_id: str | None,
     instrument: str,
-    portfolio_target: str = "autonomous",
+    route: str = "autonomous",
     filled_at: datetime | None = None,
 ) -> FillRecord:
     return FillRecord(
         fill_id=fill_id,
         order_id=order_id,
-        portfolio_target=portfolio_target,
+        portfolio_target=route,
         instrument=instrument,
         side="BUY",
         size=Decimal("1.0"),
@@ -152,7 +152,7 @@ def _make_fill(
 
 
 # ---------------------------------------------------------------------------
-# Tests: DATA-01 — get_fills_by_strategy() filters by portfolio_target + time window
+# Tests: DATA-01 — get_fills_by_strategy() filters by route + time window
 # ---------------------------------------------------------------------------
 
 
@@ -174,14 +174,14 @@ async def test_fills_by_strategy_portfolio_filter() -> None:
                 "sig-b1",
                 "ETH-PERP-INTX",
                 "momentum",
-                portfolio_target="user_confirmed",
+                route="user_confirmed",
             )
         )
         session.add(_make_fill("fill-a1", "order-a1", "ETH-PERP-INTX"))
         session.add(_make_fill("fill-a2", "order-a2", "BTC-PERP-INTX"))
         session.add(
             _make_fill(
-                "fill-b1", "order-b1", "ETH-PERP-INTX", portfolio_target="user_confirmed"
+                "fill-b1", "order-b1", "ETH-PERP-INTX", route="user_confirmed"
             )
         )
         session.commit()

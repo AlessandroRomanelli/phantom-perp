@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from libs.coinbase.models import OrderResponse, PositionResponse
-from libs.common.models.enums import PortfolioTarget, PositionSide
+from libs.common.models.enums import Route, PositionSide
 from libs.common.models.order import Fill
 
 
@@ -18,7 +18,7 @@ from libs.common.models.order import Fill
 class PositionDiscrepancy:
     """A mismatch between internal and exchange position state."""
 
-    portfolio_target: PortfolioTarget
+    route: Route
     instrument: str
     field: str
     internal_value: str
@@ -29,7 +29,7 @@ class PositionDiscrepancy:
 class ReconciliationResult:
     """Outcome of a reconciliation check."""
 
-    portfolio_target: PortfolioTarget
+    route: Route
     is_consistent: bool
     discrepancies: list[PositionDiscrepancy]
     orphaned_exchange_orders: list[str]
@@ -38,7 +38,7 @@ class ReconciliationResult:
 def reconcile_positions(
     internal_fills: list[Fill],
     exchange_positions: list[PositionResponse],
-    portfolio_target: PortfolioTarget,
+    route: Route,
     tolerance: Decimal = Decimal("0.001"),
 ) -> ReconciliationResult:
     """Compare internally tracked fills against exchange-reported positions.
@@ -46,7 +46,7 @@ def reconcile_positions(
     Args:
         internal_fills: All fills we've recorded for this portfolio.
         exchange_positions: Current positions reported by Coinbase.
-        portfolio_target: Which portfolio to reconcile.
+        route: Which route to reconcile.
         tolerance: Acceptable size difference (for floating-point rounding).
 
     Returns:
@@ -74,7 +74,7 @@ def reconcile_positions(
         # Check side
         if exchange_size > 0 and internal_abs > 0 and exchange_side != internal_side:
             discrepancies.append(PositionDiscrepancy(
-                portfolio_target=portfolio_target,
+                route=route,
                 instrument=instrument,
                 field="side",
                 internal_value=internal_side.value,
@@ -85,7 +85,7 @@ def reconcile_positions(
         size_diff = abs(exchange_size - internal_abs)
         if size_diff > tolerance:
             discrepancies.append(PositionDiscrepancy(
-                portfolio_target=portfolio_target,
+                route=route,
                 instrument=instrument,
                 field="size",
                 internal_value=str(internal_abs),
@@ -93,7 +93,7 @@ def reconcile_positions(
             ))
 
     return ReconciliationResult(
-        portfolio_target=portfolio_target,
+        route=route,
         is_consistent=len(discrepancies) == 0,
         discrepancies=discrepancies,
         orphaned_exchange_orders=[],

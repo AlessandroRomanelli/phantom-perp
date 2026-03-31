@@ -22,13 +22,13 @@ from typing import Any
 
 from libs.common.config import get_settings, load_yaml_config
 from libs.common.constants import (
-    PORTFOLIO_A_DAILY_LOSS_KILL_PCT,
-    PORTFOLIO_A_MAX_DRAWDOWN_PCT,
-    PORTFOLIO_B_MAX_DAILY_LOSS_PCT,
-    PORTFOLIO_B_MAX_DRAWDOWN_PCT,
+    ROUTE_A_DAILY_LOSS_KILL_PCT,
+    ROUTE_A_MAX_DRAWDOWN_PCT,
+    ROUTE_B_MAX_DAILY_LOSS_PCT,
+    ROUTE_B_MAX_DRAWDOWN_PCT,
 )
 from libs.common.logging import setup_logging
-from libs.common.models.enums import OrderSide, PortfolioTarget, PositionSide
+from libs.common.models.enums import OrderSide, Route, PositionSide
 from libs.common.models.funding import FundingPayment
 from libs.common.models.order import Fill
 from libs.common.models.portfolio import PortfolioSnapshot
@@ -71,7 +71,7 @@ def deserialize_portfolio_snapshot(payload: dict[str, Any]) -> PortfolioSnapshot
     """
     return PortfolioSnapshot(
         timestamp=datetime.fromisoformat(payload["timestamp"]),
-        portfolio_target=PortfolioTarget(payload["portfolio_target"]),
+        route=Route(payload["route"]),
         equity_usdc=Decimal(payload["equity_usdc"]),
         used_margin_usdc=Decimal(payload["used_margin_usdc"]),
         available_margin_usdc=Decimal(payload["available_margin_usdc"]),
@@ -93,7 +93,7 @@ def deserialize_funding_payment(payload: dict[str, Any]) -> FundingPayment:
     return FundingPayment(
         timestamp=datetime.fromisoformat(payload["timestamp"]),
         instrument=payload["instrument"],
-        portfolio_target=PortfolioTarget(payload["portfolio_target"]),
+        route=Route(payload["route"]),
         rate=Decimal(payload["rate"]),
         payment_usdc=Decimal(payload["payment_usdc"]),
         position_size=Decimal(payload["position_size"]),
@@ -110,7 +110,7 @@ def deserialize_fill(payload: dict[str, Any]) -> Fill:
     return Fill(
         fill_id=payload["fill_id"],
         order_id=payload["order_id"],
-        portfolio_target=PortfolioTarget(payload["portfolio_target"]),
+        route=Route(payload["route"]),
         instrument=payload["instrument"],
         side=OrderSide(payload["side"]),
         size=Decimal(payload["size"]),
@@ -134,7 +134,7 @@ def alert_to_dict(alert: Alert) -> dict[str, Any]:
     return {
         "alert_type": alert.alert_type.value,
         "severity": alert.severity.value,
-        "portfolio_target": alert.portfolio_target.value if alert.portfolio_target else "",
+        "route": alert.route.value if alert.route else "",
         "message": alert.message,
         "timestamp": alert.timestamp.isoformat(),
         "value": str(alert.value) if alert.value is not None else "",
@@ -144,15 +144,15 @@ def alert_to_dict(alert: Alert) -> dict[str, Any]:
 
 def deserialize_alert(payload: dict[str, Any]) -> Alert:
     """Reconstruct an Alert from stream:alerts payload."""
-    pt_raw = payload.get("portfolio_target", "")
-    portfolio_target = PortfolioTarget(pt_raw) if pt_raw else None
+    pt_raw = payload.get("route", "")
+    route = Route(pt_raw) if pt_raw else None
     value_raw = payload.get("value", "")
     threshold_raw = payload.get("threshold", "")
 
     return Alert(
         alert_type=AlertType(payload["alert_type"]),
         severity=AlertSeverity(payload["severity"]),
-        portfolio_target=portfolio_target,
+        route=route,
         message=payload["message"],
         timestamp=datetime.fromisoformat(payload["timestamp"]),
         value=float(value_raw) if value_raw else None,
@@ -191,7 +191,7 @@ async def run_agent() -> None:
 
     # Funding settles hourly — use 90min threshold (allows for delays)
     # Fills are event-driven (only on trade execution) — never flag as stale
-    for target in PortfolioTarget:
+    for target in Route:
         health.set_threshold(f"funding:{target.value}", timedelta(minutes=90))
         health.set_threshold(f"fills:{target.value}", None)  # event-only
 
@@ -200,22 +200,22 @@ async def run_agent() -> None:
 
     # Drawdown thresholds per portfolio
     drawdown_limits = {
-        PortfolioTarget.A: float(PORTFOLIO_A_MAX_DRAWDOWN_PCT),
-        PortfolioTarget.B: float(PORTFOLIO_B_MAX_DRAWDOWN_PCT),
+        Route.A: float(ROUTE_A_MAX_DRAWDOWN_PCT),
+        Route.B: float(ROUTE_B_MAX_DRAWDOWN_PCT),
     }
     daily_loss_limits = {
-        PortfolioTarget.A: float(PORTFOLIO_A_DAILY_LOSS_KILL_PCT),
-        PortfolioTarget.B: float(PORTFOLIO_B_MAX_DAILY_LOSS_PCT),
+        Route.A: float(ROUTE_A_DAILY_LOSS_KILL_PCT),
+        Route.B: float(ROUTE_B_MAX_DAILY_LOSS_PCT),
     }
 
     # Subscribe to all monitoring-relevant streams
     channels = [
-        Channel.portfolio_state(PortfolioTarget.A),
-        Channel.portfolio_state(PortfolioTarget.B),
-        Channel.funding_payments(PortfolioTarget.A),
-        Channel.funding_payments(PortfolioTarget.B),
-        Channel.exchange_events(PortfolioTarget.A),
-        Channel.exchange_events(PortfolioTarget.B),
+        Channel.portfolio_state(Route.A),
+        Channel.portfolio_state(Route.B),
+        Channel.funding_payments(Route.A),
+        Channel.funding_payments(Route.B),
+        Channel.exchange_events(Route.A),
+        Channel.exchange_events(Route.B),
     ]
     await consumer.subscribe(
         channels=channels,
@@ -223,13 +223,13 @@ async def run_agent() -> None:
         consumer_name="monitoring-0",
     )
 
-    # Channel name → PortfolioTarget mapping for dispatch
-    state_a = Channel.portfolio_state(PortfolioTarget.A)
-    state_b = Channel.portfolio_state(PortfolioTarget.B)
-    fund_a = Channel.funding_payments(PortfolioTarget.A)
-    fund_b = Channel.funding_payments(PortfolioTarget.B)
-    events_a = Channel.exchange_events(PortfolioTarget.A)
-    events_b = Channel.exchange_events(PortfolioTarget.B)
+    # Channel name → Route mapping for dispatch
+    state_a = Channel.portfolio_state(Route.A)
+    state_b = Channel.portfolio_state(Route.B)
+    fund_a = Channel.funding_payments(Route.A)
+    fund_b = Channel.funding_payments(Route.B)
+    events_a = Channel.exchange_events(Route.A)
+    events_b = Channel.exchange_events(Route.B)
 
     state_channels = {state_a, state_b}
     funding_channels = {fund_a, fund_b}
@@ -254,7 +254,7 @@ async def run_agent() -> None:
     _last_alert_times: dict[str, datetime] = {}
 
     def _alert_dedup_key(alert: Alert) -> str:
-        portfolio = alert.portfolio_target.value if alert.portfolio_target else "global"
+        portfolio = alert.route.value if alert.route else "global"
         return f"{alert.alert_type.value}:{portfolio}"
 
     async def publish_alert(alert: Alert) -> None:
@@ -271,7 +271,7 @@ async def run_agent() -> None:
             "alert_published",
             alert_type=alert.alert_type.value,
             severity=alert.severity.value,
-            portfolio=alert.portfolio_target.value if alert.portfolio_target else "global",
+            portfolio=alert.route.value if alert.route else "global",
             message=alert.message,
         )
 
@@ -284,7 +284,7 @@ async def run_agent() -> None:
             try:
                 if channel in state_channels:
                     snap = deserialize_portfolio_snapshot(payload)
-                    target = snap.portfolio_target
+                    target = snap.route
                     latest_snapshot[target.value] = snap
 
                     # Record heartbeat
@@ -292,7 +292,7 @@ async def run_agent() -> None:
 
                     # Update performance tracker
                     tracker = (
-                        perf.tracker_a if target == PortfolioTarget.A else perf.tracker_b
+                        perf.tracker_a if target == Route.A else perf.tracker_b
                     )
                     # Initialize starting equity on first snapshot
                     if tracker.starting_equity_usdc == Decimal("0") and snap.equity_usdc > 0:
@@ -342,8 +342,8 @@ async def run_agent() -> None:
                             await publish_alert(loss_alert)
 
                     # Opposing positions check
-                    snap_a = latest_snapshot.get(PortfolioTarget.A.value)
-                    snap_b = latest_snapshot.get(PortfolioTarget.B.value)
+                    snap_a = latest_snapshot.get(Route.A.value)
+                    snap_b = latest_snapshot.get(Route.B.value)
                     if snap_a and snap_b:
                         # Use position count as proxy — full position data would need
                         # deserialization of positions array which we skip in the snapshot
@@ -361,7 +361,7 @@ async def run_agent() -> None:
 
                 elif channel in funding_channels:
                     payment = deserialize_funding_payment(payload)
-                    target = payment.portfolio_target
+                    target = payment.route
                     health.record_heartbeat(f"funding:{target.value}", payment.timestamp)
 
                     reporter = funding.get_reporter(target)
@@ -390,7 +390,7 @@ async def run_agent() -> None:
 
                 elif channel in fill_channels:
                     fill = deserialize_fill(payload)
-                    target = fill.portfolio_target
+                    target = fill.route
                     health.record_heartbeat(f"fills:{target.value}", fill.filled_at)
 
                     fee_tracker = fees.get_tracker(target)
@@ -452,7 +452,7 @@ async def run_agent() -> None:
                         alert = Alert(
                             alert_type=AlertType.COMPONENT_DOWN,
                             severity=AlertSeverity.WARNING,
-                            portfolio_target=None,
+                            route=None,
                             message=f"Component {comp.name}: {comp.detail}",
                             timestamp=now,
                             value=comp.stale_seconds,
@@ -481,7 +481,7 @@ async def run_agent() -> None:
                 )
 
     async def _log_performance() -> None:
-        # Portfolio A summary
+        # Route A summary
         summary_a = perf.tracker_a.summary()
         if summary_a.sample_count > 0:
             logger.info(
@@ -497,7 +497,7 @@ async def run_agent() -> None:
                 equity_samples=summary_a.sample_count,
             )
 
-        # Portfolio B summary
+        # Route B summary
         summary_b = perf.tracker_b.summary()
         if summary_b.sample_count > 0:
             logger.info(

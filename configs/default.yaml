@@ -126,6 +126,6 @@ monitoring:
   heartbeat_interval_seconds: 60
   performance_report:
     frequency: "daily"
-    include_portfolio_breakdown: true
+    include_route_breakdown: true
     include_funding_attribution: true
     include_fee_breakdown: true

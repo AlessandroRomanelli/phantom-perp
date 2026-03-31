@@ -31,7 +31,7 @@ from agents.signals.strategies.oi_divergence import (
     OIDivergenceParams,
     OIDivergenceStrategy,
 )
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
 
@@ -154,7 +154,7 @@ def _permissive_params(**overrides: object) -> OIDivergenceParams:
         "min_conviction": 0.01,
         "cooldown_bars": 0,
         "max_holding_hours": 8,
-        "portfolio_a_min_conviction": 0.70,
+        "route_a_min_conviction": 0.70,
         "enabled": True,
     }
     base.update(overrides)
@@ -634,10 +634,10 @@ class TestPortfolioRouting:
     """Tests for Portfolio A vs B routing via conviction threshold."""
 
     def test_portfolio_a_routing_at_high_conviction(self) -> None:
-        """Conviction >= portfolio_a_min_conviction → suggested_target = Portfolio A."""
+        """Conviction >= route_a_min_conviction → suggested_route = Route A."""
         # Set a very low A threshold so any signal qualifies.
         # Disable accel mode to avoid mode conflicts with the divergence direction.
-        params = _permissive_params(portfolio_a_min_conviction=0.01, accel_threshold=1000.0)
+        params = _permissive_params(route_a_min_conviction=0.01, accel_threshold=1000.0)
         strategy = OIDivergenceStrategy(params=params)
 
         store = _build_store_with_history(
@@ -652,13 +652,13 @@ class TestPortfolioRouting:
         signals = strategy.evaluate(snap, store)
 
         assert len(signals) == 1
-        assert signals[0].suggested_target == PortfolioTarget.A
+        assert signals[0].suggested_route == Route.A
 
     def test_portfolio_b_routing_at_medium_conviction(self) -> None:
-        """Conviction < portfolio_a_min_conviction → suggested_target = Portfolio B."""
+        """Conviction < route_a_min_conviction → suggested_route = Route B."""
         # Set an impossibly high A threshold to force routing to B
         params = _permissive_params(
-            portfolio_a_min_conviction=0.99,
+            route_a_min_conviction=0.99,
             accel_threshold=1000.0,  # Only classic divergence fires (max 0.50)
         )
         strategy = OIDivergenceStrategy(params=params)
@@ -675,7 +675,7 @@ class TestPortfolioRouting:
         signals = strategy.evaluate(snap, store)
 
         if signals:
-            assert signals[0].suggested_target == PortfolioTarget.B
+            assert signals[0].suggested_route == Route.B
 
 
 # ---------------------------------------------------------------------------
@@ -802,7 +802,7 @@ class TestConfigLoading:
                 "min_conviction": 0.50,
                 "cooldown_bars": 8,
                 "max_holding_hours": 12,
-                "portfolio_a_min_conviction": 0.75,
+                "route_a_min_conviction": 0.75,
                 "enabled": True,
             },
         }
@@ -820,7 +820,7 @@ class TestConfigLoading:
         assert p.min_conviction == 0.50
         assert p.cooldown_bars == 8
         assert p.max_holding_hours == 12
-        assert p.portfolio_a_min_conviction == 0.75
+        assert p.route_a_min_conviction == 0.75
         assert p.enabled is True
 
     def test_disabled_via_config(self) -> None:
@@ -848,7 +848,7 @@ class TestConfigLoading:
         assert p.min_conviction == 0.45
         assert p.cooldown_bars == 12
         assert p.max_holding_hours == 8
-        assert p.portfolio_a_min_conviction == 0.70
+        assert p.route_a_min_conviction == 0.70
         assert p.enabled is True
 
     def test_properties(self) -> None:

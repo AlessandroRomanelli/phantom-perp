@@ -322,7 +322,7 @@ class TestCallClaudeOrchestrator:
             mock_client.messages.create = AsyncMock(return_value=mock_resp)
 
             with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
-                result = asyncio.get_event_loop().run_until_complete(
+                result = asyncio.new_event_loop().run_until_complete(
                     call_claude_orchestrator("context", params)
                 )
 
@@ -337,7 +337,7 @@ class TestCallClaudeOrchestrator:
         env = {k: v for k, v in __import__("os").environ.items() if k != "ANTHROPIC_API_KEY"}
 
         with patch.dict("os.environ", env, clear=True):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.new_event_loop().run_until_complete(
                 call_claude_orchestrator("context", params)
             )
 
@@ -356,7 +356,7 @@ class TestCallClaudeOrchestrator:
             )
 
             with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
-                result = asyncio.get_event_loop().run_until_complete(
+                result = asyncio.new_event_loop().run_until_complete(
                     call_claude_orchestrator("context", params)
                 )
 
@@ -378,7 +378,7 @@ class TestCallClaudeOrchestrator:
             mock_client.messages.create = AsyncMock(return_value=mock_resp)
 
             with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
-                result = asyncio.get_event_loop().run_until_complete(
+                result = asyncio.new_event_loop().run_until_complete(
                     call_claude_orchestrator("context", params)
                 )
 
@@ -395,7 +395,7 @@ class TestCallClaudeOrchestrator:
             mock_client.messages.create = AsyncMock(return_value=mock_resp)
 
             with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
-                result = asyncio.get_event_loop().run_until_complete(
+                result = asyncio.new_event_loop().run_until_complete(
                     call_claude_orchestrator("context", params)
                 )
 

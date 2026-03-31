@@ -7,7 +7,7 @@ from libs.common.models.enums import (
     OrderSide,
     OrderStatus,
     OrderType,
-    PortfolioTarget,
+    Route,
     SignalSource,
 )
 from libs.common.models.order import ProposedOrder
@@ -34,7 +34,7 @@ def _order(
         order_id=order_id,
         signal_id="sig-001",
         instrument="ETH-PERP",
-        portfolio_target=PortfolioTarget.B,
+        route=Route.B,
         side=OrderSide.BUY,
         size=size,
         order_type=OrderType.LIMIT,
@@ -104,7 +104,7 @@ class TestApproveOrder:
         approved = sm.approve("ord-1", now=T0 + timedelta(seconds=30))
         assert approved is not None
         assert approved.order_id == "ord-1"
-        assert approved.portfolio_target == PortfolioTarget.B
+        assert approved.route == Route.B
         assert approved.side == OrderSide.BUY
         assert approved.size == Decimal("1.5")
         assert approved.approved_at == T0 + timedelta(seconds=30)

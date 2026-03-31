@@ -7,7 +7,7 @@ from libs.common.models.enums import (
     OrderSide,
     OrderStatus,
     OrderType,
-    PortfolioTarget,
+    Route,
     SignalSource,
 )
 from libs.common.models.order import ApprovedOrder, ProposedOrder
@@ -29,7 +29,7 @@ def _proposed_order(**overrides: object) -> ProposedOrder:
         order_id="ord-001",
         signal_id="sig-001",
         instrument="ETH-PERP",
-        portfolio_target=PortfolioTarget.A,
+        route=Route.A,
         side=OrderSide.BUY,
         size=Decimal("2.5"),
         order_type=OrderType.LIMIT,
@@ -52,7 +52,7 @@ def _proposed_order(**overrides: object) -> ProposedOrder:
 def _approved_order(**overrides: object) -> ApprovedOrder:
     defaults = dict(
         order_id="ord-002",
-        portfolio_target=PortfolioTarget.B,
+        route=Route.B,
         instrument="ETH-PERP",
         side=OrderSide.BUY,
         size=Decimal("1.5"),
@@ -193,14 +193,14 @@ class TestBuildFillFromResponse:
     def test_creates_fill_when_filled(self) -> None:
         fill = build_fill_from_response(
             order_id="ord-001",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             response=_exchange_response(),
             is_maker=True,
             now=T0,
         )
         assert fill is not None
         assert fill.order_id == "ord-001"
-        assert fill.portfolio_target == PortfolioTarget.A
+        assert fill.route == Route.A
         assert fill.side == OrderSide.BUY
         assert fill.size == Decimal("2.5")
         assert fill.price == Decimal("2200")
@@ -210,7 +210,7 @@ class TestBuildFillFromResponse:
     def test_returns_none_when_not_filled(self) -> None:
         fill = build_fill_from_response(
             order_id="ord-001",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             response=_exchange_response(
                 status="OPEN",
                 filled_size=Decimal("0"),

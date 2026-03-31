@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from libs.common.models.enums import (
     MarketRegime,
-    PortfolioTarget,
+    Route,
     PositionSide,
     SignalSource,
 )
@@ -72,14 +72,14 @@ class TestSingleSignal:
         assert idea.instrument == "ETH-PERP"
         assert SignalSource.MOMENTUM in idea.sources
 
-    def test_idea_has_portfolio_target(self) -> None:
+    def test_idea_has_route(self) -> None:
         combiner = _build_combiner()
         # time_horizon=4h → default routing → B (user-confirmed)
         ideas = combiner.add_signal(
             _sig(time_horizon=timedelta(hours=4)),
             now=T0,
         )
-        assert ideas[0].portfolio_target == PortfolioTarget.B
+        assert ideas[0].route == Route.B
 
     def test_short_horizon_routes_to_a(self) -> None:
         combiner = _build_combiner()
@@ -87,7 +87,7 @@ class TestSingleSignal:
             _sig(time_horizon=timedelta(minutes=30)),
             now=T0,
         )
-        assert ideas[0].portfolio_target == PortfolioTarget.A
+        assert ideas[0].route == Route.A
 
     def test_idea_uses_signal_prices(self) -> None:
         combiner = _build_combiner()

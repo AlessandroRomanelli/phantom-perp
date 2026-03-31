@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from libs.coinbase.models import OrderResponse
-from libs.common.models.enums import OrderSide, OrderType, PortfolioTarget
+from libs.common.models.enums import OrderSide, OrderType, Route
 from libs.common.utils import utc_now
 
 from agents.execution.main import (
@@ -53,7 +53,7 @@ def _make_order_response(
 
 
 def _make_mock_pool(
-    portfolio_target: PortfolioTarget = PortfolioTarget.A,
+    route: Route = Route.A,
     response: OrderResponse | None = None,
 ) -> MagicMock:
     """Build a mock CoinbaseClientPool with an AsyncMock REST client."""
@@ -106,7 +106,7 @@ class TestPlaceOrderLive:
     @pytest.mark.asyncio
     async def test_limit_order_routes_to_portfolio_a(self) -> None:
         """LIMIT order for Portfolio A calls pool.get_client(A).create_order()."""
-        mock_pool = _make_mock_pool(PortfolioTarget.A)
+        mock_pool = _make_mock_pool(Route.A)
         expected_response = _make_order_response(order_id="live-limit-a")
         mock_pool.get_client.return_value.create_order = AsyncMock(
             return_value=expected_response
@@ -119,7 +119,7 @@ class TestPlaceOrderLive:
             result = await _place_order(
                 is_paper=False,
                 paper_broker=None,
-                portfolio_target=PortfolioTarget.A,
+                route=Route.A,
                 instrument="ETH-PERP",
                 side="BUY",
                 size=Decimal("1.0"),
@@ -133,7 +133,7 @@ class TestPlaceOrderLive:
             )
 
         assert result.order_id == "live-limit-a"
-        mock_pool.get_client.assert_called_once_with(PortfolioTarget.A)
+        mock_pool.get_client.assert_called_once_with(Route.A)
         mock_pool.get_client.return_value.create_order.assert_called_once_with(
             product_id="ETH-PERP-INTX",
             side="BUY",
@@ -148,7 +148,7 @@ class TestPlaceOrderLive:
     @pytest.mark.asyncio
     async def test_limit_order_routes_to_portfolio_b(self) -> None:
         """LIMIT order for Portfolio B calls pool.get_client(B).create_order()."""
-        mock_pool = _make_mock_pool(PortfolioTarget.B)
+        mock_pool = _make_mock_pool(Route.B)
         expected_response = _make_order_response(order_id="live-limit-b")
         mock_pool.get_client.return_value.create_order = AsyncMock(
             return_value=expected_response
@@ -161,7 +161,7 @@ class TestPlaceOrderLive:
             result = await _place_order(
                 is_paper=False,
                 paper_broker=None,
-                portfolio_target=PortfolioTarget.B,
+                route=Route.B,
                 instrument="BTC-PERP",
                 side="SELL",
                 size=Decimal("0.1"),
@@ -175,7 +175,7 @@ class TestPlaceOrderLive:
             )
 
         assert result.order_id == "live-limit-b"
-        mock_pool.get_client.assert_called_once_with(PortfolioTarget.B)
+        mock_pool.get_client.assert_called_once_with(Route.B)
         mock_pool.get_client.return_value.create_order.assert_called_once_with(
             product_id="BTC-PERP-INTX",
             side="SELL",
@@ -203,7 +203,7 @@ class TestPlaceOrderLive:
             result = await _place_order(
                 is_paper=False,
                 paper_broker=None,
-                portfolio_target=PortfolioTarget.A,
+                route=Route.A,
                 instrument="ETH-PERP",
                 side="BUY",
                 size=Decimal("2.0"),
@@ -239,7 +239,7 @@ class TestPlaceOrderLive:
             result = await _place_order(
                 is_paper=False,
                 paper_broker=None,
-                portfolio_target=PortfolioTarget.A,
+                route=Route.A,
                 instrument="SOL-PERP",
                 side="SELL",
                 size=Decimal("10.0"),
@@ -277,7 +277,7 @@ class TestPlaceOrderLive:
             result = await _place_order(
                 is_paper=False,
                 paper_broker=None,
-                portfolio_target=PortfolioTarget.A,
+                route=Route.A,
                 instrument="ETH-PERP",
                 side="SELL",
                 size=Decimal("1.5"),
@@ -310,7 +310,7 @@ class TestPlaceOrderLive:
             await _place_order(
                 is_paper=False,
                 paper_broker=None,
-                portfolio_target=PortfolioTarget.A,
+                route=Route.A,
                 instrument="ETH-PERP",
                 side="BUY",
                 size=Decimal("1.0"),
@@ -339,16 +339,16 @@ class TestCancelOrderLive:
     @pytest.mark.asyncio
     async def test_cancel_routes_to_portfolio_a(self) -> None:
         """cancel_order() calls pool.get_client(A).cancel_order(order_id)."""
-        mock_pool = _make_mock_pool(PortfolioTarget.A)
+        mock_pool = _make_mock_pool(Route.A)
 
         await _cancel_order(
             order_id="ord-to-cancel",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             is_paper=False,
             client_pool=mock_pool,
         )
 
-        mock_pool.get_client.assert_called_once_with(PortfolioTarget.A)
+        mock_pool.get_client.assert_called_once_with(Route.A)
         mock_pool.get_client.return_value.cancel_order.assert_called_once_with(
             "ord-to-cancel"
         )
@@ -356,16 +356,16 @@ class TestCancelOrderLive:
     @pytest.mark.asyncio
     async def test_cancel_routes_to_portfolio_b(self) -> None:
         """cancel_order() calls pool.get_client(B).cancel_order(order_id)."""
-        mock_pool = _make_mock_pool(PortfolioTarget.B)
+        mock_pool = _make_mock_pool(Route.B)
 
         await _cancel_order(
             order_id="ord-to-cancel-b",
-            portfolio_target=PortfolioTarget.B,
+            route=Route.B,
             is_paper=False,
             client_pool=mock_pool,
         )
 
-        mock_pool.get_client.assert_called_once_with(PortfolioTarget.B)
+        mock_pool.get_client.assert_called_once_with(Route.B)
         mock_pool.get_client.return_value.cancel_order.assert_called_once_with(
             "ord-to-cancel-b"
         )
@@ -377,7 +377,7 @@ class TestCancelOrderLive:
 
         await _cancel_order(
             order_id="paper-ord-1",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             is_paper=True,
             client_pool=mock_pool,
         )
@@ -390,7 +390,7 @@ class TestCancelOrderLive:
         # Should not raise — paper mode never touches pool
         await _cancel_order(
             order_id="paper-ord-2",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             is_paper=True,
             client_pool=None,
         )
@@ -422,7 +422,7 @@ class TestErrorHandling:
                 await _place_order(
                     is_paper=False,
                     paper_broker=None,
-                    portfolio_target=PortfolioTarget.A,
+                    route=Route.A,
                     instrument="ETH-PERP",
                     side="BUY",
                     size=Decimal("1.0"),
@@ -453,7 +453,7 @@ class TestErrorHandling:
                 await _place_order(
                     is_paper=False,
                     paper_broker=None,
-                    portfolio_target=PortfolioTarget.A,
+                    route=Route.A,
                     instrument="ETH-PERP",
                     side="BUY",
                     size=Decimal("1.0"),
@@ -479,7 +479,7 @@ class TestErrorHandling:
                 await _place_order(
                     is_paper=False,
                     paper_broker=None,
-                    portfolio_target=PortfolioTarget.A,
+                    route=Route.A,
                     instrument="UNKNOWN-PERP",
                     side="BUY",
                     size=Decimal("1.0"),
@@ -503,7 +503,7 @@ class TestErrorHandling:
                 await _place_order(
                     is_paper=False,
                     paper_broker=None,
-                    portfolio_target=PortfolioTarget.A,
+                    route=Route.A,
                     instrument="ETH-PERP",
                     side="BUY",
                     size=Decimal("1.0"),
@@ -534,7 +534,7 @@ class TestPaperModeRegression:
         result = await _place_order(
             is_paper=True,
             paper_broker=broker,
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             instrument="ETH-PERP",
             side="BUY",
             size=Decimal("1.0"),
@@ -560,7 +560,7 @@ class TestPaperModeRegression:
         result = await _place_order(
             is_paper=True,
             paper_broker=broker,
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             instrument="ETH-PERP",
             side="BUY",
             size=Decimal("2.0"),
@@ -584,7 +584,7 @@ class TestPaperModeRegression:
         result = await _place_order(
             is_paper=True,
             paper_broker=broker,
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             instrument="ETH-PERP",
             side="SELL",
             size=Decimal("1.0"),
@@ -607,7 +607,7 @@ class TestPaperModeRegression:
         result = await _place_order(
             is_paper=True,
             paper_broker=broker,
-            portfolio_target=PortfolioTarget.B,
+            route=Route.B,
             instrument="BTC-PERP",
             side="BUY",
             size=Decimal("0.01"),

@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import numpy as np
 
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 
 from agents.signals.feature_store import FeatureStore
@@ -130,8 +130,8 @@ class TestCorrelationStrategy:
         sig = signals[0]
         assert sig.direction == PositionSide.SHORT
         assert sig.source == SignalSource.CORRELATION
-        # Routing depends on conviction vs portfolio_a_min_conviction
-        assert sig.suggested_target in (PortfolioTarget.A, PortfolioTarget.B)
+        # Routing depends on conviction vs route_a_min_conviction
+        assert sig.suggested_route in (Route.A, Route.B)
         assert sig.stop_loss > sig.entry_price
         assert sig.take_profit < sig.entry_price
 
@@ -670,7 +670,7 @@ class TestPortfolioARouting:
     """Tests for Portfolio A routing (CORR-03)."""
 
     def test_high_conviction_routes_to_portfolio_a(self) -> None:
-        """D-10: conviction >= portfolio_a_min_conviction -> Portfolio A."""
+        """D-10: conviction >= route_a_min_conviction -> Portfolio A."""
         params = CorrelationParams(
             basis_short_lookback=30,
             basis_medium_lookback=60,
@@ -679,7 +679,7 @@ class TestPortfolioARouting:
             min_conviction=0.0,
             cooldown_bars=0,
             funding_rate_boost=0.10,
-            portfolio_a_min_conviction=0.70,
+            route_a_min_conviction=0.70,
         )
         strategy = CorrelationStrategy(params=params)
         # Very extreme basis + confirming funding -> high conviction
@@ -691,13 +691,13 @@ class TestPortfolioARouting:
 
         assert len(signals) == 1
         if signals[0].conviction >= 0.70:
-            assert signals[0].suggested_target == PortfolioTarget.A
+            assert signals[0].suggested_route == Route.A
         else:
             # If conviction didn't reach 0.70, it routes to B (also valid)
-            assert signals[0].suggested_target == PortfolioTarget.B
+            assert signals[0].suggested_route == Route.B
 
     def test_low_conviction_routes_to_portfolio_b(self) -> None:
-        """conviction < portfolio_a_min_conviction -> Portfolio B."""
+        """conviction < route_a_min_conviction -> Portfolio B."""
         params = CorrelationParams(
             basis_short_lookback=30,
             basis_medium_lookback=60,
@@ -706,7 +706,7 @@ class TestPortfolioARouting:
             min_conviction=0.0,
             cooldown_bars=0,
             funding_rate_boost=0.10,
-            portfolio_a_min_conviction=0.99,  # Very high threshold -> always B
+            route_a_min_conviction=0.99,  # Very high threshold -> always B
         )
         strategy = CorrelationStrategy(params=params)
         store, snap = _build_multi_window_store(
@@ -716,4 +716,4 @@ class TestPortfolioARouting:
         signals = strategy.evaluate(snap, store)
 
         assert len(signals) == 1
-        assert signals[0].suggested_target == PortfolioTarget.B
+        assert signals[0].suggested_route == Route.B

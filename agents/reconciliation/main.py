@@ -5,8 +5,8 @@ equity, margin, and positions, then publishes PortfolioSnapshot objects
 to stream:portfolio_state:a and stream:portfolio_state:b.
 
 Subscribes to:
-  - stream:exchange_events:a  (fills from execution, Portfolio A)
-  - stream:exchange_events:b  (fills from execution, Portfolio B)
+  - stream:exchange_events:a  (fills from execution, Route A)
+  - stream:exchange_events:b  (fills from execution, Route B)
 
 Publishes to:
   - stream:portfolio_state:a  (PortfolioSnapshot for A)
@@ -32,7 +32,7 @@ from libs.common.exceptions import CoinbaseAPIError, RateLimitExceededError
 from libs.common.logging import setup_logging
 from libs.common.models.enums import (
     OrderSide,
-    PortfolioTarget,
+    Route,
     PositionSide,
 )
 from libs.common.models.funding import FundingPayment
@@ -61,7 +61,7 @@ def deserialize_fill(payload: dict[str, Any]) -> Fill:
     return Fill(
         fill_id=payload["fill_id"],
         order_id=payload["order_id"],
-        portfolio_target=PortfolioTarget(payload["portfolio_target"]),
+        route=Route(payload["route"]),
         instrument=payload["instrument"],
         side=OrderSide(payload["side"]),
         size=Decimal(payload["size"]),
@@ -77,7 +77,7 @@ def portfolio_snapshot_to_dict(snap: PortfolioSnapshot) -> dict[str, Any]:
     """Serialize a PortfolioSnapshot for stream:portfolio_state:*."""
     return {
         "timestamp": snap.timestamp.isoformat(),
-        "portfolio_target": snap.portfolio_target.value,
+        "route": snap.route.value,
         "equity_usdc": str(snap.equity_usdc),
         "used_margin_usdc": str(snap.used_margin_usdc),
         "available_margin_usdc": str(snap.available_margin_usdc),
@@ -108,7 +108,7 @@ def deserialize_portfolio_snapshot(payload: dict[str, Any]) -> PortfolioSnapshot
     """Reconstruct a PortfolioSnapshot from stream:portfolio_state payload."""
     return PortfolioSnapshot(
         timestamp=datetime.fromisoformat(payload["timestamp"]),
-        portfolio_target=PortfolioTarget(payload["portfolio_target"]),
+        route=Route(payload["route"]),
         equity_usdc=Decimal(payload["equity_usdc"]),
         used_margin_usdc=Decimal(payload["used_margin_usdc"]),
         available_margin_usdc=Decimal(payload["available_margin_usdc"]),
@@ -126,7 +126,7 @@ def funding_payment_to_dict(payment: FundingPayment) -> dict[str, Any]:
     return {
         "timestamp": payment.timestamp.isoformat(),
         "instrument": payment.instrument,
-        "portfolio_target": payment.portfolio_target.value,
+        "route": payment.route.value,
         "rate": str(payment.rate),
         "payment_usdc": str(payment.payment_usdc),
         "position_size": str(payment.position_size),
@@ -140,7 +140,7 @@ def deserialize_funding_payment(payload: dict[str, Any]) -> FundingPayment:
     return FundingPayment(
         timestamp=datetime.fromisoformat(payload["timestamp"]),
         instrument=payload["instrument"],
-        portfolio_target=PortfolioTarget(payload["portfolio_target"]),
+        route=Route(payload["route"]),
         rate=Decimal(payload["rate"]),
         payment_usdc=Decimal(payload["payment_usdc"]),
         position_size=Decimal(payload["position_size"]),
@@ -156,7 +156,7 @@ def deserialize_funding_payment(payload: dict[str, Any]) -> FundingPayment:
 
 async def poll_portfolio(
     client: CoinbaseRESTClient,
-    target: PortfolioTarget,
+    target: Route,
     publisher: RedisPublisher,
     *,
     expected_portfolio_id: str | None = None,
@@ -198,7 +198,7 @@ async def poll_portfolio(
         snapshot = build_portfolio_snapshot(
             portfolio_resp=portfolio_resp,
             position_resps=position_resps,
-            portfolio_target=target,
+            route=target,
             expected_portfolio_id=expected_portfolio_id,
         )
     except Exception as e:
@@ -237,7 +237,7 @@ async def poll_portfolio(
 
 async def run_portfolio_poller(
     client: CoinbaseRESTClient,
-    target: PortfolioTarget,
+    target: Route,
     publisher: RedisPublisher,
     *,
     expected_portfolio_id: str | None = None,
@@ -353,15 +353,15 @@ async def run_agent() -> None:
 
     try:
         async with asyncio.TaskGroup() as tg:
-            # Always poll Portfolio A
+            # Always poll Route A
             tg.create_task(
                 run_portfolio_poller(
-                    client_a, PortfolioTarget.A, publisher,
+                    client_a, Route.A, publisher,
                     expected_portfolio_id=portfolio_a_id,
                 ),
             )
 
-            # Poll Portfolio B only if configured with its own dedicated API key
+            # Poll Route B only if configured with its own dedicated API key
             if portfolio_b_id:
                 if settings.coinbase.api_key_b:
                     auth_b = CoinbaseAuth(
@@ -375,19 +375,19 @@ async def run_agent() -> None:
                     )
                     tg.create_task(
                         run_portfolio_poller(
-                            client_b, PortfolioTarget.B, publisher,
+                            client_b, Route.B, publisher,
                             expected_portfolio_id=portfolio_b_id,
                         ),
                     )
                 else:
                     logger.critical(
                         "portfolio_b_missing_api_key",
-                        msg="Portfolio B ID is configured but API key is missing. "
-                        "Refusing to start Portfolio B poller — would query Portfolio A data.",
+                        msg="Route B ID is configured but API key is missing. "
+                        "Refusing to start Route B poller — would query Route A data.",
                         portfolio_b_id=portfolio_b_id,
                     )
             else:
-                logger.info("portfolio_b_not_configured", msg="skipping Portfolio B polling")
+                logger.info("portfolio_b_not_configured", msg="skipping Route B polling")
 
     except* Exception as eg:
         for exc in eg.exceptions:

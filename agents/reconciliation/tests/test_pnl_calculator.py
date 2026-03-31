@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from libs.common.models.enums import OrderSide, PortfolioTarget
+from libs.common.models.enums import OrderSide, Route
 from libs.common.models.order import Fill
 
 from agents.reconciliation.pnl_calculator import (
@@ -27,7 +27,7 @@ def _fill(
     return Fill(
         fill_id=f"fill-{order_id}",
         order_id=order_id,
-        portfolio_target=PortfolioTarget.A,
+        route=Route.A,
         instrument="ETH-PERP",
         side=side,
         size=size,

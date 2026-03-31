@@ -21,7 +21,7 @@ def compose_trade_request(
     """Format a ProposedOrder into a rich Telegram confirmation message.
 
     Matches the format from CLAUDE.md:
-        Trade Request #NNNN [Portfolio B]
+        Trade Request #NNNN [Route B]
         instrument — SIDE
         size, entry, stop, TP, leverage
         signal sources + reasoning
@@ -34,7 +34,7 @@ def compose_trade_request(
     fee_label = "maker" if order.order_type.value == "LIMIT" else "taker"
 
     lines = [
-        f"Trade Request {seq} [Portfolio B]",
+        f"Trade Request {seq} [Route B]",
         "",
         f"{order.instrument} -- {direction}",
         f"Size: {order.size} ETH (~{notional:,.2f} USDC)",
@@ -79,14 +79,14 @@ def compose_trade_request(
 
     if portfolio_equity_usdc is not None:
         margin_str = f" | Margin: {margin_utilization_pct:.0f}%" if margin_utilization_pct is not None else ""
-        lines.append(f"  Portfolio B equity: {portfolio_equity_usdc:,.2f} USDC{margin_str}")
+        lines.append(f"  Route B equity: {portfolio_equity_usdc:,.2f} USDC{margin_str}")
 
     return "\n".join(lines)
 
 
 def compose_batch_header(count: int) -> str:
     """Header line for a batched group of orders."""
-    return f"Batch of {count} trade requests [Portfolio B]\n"
+    return f"Batch of {count} trade requests [Route B]\n"
 
 
 def compose_expiry_notice(order: ProposedOrder) -> str:

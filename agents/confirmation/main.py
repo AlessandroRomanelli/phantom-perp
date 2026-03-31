@@ -1,9 +1,9 @@
-"""Confirmation agent — Telegram-based trade confirmation for Portfolio B.
+"""Confirmation agent — Telegram-based trade confirmation for Route B.
 
 Subscribes to stream:approved_orders:b, presents orders to the user
 via Telegram, and publishes confirmed orders to stream:confirmed_orders.
 
-Portfolio A orders bypass this agent entirely.
+Route A orders bypass this agent entirely.
 
 Modes:
   - Paper (auto-approve all): passes orders straight through without Telegram.
@@ -24,7 +24,7 @@ from libs.common.models.enums import (
     OrderSide,
     OrderStatus,
     OrderType,
-    PortfolioTarget,
+    Route,
     SignalSource,
 )
 from libs.common.models.order import ApprovedOrder, ProposedOrder
@@ -52,7 +52,7 @@ def deserialize_order(payload: dict[str, Any]) -> ProposedOrder:
         order_id=payload["order_id"],
         signal_id=payload["signal_id"],
         instrument=payload["instrument"],
-        portfolio_target=PortfolioTarget(payload["portfolio_target"]),
+        route=Route(payload["route"]),
         side=OrderSide(payload["side"]),
         size=Decimal(payload["size"]),
         order_type=OrderType(payload["order_type"]),
@@ -81,7 +81,7 @@ def approved_order_to_dict(order: ApprovedOrder) -> dict[str, Any]:
     """Serialize an ApprovedOrder for publishing to stream:confirmed_orders."""
     return {
         "order_id": order.order_id,
-        "portfolio_target": order.portfolio_target.value,
+        "route": order.route.value,
         "instrument": order.instrument,
         "side": order.side.value,
         "size": str(order.size),
@@ -102,7 +102,7 @@ def deserialize_approved_order(payload: dict[str, Any]) -> ApprovedOrder:
     """
     return ApprovedOrder(
         order_id=payload["order_id"],
-        portfolio_target=PortfolioTarget(payload["portfolio_target"]),
+        route=Route(payload["route"]),
         instrument=payload["instrument"],
         side=OrderSide(payload["side"]),
         size=Decimal(payload["size"]),
@@ -125,7 +125,7 @@ def _auto_approve(order: ProposedOrder) -> ApprovedOrder:
     """Convert a ProposedOrder to ApprovedOrder without user interaction."""
     return ApprovedOrder(
         order_id=order.order_id,
-        portfolio_target=order.portfolio_target,
+        route=order.route,
         instrument=order.instrument,
         side=order.side,
         size=order.size,
@@ -148,7 +148,7 @@ async def run_agent() -> None:
     """Main event loop for the confirmation agent.
 
     1. Subscribes to stream:approved_orders:b
-    2. Receives risk-approved orders for Portfolio B
+    2. Receives risk-approved orders for Route B
     3. Checks auto-approve eligibility
     4. If auto-approvable: immediately publishes to stream:confirmed_orders
     5. Otherwise: sends Telegram message and waits for user response
@@ -164,7 +164,7 @@ async def run_agent() -> None:
     publisher = RedisPublisher(redis_url=settings.infra.redis_url)
     consumer = RedisConsumer(redis_url=settings.infra.redis_url)
 
-    channel_b = Channel.approved_orders(PortfolioTarget.B)
+    channel_b = Channel.approved_orders(Route.B)
     await consumer.subscribe(
         channels=[channel_b],
         group="confirmation_agent",

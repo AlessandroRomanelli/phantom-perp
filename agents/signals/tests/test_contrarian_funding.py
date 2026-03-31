@@ -18,7 +18,7 @@ from agents.signals.strategies.contrarian_funding import (
     ContrarianFundingParams,
     ContrarianFundingStrategy,
 )
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 
 # ---------------------------------------------------------------------------
@@ -552,9 +552,9 @@ class TestPortfolioRouting:
     """Tests for Portfolio A vs B routing via conviction threshold."""
 
     def test_high_conviction_routes_to_a(self) -> None:
-        """Signal with conviction ≥ portfolio_a_min_conviction targets Portfolio A."""
+        """Signal with conviction ≥ route_a_min_conviction targets Portfolio A."""
         params = _permissive_params(
-            portfolio_a_min_conviction=0.30,  # Low enough that extreme funding hits it
+            route_a_min_conviction=0.30,  # Low enough that extreme funding hits it
         )
         store = _build_store_with_history(n_samples=50, normal_funding=0.0001)
         strategy = ContrarianFundingStrategy(params=params)
@@ -565,12 +565,12 @@ class TestPortfolioRouting:
         signals = strategy.evaluate(snap, store)
 
         assert len(signals) == 1
-        assert signals[0].suggested_target == PortfolioTarget.A
+        assert signals[0].suggested_route == Route.A
 
     def test_low_conviction_routes_to_b(self) -> None:
-        """Signal with conviction below portfolio_a_min_conviction targets Portfolio B."""
+        """Signal with conviction below route_a_min_conviction targets Portfolio B."""
         params = _permissive_params(
-            portfolio_a_min_conviction=0.99,  # Impossibly high bar for A
+            route_a_min_conviction=0.99,  # Impossibly high bar for A
         )
         store = _build_store_with_history(n_samples=50, normal_funding=0.0001)
         strategy = ContrarianFundingStrategy(params=params)
@@ -581,7 +581,7 @@ class TestPortfolioRouting:
         signals = strategy.evaluate(snap, store)
 
         if signals:
-            assert signals[0].suggested_target == PortfolioTarget.B
+            assert signals[0].suggested_route == Route.B
 
 
 # ---------------------------------------------------------------------------
@@ -610,7 +610,7 @@ class TestConfigLoading:
                 "stop_loss_atr_mult": 1.2,
                 "take_profit_atr_mult": 2.5,
                 "cooldown_bars": 6,
-                "portfolio_a_min_conviction": 0.75,
+                "route_a_min_conviction": 0.75,
                 "enabled": True,
             },
         }
@@ -630,7 +630,7 @@ class TestConfigLoading:
         assert p.stop_loss_atr_mult == 1.2
         assert p.take_profit_atr_mult == 2.5
         assert p.cooldown_bars == 6
-        assert p.portfolio_a_min_conviction == 0.75
+        assert p.route_a_min_conviction == 0.75
 
     def test_disabled_via_config(self) -> None:
         """Setting enabled=False in the parameters block disables the strategy."""
@@ -659,7 +659,7 @@ class TestConfigLoading:
         assert p.stop_loss_atr_mult == 1.5
         assert p.take_profit_atr_mult == 3.0
         assert p.cooldown_bars == 12
-        assert p.portfolio_a_min_conviction == 0.70
+        assert p.route_a_min_conviction == 0.70
         assert p.enabled is True
 
     def test_properties(self) -> None:
@@ -702,7 +702,7 @@ class TestConfigLoading:
                 "stop_loss_atr_mult": 1.5,
                 "take_profit_atr_mult": 3.0,
                 "cooldown_bars": 12,
-                "portfolio_a_min_conviction": 0.70,
+                "route_a_min_conviction": 0.70,
                 "enabled": True,
             },
         }
@@ -721,7 +721,7 @@ class TestConfigLoading:
                 "stop_loss_atr_mult": 1.5,
                 "take_profit_atr_mult": 3.0,
                 "cooldown_bars": 12,
-                "portfolio_a_min_conviction": 0.70,
+                "route_a_min_conviction": 0.70,
                 "enabled": True,
             },
         }

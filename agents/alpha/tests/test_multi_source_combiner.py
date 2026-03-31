@@ -15,7 +15,7 @@ import pytest
 
 from libs.common.models.enums import (
     MarketRegime,
-    PortfolioTarget,
+    Route,
     PositionSide,
     SignalSource,
 )

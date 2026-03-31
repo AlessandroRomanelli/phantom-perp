@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import numpy as np
 
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 
 from agents.signals.feature_store import FeatureStore
@@ -151,7 +151,7 @@ class TestOrderbookImbalanceStrategy:
             lookback_bars=10,
             imbalance_threshold=0.0,  # Disable threshold for this test
             min_conviction=0.0,
-            portfolio_a_min_conviction=0.0,  # Disable portfolio gate to test TWA math only
+            route_a_min_conviction=0.0,  # Disable portfolio gate to test TWA math only
             cooldown_bars=0,
         )
         strategy = OrderbookImbalanceStrategy(params=params)
@@ -212,13 +212,13 @@ class TestOrderbookImbalanceStrategy:
         assert len(signals) == 1
 
     def test_portfolio_a_high_conviction(self) -> None:
-        """When conviction >= portfolio_a_min_conviction, target is Portfolio A."""
+        """When conviction >= route_a_min_conviction, target is Portfolio A."""
         params = OrderbookImbalanceParams(
             lookback_bars=10,
             imbalance_threshold=0.25,
             min_conviction=0.0,
             cooldown_bars=0,
-            portfolio_a_min_conviction=0.65,
+            route_a_min_conviction=0.65,
         )
         strategy = OrderbookImbalanceStrategy(params=params)
         # Very strong imbalance + tight spread + high volume -> high conviction
@@ -232,19 +232,19 @@ class TestOrderbookImbalanceStrategy:
 
         assert len(signals) == 1
         if signals[0].conviction >= 0.65:
-            assert signals[0].suggested_target == PortfolioTarget.A
+            assert signals[0].suggested_route == Route.A
         else:
             # If conviction didn't reach threshold, route to B
-            assert signals[0].suggested_target == PortfolioTarget.B
+            assert signals[0].suggested_route == Route.B
 
     def test_portfolio_b_low_conviction(self) -> None:
-        """OBI is Portfolio A only — when conviction < portfolio_a_min_conviction, no signal."""
+        """OBI is Portfolio A only — when conviction < route_a_min_conviction, no signal."""
         params = OrderbookImbalanceParams(
             lookback_bars=10,
             imbalance_threshold=0.25,
             min_conviction=0.0,
             cooldown_bars=0,
-            portfolio_a_min_conviction=0.99,  # Very high threshold → conviction never reaches it
+            route_a_min_conviction=0.99,  # Very high threshold → conviction never reaches it
         )
         strategy = OrderbookImbalanceStrategy(params=params)
         imbalances = [0.0] * 14 + [0.5] * 16

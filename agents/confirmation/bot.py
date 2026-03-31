@@ -1,8 +1,8 @@
 """Telegram bot for trade confirmations and portfolio commands.
 
 Wraps python-telegram-bot v21+ Application to provide:
-  - Inline-keyboard confirmations for Portfolio B orders
-  - Informational notifications for Portfolio A auto-trades
+  - Inline-keyboard confirmations for Route B orders
+  - Informational notifications for Route A auto-trades
   - /status command for portfolio overview
 """
 
@@ -117,7 +117,7 @@ class TelegramBot:
                     chat_id=self._chat_id,
                     text=(
                         "phantom-perp confirmation bot online.\n"
-                        "Monitoring Portfolio B trade proposals.\n\n"
+                        "Monitoring Route B trade proposals.\n\n"
                         "Commands:\n"
                         "  /status - Show pending orders"
                     ),
@@ -292,13 +292,13 @@ class TelegramBot:
         if was_registered:
             await update.effective_message.reply_text(
                 "Chat re-registered for phantom-perp confirmations.\n"
-                "Trade proposals for Portfolio B will be sent here."
+                "Trade proposals for Route B will be sent here."
             )
         else:
             logger.info("chat_registered", chat_id=new_chat_id)
             await update.effective_message.reply_text(
                 "phantom-perp confirmation bot active.\n"
-                "Trade proposals for Portfolio B will be sent here.\n\n"
+                "Trade proposals for Route B will be sent here.\n\n"
                 "Commands:\n"
                 "  /status - Show pending orders"
             )

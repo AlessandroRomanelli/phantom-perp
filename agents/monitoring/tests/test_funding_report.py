@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from libs.common.models.enums import PortfolioTarget, PositionSide
+from libs.common.models.enums import Route, PositionSide
 from libs.common.models.funding import FundingPayment
 
 from agents.monitoring.funding_report import (
@@ -22,7 +22,7 @@ def _payment(
     return FundingPayment(
         timestamp=timestamp,
         instrument="ETH-PERP",
-        portfolio_target=PortfolioTarget.A,
+        route=Route.A,
         rate=rate,
         payment_usdc=payment_usdc,
         position_size=Decimal("2.5"),
@@ -33,13 +33,13 @@ def _payment(
 
 class TestFundingReporter:
     def test_empty_reporter(self) -> None:
-        reporter = FundingReporter(portfolio_target=PortfolioTarget.A)
+        reporter = FundingReporter(route=Route.A)
         summary = reporter.daily_summary()
         assert summary.total_usdc == Decimal("0")
         assert summary.payment_count == 0
 
     def test_record_and_daily_summary(self) -> None:
-        reporter = FundingReporter(portfolio_target=PortfolioTarget.A)
+        reporter = FundingReporter(route=Route.A)
         for i in range(5):
             reporter.record_payment(_payment(
                 payment_usdc=Decimal("-0.10"),
@@ -51,7 +51,7 @@ class TestFundingReporter:
         assert summary.window_label == "24h"
 
     def test_hourly_summary_filters(self) -> None:
-        reporter = FundingReporter(portfolio_target=PortfolioTarget.A)
+        reporter = FundingReporter(route=Route.A)
         # Add payment 2 hours ago and 30 minutes ago
         reporter.record_payment(_payment(timestamp=T0))
         reporter.record_payment(_payment(timestamp=T0 + timedelta(hours=2)))
@@ -60,7 +60,7 @@ class TestFundingReporter:
         assert hourly.payment_count == 1
 
     def test_weekly_summary(self) -> None:
-        reporter = FundingReporter(portfolio_target=PortfolioTarget.A)
+        reporter = FundingReporter(route=Route.A)
         # Add payments over 5 days
         for i in range(120):  # 5 days worth of hourly
             reporter.record_payment(_payment(
@@ -73,7 +73,7 @@ class TestFundingReporter:
 
     def test_old_payments_pruned(self) -> None:
         reporter = FundingReporter(
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             max_history_hours=24,
         )
         for i in range(48):
@@ -84,7 +84,7 @@ class TestFundingReporter:
         assert reporter.payment_count <= 25
 
     def test_avg_rate(self) -> None:
-        reporter = FundingReporter(portfolio_target=PortfolioTarget.A)
+        reporter = FundingReporter(route=Route.A)
         reporter.record_payment(_payment(rate=Decimal("0.0001"), timestamp=T0))
         reporter.record_payment(_payment(
             rate=Decimal("0.0003"),
@@ -94,7 +94,7 @@ class TestFundingReporter:
         assert summary.avg_rate == Decimal("0.0002")
 
     def test_min_max_payment(self) -> None:
-        reporter = FundingReporter(portfolio_target=PortfolioTarget.A)
+        reporter = FundingReporter(route=Route.A)
         reporter.record_payment(_payment(payment_usdc=Decimal("-1.00"), timestamp=T0))
         reporter.record_payment(_payment(
             payment_usdc=Decimal("0.50"),
@@ -105,7 +105,7 @@ class TestFundingReporter:
         assert summary.max_payment_usdc == Decimal("0.50")
 
     def test_net_positive(self) -> None:
-        reporter = FundingReporter(portfolio_target=PortfolioTarget.A)
+        reporter = FundingReporter(route=Route.A)
         reporter.record_payment(_payment(payment_usdc=Decimal("2.00"), timestamp=T0))
         reporter.record_payment(_payment(
             payment_usdc=Decimal("-0.50"),
@@ -115,7 +115,7 @@ class TestFundingReporter:
         assert summary.net_positive is True
 
     def test_entries(self) -> None:
-        reporter = FundingReporter(portfolio_target=PortfolioTarget.A)
+        reporter = FundingReporter(route=Route.A)
         reporter.record_payment(_payment(timestamp=T0))
         reporter.record_payment(_payment(timestamp=T0 + timedelta(hours=1)))
         entries = reporter.entries(hours=24)
@@ -138,5 +138,5 @@ class TestDualFundingReporter:
 
     def test_get_reporter(self) -> None:
         dual = DualFundingReporter()
-        assert dual.get_reporter(PortfolioTarget.A) is dual.reporter_a
-        assert dual.get_reporter(PortfolioTarget.B) is dual.reporter_b
+        assert dual.get_reporter(Route.A) is dual.reporter_a
+        assert dual.get_reporter(Route.B) is dual.reporter_b

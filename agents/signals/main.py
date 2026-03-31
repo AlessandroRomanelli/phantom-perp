@@ -266,7 +266,7 @@ def _restore_params(
 
 
 def _apply_conviction_normalization(signal: StandardSignal) -> StandardSignal:
-    """Apply conviction normalization and unified Portfolio A routing.
+    """Apply conviction normalization and unified Route A routing.
 
     Post-processes a signal by:
     1. Computing conviction band via normalize_conviction.

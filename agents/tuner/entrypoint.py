@@ -74,7 +74,7 @@ def _fetch_fills(lookback_days: int) -> list[AttributedFill]:
     store = RelationalStore(database_url)
     repo = TunerRepository(store)
     return asyncio.run(
-        repo.get_fills_by_strategy(portfolio_target="autonomous", days=lookback_days)
+        repo.get_fills_by_strategy(route="autonomous", days=lookback_days)
     )
 
 

@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from libs.common.models.enums import OrderSide, PortfolioTarget
+from libs.common.models.enums import OrderSide, Route
 from libs.common.models.order import Fill
 
 from agents.monitoring.fee_report import DualFeeTracker, FeeTracker
@@ -22,7 +22,7 @@ def _fill(
     return Fill(
         fill_id=f"fill-{order_id}",
         order_id=order_id,
-        portfolio_target=PortfolioTarget.A,
+        route=Route.A,
         instrument="ETH-PERP",
         side=OrderSide.BUY,
         size=size,
@@ -36,14 +36,14 @@ def _fill(
 
 class TestFeeTracker:
     def test_empty_tracker(self) -> None:
-        tracker = FeeTracker(portfolio_target=PortfolioTarget.A)
+        tracker = FeeTracker(route=Route.A)
         summary = tracker.daily_summary()
         assert summary.total_fees_usdc == Decimal("0")
         assert summary.fill_count == 0
         assert summary.maker_ratio == 0.0
 
     def test_all_maker(self) -> None:
-        tracker = FeeTracker(portfolio_target=PortfolioTarget.A)
+        tracker = FeeTracker(route=Route.A)
         tracker.record_fill(_fill(fee=Decimal("0.50"), is_maker=True, order_id="o1"))
         tracker.record_fill(_fill(
             fee=Decimal("0.30"), is_maker=True,
@@ -58,14 +58,14 @@ class TestFeeTracker:
         assert summary.taker_count == 0
 
     def test_all_taker(self) -> None:
-        tracker = FeeTracker(portfolio_target=PortfolioTarget.A)
+        tracker = FeeTracker(route=Route.A)
         tracker.record_fill(_fill(fee=Decimal("1.00"), is_maker=False))
         summary = tracker.daily_summary()
         assert summary.taker_fees_usdc == Decimal("1.00")
         assert summary.maker_ratio == 0.0
 
     def test_mixed(self) -> None:
-        tracker = FeeTracker(portfolio_target=PortfolioTarget.A)
+        tracker = FeeTracker(route=Route.A)
         tracker.record_fill(_fill(fee=Decimal("0.50"), is_maker=True, order_id="o1"))
         tracker.record_fill(_fill(
             fee=Decimal("1.00"), is_maker=False,
@@ -77,7 +77,7 @@ class TestFeeTracker:
 
     def test_estimated_savings(self) -> None:
         tracker = FeeTracker(
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             taker_rate=Decimal("0.000250"),
         )
         # Maker fill: 1 ETH at $2200, fee = $0.275 (maker rate)
@@ -92,7 +92,7 @@ class TestFeeTracker:
 
     def test_old_fills_pruned(self) -> None:
         tracker = FeeTracker(
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             max_history_hours=24,
         )
         for i in range(48):
@@ -103,7 +103,7 @@ class TestFeeTracker:
         assert tracker.fill_count <= 25
 
     def test_weekly_summary(self) -> None:
-        tracker = FeeTracker(portfolio_target=PortfolioTarget.A)
+        tracker = FeeTracker(route=Route.A)
         for i in range(48):
             tracker.record_fill(_fill(
                 fee=Decimal("0.50"),
@@ -126,5 +126,5 @@ class TestDualFeeTracker:
 
     def test_get_tracker(self) -> None:
         dual = DualFeeTracker()
-        assert dual.get_tracker(PortfolioTarget.A) is dual.tracker_a
-        assert dual.get_tracker(PortfolioTarget.B) is dual.tracker_b
+        assert dual.get_tracker(Route.A) is dual.tracker_a
+        assert dual.get_tracker(Route.B) is dual.tracker_b

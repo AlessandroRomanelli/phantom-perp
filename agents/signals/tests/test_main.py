@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.signal import StandardSignal
 
 from agents.signals.feature_store import FeatureStore
@@ -56,7 +56,7 @@ class TestSignalToDict:
             source=SignalSource.MOMENTUM,
             time_horizon=timedelta(hours=4),
             reasoning="Test signal",
-            suggested_target=PortfolioTarget.B,
+            suggested_route=Route.B,
             entry_price=Decimal("2230.00"),
             stop_loss=Decimal("2200.00"),
             take_profit=Decimal("2280.00"),
@@ -70,7 +70,7 @@ class TestSignalToDict:
         assert d["conviction"] == 0.75
         assert d["source"] == "momentum"
         assert d["time_horizon_seconds"] == 14400
-        assert d["suggested_target"] == "user_confirmed"
+        assert d["suggested_route"] == "user_confirmed"
         assert d["entry_price"] == "2230.00"
         assert d["stop_loss"] == "2200.00"
         assert d["take_profit"] == "2280.00"
@@ -89,7 +89,7 @@ class TestSignalToDict:
         )
 
         d = signal_to_dict(signal)
-        assert d["suggested_target"] is None
+        assert d["suggested_route"] is None
         assert d["entry_price"] is None
         assert d["stop_loss"] is None
         assert d["take_profit"] is None

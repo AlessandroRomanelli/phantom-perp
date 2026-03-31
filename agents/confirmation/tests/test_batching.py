@@ -7,7 +7,7 @@ from libs.common.models.enums import (
     OrderSide,
     OrderStatus,
     OrderType,
-    PortfolioTarget,
+    Route,
     SignalSource,
 )
 from libs.common.models.order import ProposedOrder
@@ -22,7 +22,7 @@ def _order(order_id: str = "ord-001") -> ProposedOrder:
         order_id=order_id,
         signal_id="sig-001",
         instrument="ETH-PERP",
-        portfolio_target=PortfolioTarget.B,
+        route=Route.B,
         side=OrderSide.BUY,
         size=Decimal("1"),
         order_type=OrderType.LIMIT,

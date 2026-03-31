@@ -246,7 +246,7 @@ def _format_strategy_overview() -> list[str]:
     lines.append(f"  Active: {' '.join(strat_labels)}")
     lines.append(
         f"  Session: {session_color}{session}{RESET}"
-        f"  |  Portfolio A threshold: {BOLD}0.70{RESET} (unified)"
+        f"  |  Route A threshold: {BOLD}0.70{RESET} (unified)"
         f"  |  Bands: {DIM}L{RESET}<0.50 {YELLOW}M{RESET}<0.70 {GREEN}H{RESET}>=0.70"
     )
 
@@ -375,7 +375,7 @@ def _format_signals(info: dict[str, dict[str, Any]], recent: list[dict[str, Any]
         direction = sig.get("direction", "?")
         source = sig.get("source", "?")
         conviction = sig.get("conviction", "?")
-        suggested_target = sig.get("suggested_target")
+        suggested_route = sig.get("suggested_route")
         entry_id = sig.get("_entry_id", "")
 
         ts = _entry_id_to_ts(entry_id)
@@ -384,9 +384,9 @@ def _format_signals(info: dict[str, dict[str, Any]], recent: list[dict[str, Any]
         dir_color = GREEN if direction in ("LONG", "BUY") else RED if direction in ("SHORT", "SELL") else WHITE
 
         # Portfolio routing indicator
-        if suggested_target == "autonomous" or suggested_target == "A":
+        if suggested_route == "autonomous" or suggested_route == "A":
             target_str = f"{MAGENTA}A{RESET}"
-        elif suggested_target == "user_confirmed" or suggested_target == "B":
+        elif suggested_route == "user_confirmed" or suggested_route == "B":
             target_str = f"{DIM}B{RESET}"
         else:
             target_str = f"{DIM}?{RESET}"
@@ -427,11 +427,11 @@ def _format_risk(info: dict[str, dict[str, Any]]) -> list[str]:
         return f" ({approved / total * 100:.0f}%)"
 
     lines.append(
-        f"  Portfolio A: {ranked_a} ideas"
+        f"  Route A: {ranked_a} ideas"
         f" -> {GREEN}{approved_a} approved{RESET}{_rate(approved_a, ranked_a)}"
     )
     lines.append(
-        f"  Portfolio B: {ranked_b} ideas"
+        f"  Route B: {ranked_b} ideas"
         f" -> {GREEN}{approved_b} approved{RESET}{_rate(approved_b, ranked_b)}"
     )
 
@@ -480,7 +480,7 @@ def _format_portfolio(
         snap = data.get("latest")
 
         if not snap:
-            lines.append(f"  {BOLD}Portfolio {label}{RESET}: {DIM}awaiting data{RESET}")
+            lines.append(f"  {BOLD}Route {label}{RESET}: {DIM}awaiting data{RESET}")
             continue
 
         equity = snap.get("equity_usdc", "?")
@@ -494,7 +494,7 @@ def _format_portfolio(
         positions = snap.get("position_count", 0)
         ts = snap.get("timestamp")
 
-        lines.append(f"  {BOLD}Portfolio {label}{RESET}")
+        lines.append(f"  {BOLD}Route {label}{RESET}")
         lines.append(
             f"    Equity: {BOLD}${equity}{RESET} USDC"
             f"  |  Margin: ${used_margin} / ${avail_margin}"
@@ -707,7 +707,7 @@ def _render(
     parts.extend(_format_funding(info))
     parts.append("")
 
-    parts.append(f" {BOLD}Portfolio Performance{RESET}")
+    parts.append(f" {BOLD}Route Performance{RESET}")
     parts.extend(_format_portfolio(info, equity_a, equity_b))
     parts.append("")
 

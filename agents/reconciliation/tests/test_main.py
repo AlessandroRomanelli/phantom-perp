@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from libs.common.models.enums import (
     OrderSide,
-    PortfolioTarget,
+    Route,
     PositionSide,
 )
 from libs.common.models.funding import FundingPayment
@@ -31,7 +31,7 @@ class TestFillDeserialization:
         original = Fill(
             fill_id="fill-001",
             order_id="ord-001",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             instrument="ETH-PERP",
             side=OrderSide.BUY,
             size=Decimal("2.5"),
@@ -46,7 +46,7 @@ class TestFillDeserialization:
 
         assert reconstructed.fill_id == original.fill_id
         assert reconstructed.order_id == original.order_id
-        assert reconstructed.portfolio_target == PortfolioTarget.A
+        assert reconstructed.route == Route.A
         assert reconstructed.side == OrderSide.BUY
         assert reconstructed.size == Decimal("2.5")
         assert reconstructed.price == Decimal("2200")
@@ -60,7 +60,7 @@ class TestFillDeserialization:
         original = Fill(
             fill_id="fill-002",
             order_id="ord-002",
-            portfolio_target=PortfolioTarget.B,
+            route=Route.B,
             instrument="ETH-PERP",
             side=OrderSide.SELL,
             size=Decimal("0.5"),
@@ -74,14 +74,14 @@ class TestFillDeserialization:
         reconstructed = deserialize_fill(serialized)
         assert reconstructed.is_maker is False
         assert reconstructed.side == OrderSide.SELL
-        assert reconstructed.portfolio_target == PortfolioTarget.B
+        assert reconstructed.route == Route.B
 
 
 class TestPortfolioSnapshotSerialization:
     def test_roundtrip(self) -> None:
         original = PortfolioSnapshot(
             timestamp=T0,
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             equity_usdc=Decimal("10000"),
             used_margin_usdc=Decimal("3000"),
             available_margin_usdc=Decimal("7000"),
@@ -95,7 +95,7 @@ class TestPortfolioSnapshotSerialization:
         serialized = portfolio_snapshot_to_dict(original)
         reconstructed = deserialize_portfolio_snapshot(serialized)
 
-        assert reconstructed.portfolio_target == PortfolioTarget.A
+        assert reconstructed.route == Route.A
         assert reconstructed.equity_usdc == Decimal("10000")
         assert reconstructed.used_margin_usdc == Decimal("3000")
         assert reconstructed.available_margin_usdc == Decimal("7000")
@@ -110,7 +110,7 @@ class TestPortfolioSnapshotSerialization:
     def test_includes_position_count(self) -> None:
         snap = PortfolioSnapshot(
             timestamp=T0,
-            portfolio_target=PortfolioTarget.B,
+            route=Route.B,
             equity_usdc=Decimal("5000"),
             used_margin_usdc=Decimal("0"),
             available_margin_usdc=Decimal("5000"),
@@ -130,7 +130,7 @@ class TestFundingPaymentSerialization:
         original = FundingPayment(
             timestamp=T0,
             instrument="ETH-PERP",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             rate=Decimal("0.0001"),
             payment_usdc=Decimal("-0.50"),
             position_size=Decimal("2.5"),
@@ -141,7 +141,7 @@ class TestFundingPaymentSerialization:
         reconstructed = deserialize_funding_payment(serialized)
 
         assert reconstructed.instrument == "ETH-PERP"
-        assert reconstructed.portfolio_target == PortfolioTarget.A
+        assert reconstructed.route == Route.A
         assert reconstructed.rate == Decimal("0.0001")
         assert reconstructed.payment_usdc == Decimal("-0.50")
         assert reconstructed.position_size == Decimal("2.5")
@@ -152,7 +152,7 @@ class TestFundingPaymentSerialization:
         original = FundingPayment(
             timestamp=T0,
             instrument="ETH-PERP",
-            portfolio_target=PortfolioTarget.B,
+            route=Route.B,
             rate=Decimal("0.0002"),
             payment_usdc=Decimal("1.00"),
             position_size=Decimal("1.0"),
@@ -163,4 +163,4 @@ class TestFundingPaymentSerialization:
         reconstructed = deserialize_funding_payment(serialized)
         assert reconstructed.position_side == PositionSide.SHORT
         assert reconstructed.payment_usdc == Decimal("1.00")
-        assert reconstructed.portfolio_target == PortfolioTarget.B
+        assert reconstructed.route == Route.B

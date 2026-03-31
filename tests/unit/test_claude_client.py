@@ -73,7 +73,7 @@ def sample_current_params() -> dict[str, dict]:
         "momentum": {
             "parameters": {
                 "min_conviction": 0.55,
-                "portfolio_a_min_conviction": 0.70,
+                "route_a_min_conviction": 0.70,
                 "cooldown_bars": 5,
             }
         }

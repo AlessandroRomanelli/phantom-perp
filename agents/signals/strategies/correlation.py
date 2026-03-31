@@ -7,7 +7,7 @@ Signal logic:
   4. 2/3 windows agree -> require funding rate confirmation (D-05).
   5. Funding rate alignment boosts conviction by configurable amount (D-07).
   6. OI/price divergence as additional trigger (preserved from original).
-  7. High-conviction signals route to Portfolio A (D-10).
+  7. High-conviction signals route to Route A (D-10).
 """
 
 from __future__ import annotations

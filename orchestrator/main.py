@@ -14,7 +14,7 @@ from enum import Enum
 
 from libs.common.config import get_settings, load_yaml_config
 from libs.common.logging import setup_logging
-from libs.common.models.enums import PortfolioTarget
+from libs.common.models.enums import Route
 
 from orchestrator.circuit_breakers import SystemCircuitBreaker
 from orchestrator.dag import AgentName, PipelineDAG
@@ -41,7 +41,7 @@ class PipelineState:
     stopped_agents: list[AgentName]
     stale_agents: list[AgentName]
     crashed_agents: list[AgentName]
-    halted_portfolios: list[PortfolioTarget]
+    halted_portfolios: list[Route]
     globally_halted: bool
 
 
@@ -123,7 +123,7 @@ class Orchestrator:
             if s.status in (AgentStatus.STOPPED, AgentStatus.PENDING)
         ]
         halted_portfolios = [
-            t for t in PortfolioTarget if self.circuit_breaker.is_halted(t)
+            t for t in Route if self.circuit_breaker.is_halted(t)
         ]
 
         if self.circuit_breaker.is_globally_halted():

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from agents.signals.conviction_normalizer import (
-    PORTFOLIO_A_UNIFIED_THRESHOLD,
+    ROUTE_A_UNIFIED_THRESHOLD,
     NormalizedConviction,
     normalize_conviction,
-    should_route_portfolio_a,
+    should_route_a,
 )
 
 
@@ -55,20 +55,20 @@ def test_preserves_raw_conviction() -> None:
 
 
 def test_portfolio_a_threshold_value() -> None:
-    """PORTFOLIO_A_UNIFIED_THRESHOLD should be 0.70."""
-    assert PORTFOLIO_A_UNIFIED_THRESHOLD == 0.70
+    """ROUTE_A_UNIFIED_THRESHOLD should be 0.70."""
+    assert ROUTE_A_UNIFIED_THRESHOLD == 0.70
 
 
-def test_should_route_portfolio_a_above() -> None:
+def test_should_route_a_above() -> None:
     """Conviction >= 0.70 should route to Portfolio A."""
-    assert should_route_portfolio_a(0.85) is True
-    assert should_route_portfolio_a(0.70) is True
+    assert should_route_a(0.85) is True
+    assert should_route_a(0.70) is True
 
 
-def test_should_route_portfolio_a_below() -> None:
+def test_should_route_a_below() -> None:
     """Conviction < 0.70 should not route to Portfolio A."""
-    assert should_route_portfolio_a(0.69) is False
-    assert should_route_portfolio_a(0.50) is False
+    assert should_route_a(0.69) is False
+    assert should_route_a(0.50) is False
 
 
 def test_frozen_dataclass() -> None:

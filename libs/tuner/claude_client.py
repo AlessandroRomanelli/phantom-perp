@@ -226,7 +226,7 @@ def _build_tunable_params_section(registry: dict[str, BoundsEntry]) -> str:
     """Build the Tunable Parameters section listing all adjustable param names."""
     param_descriptions: dict[str, str] = {
         "min_conviction": "Minimum conviction threshold to emit a signal",
-        "portfolio_a_min_conviction": "Minimum conviction for Portfolio A autonomous execution",
+        "route_a_min_conviction": "Minimum conviction for Route A autonomous execution",
         "cooldown_bars": "Number of bars to wait after a signal before generating a new one",
         "stop_loss_atr_mult": "ATR multiplier for stop-loss placement",
         "take_profit_atr_mult": "ATR multiplier for take-profit placement",

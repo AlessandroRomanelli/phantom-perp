@@ -7,7 +7,7 @@ from libs.common.models.enums import (
     OrderSide,
     OrderStatus,
     OrderType,
-    PortfolioTarget,
+    Route,
     SignalSource,
 )
 from libs.common.models.order import ProposedOrder
@@ -31,7 +31,7 @@ def _order(
         order_id="ord-test-001",
         signal_id="sig-001",
         instrument="ETH-PERP",
-        portfolio_target=PortfolioTarget.B,
+        route=Route.B,
         side=side,
         size=size,
         order_type=OrderType.LIMIT,
@@ -134,7 +134,7 @@ class TestBatchHeader:
     def test_batch_header(self) -> None:
         header = compose_batch_header(3)
         assert "3" in header
-        assert "Portfolio B" in header
+        assert "Route B" in header
 
 
 class TestExpiryNotice:

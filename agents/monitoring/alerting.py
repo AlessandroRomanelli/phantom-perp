@@ -7,7 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 
-from libs.common.models.enums import PortfolioTarget
+from libs.common.models.enums import Route
 
 
 class AlertSeverity(str, Enum):
@@ -33,7 +33,7 @@ class Alert:
 
     alert_type: AlertType
     severity: AlertSeverity
-    portfolio_target: PortfolioTarget | None
+    route: Route | None
     message: str
     timestamp: datetime
     value: float | None = None
@@ -43,7 +43,7 @@ class Alert:
 def check_funding_rate(
     rate: Decimal,
     threshold_pct: float,
-    portfolio_target: PortfolioTarget,
+    route: Route,
     now: datetime,
 ) -> Alert | None:
     """Alert if absolute hourly funding rate exceeds threshold."""
@@ -53,7 +53,7 @@ def check_funding_rate(
         return Alert(
             alert_type=AlertType.FUNDING_RATE_HIGH,
             severity=AlertSeverity.WARNING,
-            portfolio_target=portfolio_target,
+            route=route,
             message=f"Funding rate {direction}: {abs_rate_pct:.4f}% (threshold: {threshold_pct}%)",
             timestamp=now,
             value=abs_rate_pct,
@@ -65,7 +65,7 @@ def check_funding_rate(
 def check_margin_utilization(
     utilization_pct: float,
     threshold_pct: float,
-    portfolio_target: PortfolioTarget,
+    route: Route,
     now: datetime,
 ) -> Alert | None:
     """Alert if margin utilization exceeds threshold."""
@@ -73,7 +73,7 @@ def check_margin_utilization(
         return Alert(
             alert_type=AlertType.MARGIN_HIGH,
             severity=AlertSeverity.WARNING,
-            portfolio_target=portfolio_target,
+            route=route,
             message=f"Margin utilization {utilization_pct:.1f}% (threshold: {threshold_pct}%)",
             timestamp=now,
             value=utilization_pct,
@@ -86,7 +86,7 @@ def check_liquidation_proximity(
     mark_price: Decimal,
     liquidation_price: Decimal,
     threshold_pct: float,
-    portfolio_target: PortfolioTarget,
+    route: Route,
     now: datetime,
 ) -> Alert | None:
     """Alert if liquidation price is too close to mark price."""
@@ -97,7 +97,7 @@ def check_liquidation_proximity(
         return Alert(
             alert_type=AlertType.LIQUIDATION_CLOSE,
             severity=AlertSeverity.CRITICAL,
-            portfolio_target=portfolio_target,
+            route=route,
             message=(
                 f"Liquidation {distance_pct:.1f}% away "
                 f"(mark: {mark_price}, liq: {liquidation_price}, threshold: {threshold_pct}%)"
@@ -112,7 +112,7 @@ def check_liquidation_proximity(
 def check_drawdown(
     current_drawdown_pct: float,
     max_drawdown_pct: float,
-    portfolio_target: PortfolioTarget,
+    route: Route,
     now: datetime,
 ) -> Alert | None:
     """Alert when drawdown approaches the kill-switch threshold."""
@@ -127,7 +127,7 @@ def check_drawdown(
         return Alert(
             alert_type=AlertType.DRAWDOWN_WARNING,
             severity=severity,
-            portfolio_target=portfolio_target,
+            route=route,
             message=(
                 f"Drawdown {current_drawdown_pct:.1f}% "
                 f"(kill switch: {max_drawdown_pct}%)"
@@ -142,7 +142,7 @@ def check_drawdown(
 def check_daily_loss(
     daily_loss_pct: float,
     max_daily_loss_pct: float,
-    portfolio_target: PortfolioTarget,
+    route: Route,
     now: datetime,
 ) -> Alert | None:
     """Alert when daily loss approaches the kill-switch threshold."""
@@ -156,7 +156,7 @@ def check_daily_loss(
         return Alert(
             alert_type=AlertType.DAILY_LOSS_WARNING,
             severity=severity,
-            portfolio_target=portfolio_target,
+            route=route,
             message=(
                 f"Daily loss {daily_loss_pct:.1f}% "
                 f"(kill switch: {max_daily_loss_pct}%)"
@@ -182,7 +182,7 @@ def check_opposing_positions(
         return Alert(
             alert_type=AlertType.OPPOSING_POSITIONS,
             severity=AlertSeverity.INFO,
-            portfolio_target=None,
+            route=None,
             message=f"Opposing positions: A is {a_side}, B is {b_side}",
             timestamp=now,
         )

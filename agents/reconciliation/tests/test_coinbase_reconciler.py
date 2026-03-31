@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from libs.coinbase.models import Amount, OrderResponse, PositionResponse
-from libs.common.models.enums import OrderSide, PortfolioTarget
+from libs.common.models.enums import OrderSide, Route
 from libs.common.models.order import Fill
 
 from agents.reconciliation.coinbase_reconciler import (
@@ -29,7 +29,7 @@ def _fill(
     return Fill(
         fill_id=f"fill-{order_id}",
         order_id=order_id,
-        portfolio_target=PortfolioTarget.A,
+        route=Route.A,
         instrument=instrument,
         side=side,
         size=size,
@@ -62,7 +62,7 @@ class TestReconcilePositions:
             _fill(side=OrderSide.BUY, size=Decimal("2.0"), order_id="o1"),
         ]
         positions = [_position_resp(side="LONG", net_size=Decimal("2.0"))]
-        result = reconcile_positions(fills, positions, PortfolioTarget.A)
+        result = reconcile_positions(fills, positions, Route.A)
         assert result.is_consistent is True
         assert len(result.discrepancies) == 0
 
@@ -71,7 +71,7 @@ class TestReconcilePositions:
             _fill(side=OrderSide.BUY, size=Decimal("1.5"), order_id="o1"),
         ]
         positions = [_position_resp(side="LONG", net_size=Decimal("2.0"))]
-        result = reconcile_positions(fills, positions, PortfolioTarget.A)
+        result = reconcile_positions(fills, positions, Route.A)
         assert result.is_consistent is False
         assert any(d.field == "size" for d in result.discrepancies)
 
@@ -80,7 +80,7 @@ class TestReconcilePositions:
             _fill(side=OrderSide.BUY, size=Decimal("2.0"), order_id="o1"),
         ]
         positions = [_position_resp(side="SHORT", net_size=Decimal("-2.0"))]
-        result = reconcile_positions(fills, positions, PortfolioTarget.A)
+        result = reconcile_positions(fills, positions, Route.A)
         assert result.is_consistent is False
         assert any(d.field == "side" for d in result.discrepancies)
 
@@ -90,7 +90,7 @@ class TestReconcilePositions:
         ]
         positions = [_position_resp(side="LONG", net_size=Decimal("2.0"))]
         result = reconcile_positions(
-            fills, positions, PortfolioTarget.A,
+            fills, positions, Route.A,
             tolerance=Decimal("0.001"),
         )
         assert result.is_consistent is True
@@ -101,7 +101,7 @@ class TestReconcilePositions:
             _fill(side=OrderSide.BUY, size=Decimal("1.0"), order_id="o2"),
         ]
         positions = [_position_resp(side="LONG", net_size=Decimal("2.0"))]
-        result = reconcile_positions(fills, positions, PortfolioTarget.A)
+        result = reconcile_positions(fills, positions, Route.A)
         assert result.is_consistent is True
 
     def test_partial_close_net_position(self) -> None:
@@ -110,11 +110,11 @@ class TestReconcilePositions:
             _fill(side=OrderSide.SELL, size=Decimal("1.0"), order_id="o2"),
         ]
         positions = [_position_resp(side="LONG", net_size=Decimal("2.0"))]
-        result = reconcile_positions(fills, positions, PortfolioTarget.A)
+        result = reconcile_positions(fills, positions, Route.A)
         assert result.is_consistent is True
 
     def test_empty_fills_and_positions(self) -> None:
-        result = reconcile_positions([], [], PortfolioTarget.A)
+        result = reconcile_positions([], [], Route.A)
         assert result.is_consistent is True
 
 

@@ -6,7 +6,7 @@ from decimal import Decimal
 import numpy as np
 import pytest
 
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 
 from agents.signals.feature_store import FeatureStore
@@ -279,8 +279,8 @@ class TestMomentumStrategy:
             assert sig.conviction > 0.0
             assert sig.conviction <= 1.0
             assert sig.time_horizon == timedelta(hours=4)
-            # suggested_target depends on conviction -- may be A or B
-            assert sig.suggested_target in (PortfolioTarget.A, PortfolioTarget.B)
+            # suggested_route depends on conviction -- may be A or B
+            assert sig.suggested_route in (Route.A, Route.B)
 
     def test_properties(self) -> None:
         strategy = MomentumStrategy()
@@ -309,7 +309,7 @@ class TestMomentumConfig:
                 "cooldown_bars": 3,
                 "vol_lookback": 15,
                 "vol_min_ratio": 0.6,
-                "portfolio_a_min_conviction": 0.80,
+                "route_a_min_conviction": 0.80,
                 "swing_lookback": 25,
                 "swing_order": 4,
             }
@@ -331,7 +331,7 @@ class TestMomentumConfig:
         assert p.cooldown_bars == 3
         assert p.vol_lookback == 15
         assert p.vol_min_ratio == 0.6
-        assert p.portfolio_a_min_conviction == 0.80
+        assert p.route_a_min_conviction == 0.80
         assert p.swing_lookback == 25
         assert p.swing_order == 4
 
@@ -344,7 +344,7 @@ class TestMomentumConfig:
         # All others should be defaults
         assert p.vol_lookback == 10
         assert p.vol_min_ratio == 0.5
-        assert p.portfolio_a_min_conviction == 0.75
+        assert p.route_a_min_conviction == 0.75
         assert p.swing_lookback == 20
         assert p.swing_order == 3
         assert p.adx_threshold == 20.0
@@ -670,9 +670,9 @@ class TestMomentumPortfolioRouting:
     """High-conviction signals route to Portfolio A."""
 
     def test_high_conviction_routes_to_portfolio_a(self) -> None:
-        """Signals with conviction >= 0.75 have suggested_target=PortfolioTarget.A."""
+        """Signals with conviction >= 0.75 have suggested_route=Route.A."""
         strategy = MomentumStrategy(params=MomentumParams(
-            portfolio_a_min_conviction=0.75,
+            route_a_min_conviction=0.75,
         ))
         import numpy as np
         atr_vals = np.array([1.0] * 10)
@@ -691,9 +691,9 @@ class TestMomentumPortfolioRouting:
         assert conv >= 0.75
 
     def test_low_conviction_routes_to_portfolio_b(self) -> None:
-        """Signals with conviction < 0.75 have suggested_target=PortfolioTarget.B."""
+        """Signals with conviction < 0.75 have suggested_route=Route.B."""
         strategy = MomentumStrategy(params=MomentumParams(
-            portfolio_a_min_conviction=0.75,
+            route_a_min_conviction=0.75,
         ))
         import numpy as np
         atr_vals = np.array([1.0] * 10)
@@ -711,7 +711,7 @@ class TestMomentumPortfolioRouting:
         assert conv < 0.75
 
     def test_portfolio_routing_in_signal(self) -> None:
-        """Full evaluate() produces correct suggested_target based on conviction."""
+        """Full evaluate() produces correct suggested_route based on conviction."""
         strategy = MomentumStrategy(params=MomentumParams(
             fast_ema_period=5,
             slow_ema_period=15,
@@ -723,7 +723,7 @@ class TestMomentumPortfolioRouting:
             min_conviction=0.0,
             cooldown_bars=0,
             vol_min_ratio=0.0,
-            portfolio_a_min_conviction=0.75,
+            route_a_min_conviction=0.75,
         ))
 
         flat = [2000.0] * 30
@@ -742,6 +742,6 @@ class TestMomentumPortfolioRouting:
         if signals:
             for sig in signals:
                 if sig.conviction >= 0.75:
-                    assert sig.suggested_target == PortfolioTarget.A
+                    assert sig.suggested_route == Route.A
                 else:
-                    assert sig.suggested_target == PortfolioTarget.B
+                    assert sig.suggested_route == Route.B

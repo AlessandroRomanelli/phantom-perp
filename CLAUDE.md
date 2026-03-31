@@ -13,7 +13,7 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - **Data**: Limited to data already in MarketSnapshot and FeatureStore — no new data sources or API integrations
 - **Risk**: Strategy changes must not weaken existing risk guardrails — risk agent and limits are untouched
 - **Config**: All new parameters must be configurable via YAML in `configs/strategies/` — no hardcoded magic numbers
-- **Routing**: Portfolio A routing requires `suggested_target=PortfolioTarget.A` with appropriate conviction thresholds per strategy
+- **Routing**: Route A routing requires `suggested_target=Route.A` with appropriate conviction thresholds per strategy
 - **Instruments**: Per-instrument configs go in existing `configs/strategies/<strategy>.yaml` under `instruments:` key
 <!-- GSD:project-end -->
 
@@ -30,7 +30,7 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - Lockfile: Virtual environment via Docker isolation
 - Production: Pre-built Docker images for `linux/amd64`
 ## Frameworks
-- `python-telegram-bot` (21+) - Telegram bot integration for Portfolio B confirmations
+- `python-telegram-bot` (21+) - Telegram bot integration for Route B confirmations
 - `httpx` (0.27+) - Async REST client for Coinbase Advanced API
 - `websockets` (13+) - Async WebSocket client for Coinbase real-time feeds
 - `polars` (1.0+) - Primary for speed-critical 24/7 data paths
@@ -61,7 +61,7 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - `httpx` + `websockets` - Exchange connectivity (Coinbase Advanced)
 - `redis` - Message broker (Redis Streams)
 - `SQLAlchemy` + `asyncpg` - Persistent state (PostgreSQL + TimescaleDB)
-- `python-telegram-bot` - Portfolio B confirmations (user interaction)
+- `python-telegram-bot` - Route B confirmations (user interaction)
 - `structlog` (24.1+) - Structured JSON logging across all agents
 - `orjson` - Serialization for Redis Streams payloads
 - `uvloop` - High-performance event loop (non-Windows)
@@ -73,8 +73,8 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - Configuration via `.env` file (environment variables)
 - Runtime overrides via `configs/default.yaml` (YAML)
 - Per-strategy configs in `configs/strategies/` (strategy-specific parameters)
-- `COINBASE_INTX_API_KEY_A`, `API_SECRET_A`, `PASSPHRASE_A` - Portfolio A credentials
-- `COINBASE_INTX_API_KEY_B`, `API_SECRET_B`, `PASSPHRASE_B` - Portfolio B credentials
+- `COINBASE_INTX_API_KEY_A`, `API_SECRET_A`, `PASSPHRASE_A` - Route A credentials
+- `COINBASE_INTX_API_KEY_B`, `API_SECRET_B`, `PASSPHRASE_B` - Route B credentials
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` - Telegram bot setup
 - `REDIS_URL` - Redis connection (default: `redis://localhost:6379`)
 - `DATABASE_URL` - PostgreSQL connection (default: `postgresql://phantom:phantom_dev@localhost:5432/phantom_perp`)
@@ -119,7 +119,7 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - Time constants: `POLL_INTERVAL = 30` (seconds), `STALE_DATA_HALT_SECONDS = 30`
 - Temporary variables in factories/builders: `_payment()`, `_make_candles()` (underscore prefix for test-only helpers)
 - PascalCase for all classes: `StandardSignal`, `MarketSnapshot`, `PerpPosition`, `CoinbaseAuth`
-- Enum members: SCREAMING_SNAKE_CASE: `OrderSide.BUY`, `PositionSide.LONG`, `PortfolioTarget.A`
+- Enum members: SCREAMING_SNAKE_CASE: `OrderSide.BUY`, `PositionSide.LONG`, `Route.A`
 - Exception classes: PascalCase ending in `Error`: `PhantomPerpError`, `PortfolioMismatchError`, `RiskLimitBreachedError`
 - Dataclass field types: Always fully typed with type hints
 - Aliases: rarely used; when needed, PascalCase: `T0 = datetime(...)` (used in tests for timestamp constants)
@@ -179,7 +179,7 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - If a function needs explaining with a lengthy docstring, consider breaking it into smaller functions
 - Maximum 5 positional parameters; use dataclass if more needed
 - Required parameters before optional ones
-- Use type hints on every parameter: `def fetch(client: CoinbaseRESTClient, target: PortfolioTarget) -> PortfolioResponse:`
+- Use type hints on every parameter: `def fetch(client: CoinbaseRESTClient, target: Route) -> PortfolioResponse:`
 - Avoid `*args` and `**kwargs` in favor of explicit parameters
 - Always declare return type: `-> str`, `-> list[Fill]`, `-> dict[str, Any]`
 - Return `None` explicitly if no value: `-> None` (not implicit)
@@ -194,7 +194,7 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - `__init__.py` files are sparse: only import top-level classes if truly public API
 - Private modules prefixed with underscore in very few cases; prefer directory structure instead
 - `libs/common/models/__init__.py` may re-export common models for convenience
-- `libs/portfolio/__init__.py` re-exports `PortfolioTarget` enum for convenience
+- `libs/portfolio/__init__.py` re-exports `Route` enum for convenience
 - Agent `__init__.py` files are empty or minimal
 - Agents depend on `libs` (unidirectional)
 - `libs` does not depend on any `agents`
@@ -225,26 +225,26 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - Use `dict[str, Any]` only when true dynamic dispatch needed (e.g., deserializing JSON)
 - Prefer explicit types where possible
 ## Portfolio-Aware Code
-- Never use portfolio UUID strings; always use `PortfolioTarget.A` or `PortfolioTarget.B`
-- Client selection: `client = CoinbaseClientPool.get_client(target)` (target is `PortfolioTarget`)
-- Data models include `portfolio_target: PortfolioTarget` field for all portfolio-specific data
+- Never use portfolio UUID strings; always use `Route.A` or `Route.B`
+- Client selection: `client = CoinbaseClientPool.get_client(target)` (target is `Route`)
+- Data models include `route: Route` field for all portfolio-specific data
 - Logging includes `portfolio=target.value` (converts enum to string for logs)
 - Each portfolio's state is fetched, stored, and processed independently
-- Risk limits are checked per-portfolio: `limits = self.portfolio_a_limits` or `limits = self.portfolio_b_limits`
+- Risk limits are checked per-portfolio: `limits = self.route_a_limits` or `limits = self.route_b_limits`
 - Reconciliation queries both portfolios separately and publishes to separate streams
 - No cross-portfolio transfers allowed: the code path for `POST /api/v1/transfers/portfolios` does not exist in the codebase
 ## Safety Guardrails
 - `MAX_LEVERAGE_GLOBAL = Decimal("5.0")` — hardcoded constant in `libs/common/constants.py`
 - Stale data check: 30 seconds (`STALE_DATA_HALT_SECONDS = 30`)
 - Funding rate circuit breaker: 0.05% (`FUNDING_RATE_CIRCUIT_BREAKER_PCT = Decimal("0.0005")`)
-- `PORTFOLIO_A_MAX_POSITION_PCT_EQUITY = Decimal("40.0")` — max % of equity in single trade
-- `PORTFOLIO_A_DAILY_LOSS_KILL_PCT = Decimal("10.0")` — halt if daily loss exceeds 10%
-- `PORTFOLIO_A_MAX_DRAWDOWN_PCT = Decimal("25.0")` — halt if equity drops 25% from peak
-- `PORTFOLIO_A_MIN_LIQUIDATION_DISTANCE_PCT = Decimal("8.0")` — minimum distance to liq price
-- `PORTFOLIO_B_MAX_DAILY_LOSS_PCT = Decimal("5.0")` — stricter than A
-- `PORTFOLIO_B_MAX_DRAWDOWN_PCT = Decimal("15.0")` — stricter than A
-- `PORTFOLIO_B_MIN_LIQUIDATION_DISTANCE_PCT = Decimal("15.0")` — stricter than A
-- `PORTFOLIO_B_AUTO_APPROVE_MAX_NOTIONAL_USDC = Decimal("2000")` — cap auto-approve size
+- `ROUTE_A_MAX_POSITION_PCT_EQUITY = Decimal("40.0")` — max % of equity in single trade
+- `ROUTE_A_DAILY_LOSS_KILL_PCT = Decimal("10.0")` — halt if daily loss exceeds 10%
+- `ROUTE_A_MAX_DRAWDOWN_PCT = Decimal("25.0")` — halt if equity drops 25% from peak
+- `ROUTE_A_MIN_LIQUIDATION_DISTANCE_PCT = Decimal("8.0")` — minimum distance to liq price
+- `ROUTE_B_MAX_DAILY_LOSS_PCT = Decimal("5.0")` — stricter than A
+- `ROUTE_B_MAX_DRAWDOWN_PCT = Decimal("15.0")` — stricter than A
+- `ROUTE_B_MIN_LIQUIDATION_DISTANCE_PCT = Decimal("15.0")` — stricter than A
+- `ROUTE_B_AUTO_APPROVE_MAX_NOTIONAL_USDC = Decimal("2000")` — cap auto-approve size
 <!-- GSD:conventions-end -->
 
 <!-- GSD:architecture-start source:ARCHITECTURE.md -->
@@ -252,8 +252,8 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 
 ## Pattern Overview
 - Multi-stage asynchronous pipeline: each stage is an independent agent communicating via Redis Streams
-- Dual-portfolio architecture with physically isolated margin and API key scoping
-- Portfolio-aware routing: signals flow through risk limits specific to each portfolio
+- Dual-route architecture with physically isolated margin and API key scoping
+- Route-aware routing: signals flow through risk limits specific to each portfolio
 - 24/7 operational model with no market-close downtime
 - Safety-critical architecture with non-negotiable guardrails (hardcoded, not configurable)
 ## Layers
@@ -280,17 +280,17 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - Contains: Risk engine (deterministic evaluation), margin calculator, liquidation guard, position sizer, fee/funding cost estimators, limits registry
 - Depends on: Ranked ideas from alpha, live portfolio state from reconciliation, market data
 - Used by: Execution and confirmation agents consume approved orders from portfolio-scoped streams
-- Key files: `agents/risk/main.py` orchestrates validation; `agents/risk/limits.py` defines separate limit sets for Portfolio A (aggressive) and B (conservative); `agents/risk/margin_calculator.py` computes initial/maintenance margin and liquidation distance; `agents/risk/position_sizer.py` sizes based on equity and risk budget
+- Key files: `agents/risk/main.py` orchestrates validation; `agents/risk/limits.py` defines separate limit sets for Route A (aggressive) and B (conservative); `agents/risk/margin_calculator.py` computes initial/maintenance margin and liquidation distance; `agents/risk/position_sizer.py` sizes based on equity and risk budget
 - Purpose: Present orders to user via Telegram for approval before execution
 - Location: `agents/confirmation/`
 - Contains: Telegram bot setup, message composition, callback handler, state machine for order lifecycle, timeout manager
-- Depends on: Approved orders from risk agent (Portfolio B stream), Telegram API
+- Depends on: Approved orders from risk agent (Route B stream), Telegram API
 - Used by: Execution agent consumes confirmed orders from unified stream
 - Key files: `agents/confirmation/main.py` runs Telegram bot; `agents/confirmation/state_machine.py` manages order states (pending_confirmation → confirmed → sent_to_exchange); `agents/confirmation/message_composer.py` formats rich trade notifications with inline keyboards
 - Purpose: Place orders on Coinbase via the correct portfolio's API client, monitor fills, manage stop-loss orders
 - Location: `agents/execution/`
 - Contains: Order placer (routes via `CoinbaseClientPool`), algo selector, fill monitor, retry handler, circuit breaker, stop-loss manager
-- Depends on: Approved (Portfolio A) and confirmed (Portfolio B) orders from portfolio-scoped/unified streams, Coinbase REST client pool
+- Depends on: Approved (Route A) and confirmed (Route B) orders from portfolio-scoped/unified streams, Coinbase REST client pool
 - Used by: Reconciliation consumes fills from portfolio-scoped streams
 - Key files: `agents/execution/main.py` subscribes to approved_orders:a and confirmed_orders; `agents/execution/order_placer.py` calls `CoinbaseClientPool.get_client(target)` to route via correct API key; `agents/execution/circuit_breaker.py` pauses on adverse conditions; `agents/execution/stop_loss_manager.py` places protective orders
 - Purpose: Query Coinbase for portfolio state (equity, margin, positions), track hourly funding payments, detect discrepancies with internal state
@@ -314,9 +314,9 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - Contains: Pipeline DAG definition, circuit breakers (per-portfolio and global), watchdog for agent crashes
 - Key files: `orchestrator/dag.py` defines agent dependencies and startup order; `orchestrator/circuit_breakers.py` implements kill switches for daily loss and max drawdown; `orchestrator/main.py` manages container lifecycle
 ## Data Flow
-- **Signal Source** → Alpha Combiner: `RankedTradeIdea` is routed to Portfolio A or B based on signal properties (time horizon, conviction, source type)
-- **Order Execution** → Execution Agent: `CoinbaseClientPool.get_client(portfolio_target)` selects the correct REST client authenticated with that portfolio's API key
-- **Portfolio State** → Risk & Reconciliation: Each agent independently queries or consumes data for Portfolio A and Portfolio B; no cross-portfolio operations
+- **Signal Source** → Alpha Combiner: `RankedTradeIdea` is routed to Route A or B based on signal properties (time horizon, conviction, source type)
+- **Order Execution** → Execution Agent: `CoinbaseClientPool.get_client(route)` selects the correct REST client authenticated with that portfolio's API key
+- **Portfolio State** → Risk & Reconciliation: Each agent independently queries or consumes data for Route A and Route B; no cross-portfolio operations
 - **Market State**: Held in Redis Streams (immutable, append-only); Signals agent maintains per-instrument rolling buffer in memory (FeatureStore)
 - **Portfolio State**: Queried from Coinbase API by reconciliation agent, published to Redis Streams; Risk agent reads from streams to validate new trades
 - **Order State**: Published to Redis Streams at each stage (risk_approved → pending_confirmation → confirmed → sent_to_exchange → open → filled); deserialized by downstream agents
@@ -331,15 +331,15 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - Location: `libs/common/models/trade_idea.py`
 - Used by: Risk agent to evaluate and size trades
 - Purpose: Order lifecycle contract
-- Pattern: ProposedOrder (sized, risk-checked, awaiting execution/confirmation); ApprovedOrder (user-confirmed for Portfolio B)
+- Pattern: ProposedOrder (sized, risk-checked, awaiting execution/confirmation); ApprovedOrder (user-confirmed for Route B)
 - Location: `libs/common/models/order.py`
-- Key fields: `portfolio_target` (enum, not UUID), `size`, `leverage`, `stop_loss`, `take_profit`, `estimated_margin_required_usdc`, `estimated_liquidation_price`
+- Key fields: `route` (enum, not UUID), `size`, `leverage`, `stop_loss`, `take_profit`, `estimated_margin_required_usdc`, `estimated_liquidation_price`
 - Purpose: Complete portfolio state at a point in time
 - Pattern: Queries Coinbase API separately per portfolio; includes equity, margin, positions, unrealized/realized P&L, funding, fees
 - Location: `libs/common/models/portfolio.py`
 - Sourced by: Reconciliation agent publishes per-portfolio snapshots
 - Purpose: Route API calls to the correct Coinbase API key
-- Pattern: `PortfolioTarget.A` = "autonomous" (no confirmation), `PortfolioTarget.B` = "user_confirmed"
+- Pattern: `Route.A` = "autonomous" (no confirmation), `Route.B` = "user_confirmed"
 - Location: `libs/common/models/enums.py`
 - Critical: No portfolio UUIDs are stored in internal models; routing is via enum → `CoinbaseClientPool.get_client(target)`
 - Purpose: Hourly USDC settlement record
@@ -350,18 +350,18 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - Pattern: Holds two `CoinbaseRESTClient` instances (one per portfolio API key); `get_client(target)` returns the correct instance
 - Location: `libs/coinbase/client_pool.py`
 - Critical: All Coinbase API calls in execution and reconciliation agents route via this pool — no portfolio UUID parameters are passed to REST methods
-- Purpose: Apply configurable rules to route signals to Portfolio A or B
+- Purpose: Apply configurable rules to route signals to Route A or B
 - Pattern: Rules evaluated in order (time horizon < 2h → A; high-frequency sources → A; default → B)
 - Location: `libs/portfolio/router.py`
 - Used by: Alpha combiner after signal aggregation
 - Purpose: Encapsulate portfolio-specific risk guardrails
-- Pattern: Separate limit objects for Portfolio A (aggressive) and B (conservative); read from YAML config
+- Pattern: Separate limit objects for Route A (aggressive) and B (conservative); read from YAML config
 - Location: `agents/risk/limits.py`
-- Example: Portfolio A max_leverage=5.0, max_daily_loss_pct=10.0; Portfolio B max_leverage=3.0, max_daily_loss_pct=5.0
+- Example: Route A max_leverage=5.0, max_daily_loss_pct=10.0; Route B max_leverage=3.0, max_daily_loss_pct=5.0
 - Purpose: Centralized Redis Streams channel name management
-- Pattern: Unified channels (stream:signals) and portfolio-scoped channels (stream:approved_orders:a, stream:approved_orders:b); class methods accept PortfolioTarget enum
+- Pattern: Unified channels (stream:signals) and portfolio-scoped channels (stream:approved_orders:a, stream:approved_orders:b); class methods accept Route enum
 - Location: `libs/messaging/channels.py`
-- Usage: `Channel.approved_orders(PortfolioTarget.A)` → "stream:approved_orders:a"
+- Usage: `Channel.approved_orders(Route.A)` → "stream:approved_orders:a"
 ## Entry Points
 - Location: `agents/ingestion/main.py`
 - Triggers: System startup; runs 24/7
@@ -376,7 +376,7 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - Triggers: System startup; reactive to both `stream:ranked_ideas:a` and `stream:ranked_ideas:b`
 - Responsibilities:
 - Location: `agents/confirmation/main.py`
-- Triggers: System startup; reactive to `stream:approved_orders:b` (Portfolio B only)
+- Triggers: System startup; reactive to `stream:approved_orders:b` (Route B only)
 - Responsibilities:
 - Location: `agents/execution/main.py`
 - Triggers: System startup; reactive to `stream:approved_orders:a` and `stream:confirmed_orders`
@@ -388,23 +388,23 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - Triggers: System startup; runs 24/7, reacts to portfolio state, funding, and fills
 - Responsibilities:
 ## Error Handling
-- **Portfolio Mismatch** (critical): If an order tagged `PortfolioTarget.A` ends up querying Portfolio B's state (e.g., due to misconfigured env var), `PortfolioMismatchError` is raised → system halts. Checked in reconciliation agent before querying Coinbase.
+- **Portfolio Mismatch** (critical): If an order tagged `Route.A` ends up querying Route B's state (e.g., due to misconfigured env var), `PortfolioMismatchError` is raised → system halts. Checked in reconciliation agent before querying Coinbase.
 - **Rate Limit** (recoverable): `RateLimitExceededError` is caught in REST client, retried with exponential backoff (max 2 retries). Alert is published.
 - **Insufficient Margin** (recoverable): Order rejected by Coinbase with "insufficient margin" — caught as `InsufficientMarginError`, rejected by risk engine, not retried. Logged as risk failure.
 - **Stale Data** (halting): If `MarketSnapshot` is > 30 seconds old, `StaleDataError` is raised, trading pauses, alert fires. Risk agent checks `(now - snapshot.timestamp) > STALE_DATA_HALT_SECONDS`.
 - **Funding Rate Circuit Breaker** (halting): If absolute hourly funding rate > 0.05%, `FundingRateCircuitBreakerError` halts new position-opening. Checked in risk agent.
 - **WebSocket Disconnect** (recoverable): Ingestion and execution agents auto-reconnect with exponential backoff (max 30s delay). Trading pauses during disconnect; resumes when connection re-established.
-- **Confirmation Timeout** (auto-handling): Portfolio B order not confirmed within TTL → auto-approved (if config allows) or expired and cancelled. Logged as override event.
+- **Confirmation Timeout** (auto-handling): Route B order not confirmed within TTL → auto-approved (if config allows) or expired and cancelled. Logged as override event.
 ## Cross-Cutting Concerns
 - Framework: `structlog` with JSON output (production) or human-readable (development)
 - Pattern: `logger = setup_logging("agent_name", json_output=False)` in each agent entrypoint
-- Every log line includes: agent_name, timestamp (UTC), trace_id (for request tracing), instrument (if applicable), portfolio_target (if applicable)
-- Example: `logger.info("order_placed", order_id="...", portfolio_target="autonomous", size=2.5, entry_price=2232.00)`
+- Every log line includes: agent_name, timestamp (UTC), trace_id (for request tracing), instrument (if applicable), route (if applicable)
+- Example: `logger.info("order_placed", order_id="...", route="autonomous", size=2.5, entry_price=2232.00)`
 - Framework: `pydantic` for external data models (Coinbase API responses); `dataclasses` for internal models
 - Pattern: Models define schema and validation rules; deserialization in agent entrypoints calls `Snapshot.model_validate(payload)` or custom `from_dict()` helpers
 - Risk validation: `RiskEngine.evaluate()` performs all checks before returning approval
 - Pattern: Each agent loads API credentials from environment variables at startup
-- Coinbase: Two sets of credentials (API_KEY_A, SECRET_A, PASSPHRASE_A for Portfolio A; same for B)
+- Coinbase: Two sets of credentials (API_KEY_A, SECRET_A, PASSPHRASE_A for Route A; same for B)
 - Telegram: Single bot token from env var
 - Credentials never logged; only auth successes logged ("coinbase_auth_ready")
 - Framework: YAML files in `configs/` + `pydantic-settings` for validation
@@ -412,7 +412,7 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - Loading: `get_settings()` returns `Settings` pydantic model; `load_yaml_config()` merges YAML into settings
 - Strategy configs: Per-strategy YAML in `configs/strategies/` (e.g., momentum.yaml) with per-instrument parameter overrides
 - No configuration is changeable at runtime; all changes require agent restart
-- Pattern: Every downstream agent (risk, execution, reconciliation, monitoring) explicitly branches by `portfolio_target`
+- Pattern: Every downstream agent (risk, execution, reconciliation, monitoring) explicitly branches by `route`
 - Streams: Named with portfolio suffix (stream:approved_orders:a, stream:approved_orders:b)
 - API routing: Via `CoinbaseClientPool.get_client(target)`, which returns the client authenticated with that portfolio's key
 - Margin isolation: Each portfolio's margin is tracked independently in Coinbase; liquidation in A cannot affect B (enforced by exchange)
@@ -424,7 +424,7 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - Rate limiting: Per-portfolio rate limiter in `CoinbaseClientPool` respects Coinbase headers (RateLimit-Remaining, Retry-After)
 - Circuit breaker pattern: Execution agent pauses on adverse conditions (e.g., repeated rejections)
 - Watchdog: Orchestrator monitors all agents; if an agent crashes, others are restarted in dependency order
-- Graceful degradation: If Telegram bot is unreachable, Portfolio B trades queue (buffered in Redis) — Portfolio A continues operating
+- Graceful degradation: If Telegram bot is unreachable, Route B trades queue (buffered in Redis) — Route A continues operating
 - Auto-reconnect: WebSocket clients reconnect on drop with exponential backoff
 - Idempotency: Agents use signal_id and order_id for deduplication; processing same message twice is safe
 <!-- GSD:architecture-end -->

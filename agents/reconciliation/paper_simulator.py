@@ -12,8 +12,8 @@ polling loop. It simulates order execution and portfolio state by:
 
 Subscribes to:
   - stream:market_snapshots     (latest mark price + funding rate from ingestion)
-  - stream:approved_orders:a    (risk-approved orders for Portfolio A)
-  - stream:approved_orders:b    (risk-approved orders for Portfolio B, bypasses confirmation)
+  - stream:approved_orders:a    (risk-approved orders for Route A)
+  - stream:approved_orders:b    (risk-approved orders for Route B, bypasses confirmation)
 
 Publishes to:
   - stream:exchange_events:a/b  (simulated fills)
@@ -37,7 +37,7 @@ from libs.common.models.enums import (
     OrderSide,
     OrderStatus,
     OrderType,
-    PortfolioTarget,
+    Route,
     PositionSide,
     SignalSource,
 )
@@ -76,7 +76,7 @@ def deserialize_proposed_order(payload: dict[str, Any]) -> ProposedOrder:
         order_id=payload["order_id"],
         signal_id=payload["signal_id"],
         instrument=payload["instrument"],
-        portfolio_target=PortfolioTarget(payload["portfolio_target"]),
+        route=Route(payload["route"]),
         side=OrderSide(payload["side"]),
         size=Decimal(payload["size"]),
         order_type=OrderType(payload["order_type"]),
@@ -102,7 +102,7 @@ def fill_to_dict(fill: Fill) -> dict[str, Any]:
     return {
         "fill_id": fill.fill_id,
         "order_id": fill.order_id,
-        "portfolio_target": fill.portfolio_target.value,
+        "route": fill.route.value,
         "instrument": fill.instrument,
         "side": fill.side.value,
         "size": str(fill.size),
@@ -126,7 +126,7 @@ async def _persist_fill(repo: TunerRepository | None, fill: Fill) -> None:
         await repo.write_fill(FillRecord(
             fill_id=fill.fill_id,
             order_id=fill.order_id,
-            portfolio_target=fill.portfolio_target.value,
+            portfolio_target=fill.route.value,
             instrument=fill.instrument,
             side=fill.side.value,
             size=fill.size,
@@ -183,7 +183,7 @@ class PaperPortfolio:
 
     def __init__(
         self,
-        target: PortfolioTarget,
+        target: Route,
         initial_equity: Decimal,
     ) -> None:
         self.target = target
@@ -288,7 +288,7 @@ class PaperPortfolio:
         return Fill(
             fill_id=generate_id("fill"),
             order_id=order_id,
-            portfolio_target=self.target,
+            route=self.target,
             instrument=instrument,
             side=side,
             size=size,
@@ -325,7 +325,7 @@ class PaperPortfolio:
         return FundingPayment(
             timestamp=utc_now(),
             instrument=instrument,
-            portfolio_target=self.target,
+            route=self.target,
             rate=rate,
             payment_usdc=payment,
             position_size=pos.size,
@@ -368,7 +368,7 @@ class PaperPortfolio:
 
             perp_positions.append(PerpPosition(
                 instrument=instrument,
-                portfolio_target=self.target,
+                route=self.target,
                 side=pos.side,
                 size=pos.size,
                 entry_price=pos.entry_price,
@@ -390,7 +390,7 @@ class PaperPortfolio:
 
         return PortfolioSnapshot(
             timestamp=utc_now(),
-            portfolio_target=self.target,
+            route=self.target,
             equity_usdc=equity.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
             used_margin_usdc=total_used_margin,
             available_margin_usdc=available_margin.quantize(
@@ -424,7 +424,7 @@ class PendingProtectiveOrder:
 
     order_id: str
     instrument: str
-    portfolio_target: PortfolioTarget
+    route: Route
     side: OrderSide  # Close side (opposite of position)
     size: Decimal
     trigger_price: Decimal  # Price at which the order activates
@@ -473,21 +473,21 @@ async def run_paper_simulator(
     Args:
         redis_url: Redis connection URL.
         publisher: RedisPublisher for publishing fills and snapshots.
-        include_portfolio_b: Whether to simulate Portfolio B.
+        include_portfolio_b: Whether to simulate Route B.
         repo: Optional TunerRepository for persisting fills to PostgreSQL.
             When provided, every fill (entry and SL/TP exit) is written to
             the fills table for historical tracking.
     """
-    portfolios: dict[PortfolioTarget, PaperPortfolio] = {
-        PortfolioTarget.A: PaperPortfolio(
-            target=PortfolioTarget.A,
+    portfolios: dict[Route, PaperPortfolio] = {
+        Route.A: PaperPortfolio(
+            target=Route.A,
             initial_equity=PAPER_INITIAL_EQUITY,
         ),
     }
 
     if include_portfolio_b:
-        portfolios[PortfolioTarget.B] = PaperPortfolio(
-            target=PortfolioTarget.B,
+        portfolios[Route.B] = PaperPortfolio(
+            target=Route.B,
             initial_equity=PAPER_INITIAL_EQUITY,
         )
 
@@ -508,9 +508,9 @@ async def run_paper_simulator(
     )
 
     # --- Consumer: approved orders ---
-    order_channels = [Channel.approved_orders(PortfolioTarget.A)]
+    order_channels = [Channel.approved_orders(Route.A)]
     if include_portfolio_b:
-        order_channels.append(Channel.approved_orders(PortfolioTarget.B))
+        order_channels.append(Channel.approved_orders(Route.B))
 
     order_consumer = RedisConsumer(redis_url=redis_url, block_ms=2000)
     await order_consumer.subscribe(
@@ -550,9 +550,9 @@ async def run_paper_simulator(
                 await order_consumer.ack(channel, "paper_sim_exec", msg_id)
                 continue
 
-            portfolio = portfolios.get(order.portfolio_target)
+            portfolio = portfolios.get(order.route)
             if portfolio is None:
-                logger.warning("paper_no_portfolio", target=order.portfolio_target.value)
+                logger.warning("paper_no_portfolio", target=order.route.value)
                 await order_consumer.ack(channel, "paper_sim_exec", msg_id)
                 continue
 
@@ -611,7 +611,7 @@ async def run_paper_simulator(
                 pending_orders.append(PendingProtectiveOrder(
                     order_id=f"sl-{order.order_id}",
                     instrument=order.instrument,
-                    portfolio_target=order.portfolio_target,
+                    route=order.route,
                     side=close_side,
                     size=order.size,
                     trigger_price=order.stop_loss,
@@ -628,7 +628,7 @@ async def run_paper_simulator(
                 pending_orders.append(PendingProtectiveOrder(
                     order_id=f"tp-{order.order_id}",
                     instrument=order.instrument,
-                    portfolio_target=order.portfolio_target,
+                    route=order.route,
                     side=close_side,
                     size=order.size,
                     trigger_price=order.take_profit,
@@ -725,7 +725,7 @@ async def run_paper_simulator(
             triggered.sort(key=lambda o: o.is_stop_loss)
 
             for order in triggered:
-                portfolio = portfolios.get(order.portfolio_target)
+                portfolio = portfolios.get(order.route)
                 if portfolio is None:
                     continue
 
@@ -777,7 +777,7 @@ async def run_paper_simulator(
                         o for o in pending_orders
                         if not (
                             o.instrument == order.instrument
-                            and o.portfolio_target == order.portfolio_target
+                            and o.route == order.route
                         )
                     ]
 

@@ -7,7 +7,7 @@ from libs.common.models.enums import (
     OrderSide,
     OrderStatus,
     OrderType,
-    PortfolioTarget,
+    Route,
     SignalSource,
 )
 from libs.common.models.order import ApprovedOrder, ProposedOrder
@@ -28,7 +28,7 @@ class TestDeserializeOrder:
             "order_id": "ord-123",
             "signal_id": "sig-456",
             "instrument": "ETH-PERP",
-            "portfolio_target": "user_confirmed",
+            "route": "user_confirmed",
             "side": "BUY",
             "size": "2.5",
             "order_type": "LIMIT",
@@ -49,7 +49,7 @@ class TestDeserializeOrder:
         }
         order = deserialize_order(payload)
         assert order.order_id == "ord-123"
-        assert order.portfolio_target == PortfolioTarget.B
+        assert order.route == Route.B
         assert order.side == OrderSide.BUY
         assert order.size == Decimal("2.5")
         assert order.order_type == OrderType.LIMIT
@@ -73,7 +73,7 @@ class TestDeserializeOrder:
             "order_id": "ord-789",
             "signal_id": "sig-789",
             "instrument": "ETH-PERP",
-            "portfolio_target": "user_confirmed",
+            "route": "user_confirmed",
             "side": "SELL",
             "size": "0.5",
             "order_type": "MARKET",
@@ -108,7 +108,7 @@ class TestDeserializeOrder:
             order_id="ord-rt",
             signal_id="sig-rt",
             instrument="ETH-PERP",
-            portfolio_target=PortfolioTarget.B,
+            route=Route.B,
             side=OrderSide.BUY,
             size=Decimal("1.5"),
             order_type=OrderType.LIMIT,
@@ -131,7 +131,7 @@ class TestDeserializeOrder:
         reconstructed = deserialize_order(serialized)
 
         assert reconstructed.order_id == original.order_id
-        assert reconstructed.portfolio_target == original.portfolio_target
+        assert reconstructed.route == original.route
         assert reconstructed.side == original.side
         assert reconstructed.size == original.size
         assert reconstructed.conviction == original.conviction
@@ -147,7 +147,7 @@ class TestApprovedOrderSerialization:
     def test_roundtrip(self) -> None:
         approved = ApprovedOrder(
             order_id="ord-approved",
-            portfolio_target=PortfolioTarget.B,
+            route=Route.B,
             instrument="ETH-PERP",
             side=OrderSide.BUY,
             size=Decimal("1.5"),
@@ -163,7 +163,7 @@ class TestApprovedOrderSerialization:
         reconstructed = deserialize_approved_order(serialized)
 
         assert reconstructed.order_id == "ord-approved"
-        assert reconstructed.portfolio_target == PortfolioTarget.B
+        assert reconstructed.route == Route.B
         assert reconstructed.side == OrderSide.BUY
         assert reconstructed.size == Decimal("1.5")
         assert reconstructed.limit_price == Decimal("2200")
@@ -176,7 +176,7 @@ class TestApprovedOrderSerialization:
     def test_none_prices(self) -> None:
         approved = ApprovedOrder(
             order_id="ord-no-prices",
-            portfolio_target=PortfolioTarget.B,
+            route=Route.B,
             instrument="ETH-PERP",
             side=OrderSide.SELL,
             size=Decimal("0.5"),

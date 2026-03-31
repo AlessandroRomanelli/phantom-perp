@@ -5,7 +5,7 @@ Signal logic:
   2. Linear weights: recent bars weighted more heavily than older bars.
   3. Depth gate: suppress signals when spread is too wide (thin orderbook).
   4. 3-component conviction: imbalance magnitude + spread quality + volume.
-  5. Portfolio A routing for high-conviction signals (OBI-04).
+  5. Route A routing for high-conviction signals (OBI-04).
 """
 
 from __future__ import annotations

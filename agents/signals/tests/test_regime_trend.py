@@ -6,7 +6,7 @@ from decimal import Decimal
 import numpy as np
 import pytest
 
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 
 from agents.signals.feature_store import FeatureStore
@@ -280,13 +280,13 @@ class TestRegimeTrendStrategy:
 
         # With 15-bar cooldown and ~60 trending bars, evaluate() fires at most ~4-6
         # times, but each can emit up to 2 signals (A + B), so bound is ~12
-        b_signals = [s for s in signals if s.suggested_target == PortfolioTarget.B]
+        b_signals = [s for s in signals if s.suggested_route == Route.B]
         assert len(b_signals) <= 8
 
     def test_signal_metadata(self) -> None:
         """Emitted signals should carry full filter metadata."""
         params = _relaxed_params()
-        params.portfolio_a_enabled = False  # Only check B signal metadata
+        params.route_a_enabled = False  # Only check B signal metadata
         strategy = RegimeTrendStrategy(params=params)
         prices, index_prices = _strong_uptrend(120)
 
@@ -312,14 +312,14 @@ class TestRegimeTrendStrategy:
         assert sig.conviction > 0.0
         assert sig.conviction <= 1.0
         assert sig.time_horizon == timedelta(hours=6)
-        assert sig.suggested_target == PortfolioTarget.B
+        assert sig.suggested_route == Route.B
 
     def test_portfolio_a_routing_on_high_conviction_breakout(self) -> None:
         """High-conviction breakouts should emit a Portfolio A signal too."""
         params = _relaxed_params()
-        params.portfolio_a_enabled = True
-        params.portfolio_a_min_conviction = 0.3
-        params.portfolio_a_breakout_only = True
+        params.route_a_enabled = True
+        params.route_a_min_conviction = 0.3
+        params.route_a_breakout_only = True
         strategy = RegimeTrendStrategy(params=params)
         prices, index_prices = _strong_uptrend(120)
 
@@ -332,8 +332,8 @@ class TestRegimeTrendStrategy:
             result = strategy.evaluate(s, store)
             signals.extend(result)
 
-        a_signals = [s for s in signals if s.suggested_target == PortfolioTarget.A]
-        b_signals = [s for s in signals if s.suggested_target == PortfolioTarget.B]
+        a_signals = [s for s in signals if s.suggested_route == Route.A]
+        b_signals = [s for s in signals if s.suggested_route == Route.B]
 
         # Should have both A and B signals
         assert len(a_signals) >= 1
@@ -344,14 +344,14 @@ class TestRegimeTrendStrategy:
         b_sig = b_signals[0]
         assert a_sig.time_horizon == timedelta(hours=2)
         assert b_sig.time_horizon == timedelta(hours=6)
-        assert a_sig.metadata["portfolio"] == "A"
-        assert b_sig.metadata["portfolio"] == "B"
+        assert a_sig.metadata["route"] == "A"
+        assert b_sig.metadata["route"] == "B"
         assert a_sig.metadata["entry_type"] == "breakout"
 
     def test_portfolio_a_not_emitted_when_disabled(self) -> None:
-        """When portfolio_a_enabled is False, only B signals should emit."""
+        """When route_a_enabled is False, only B signals should emit."""
         params = _relaxed_params()
-        params.portfolio_a_enabled = False
+        params.route_a_enabled = False
         strategy = RegimeTrendStrategy(params=params)
         prices, index_prices = _strong_uptrend(120)
 
@@ -364,14 +364,14 @@ class TestRegimeTrendStrategy:
             result = strategy.evaluate(s, store)
             signals.extend(result)
 
-        a_signals = [s for s in signals if s.suggested_target == PortfolioTarget.A]
+        a_signals = [s for s in signals if s.suggested_route == Route.A]
         assert len(a_signals) == 0
 
     def test_portfolio_a_requires_min_conviction(self) -> None:
         """Portfolio A signal should not emit if conviction is below threshold."""
         params = _relaxed_params()
-        params.portfolio_a_enabled = True
-        params.portfolio_a_min_conviction = 0.99  # Almost impossible to hit
+        params.route_a_enabled = True
+        params.route_a_min_conviction = 0.99  # Almost impossible to hit
         strategy = RegimeTrendStrategy(params=params)
         prices, index_prices = _strong_uptrend(120)
 
@@ -384,8 +384,8 @@ class TestRegimeTrendStrategy:
             result = strategy.evaluate(s, store)
             signals.extend(result)
 
-        a_signals = [s for s in signals if s.suggested_target == PortfolioTarget.A]
-        b_signals = [s for s in signals if s.suggested_target == PortfolioTarget.B]
+        a_signals = [s for s in signals if s.suggested_route == Route.A]
+        b_signals = [s for s in signals if s.suggested_route == Route.B]
         assert len(a_signals) == 0
         assert len(b_signals) >= 1  # B should still fire
 
@@ -396,17 +396,17 @@ class TestRegimeTrendStrategy:
                 "trend_ema_period": 40,
                 "adx_threshold": 18.0,
                 "min_conviction": 0.3,
-                "portfolio_a_min_conviction": 0.8,
+                "route_a_min_conviction": 0.8,
             }
         }
         strategy = RegimeTrendStrategy(config=config)
         assert strategy._params.trend_ema_period == 40
         assert strategy._params.adx_threshold == 18.0
         assert strategy._params.min_conviction == 0.3
-        assert strategy._params.portfolio_a_min_conviction == 0.8
+        assert strategy._params.route_a_min_conviction == 0.8
         # Unset params keep defaults
         assert strategy._params.atr_period == 14
-        assert strategy._params.portfolio_a_enabled is True
+        assert strategy._params.route_a_enabled is True
 
 
 class TestAdaptiveThresholds:
@@ -547,7 +547,7 @@ class TestTrailingStopMetadata:
         params.trail_activation_pct = 1.0
         params.trail_distance_atr = 1.5
         params.initial_stop_atr_mult = 1.8
-        params.portfolio_a_enabled = False
+        params.route_a_enabled = False
         strategy = RegimeTrendStrategy(params=params)
         prices, index_prices = _strong_uptrend(120)
 
@@ -575,7 +575,7 @@ class TestTrailingStopMetadata:
         params.trail_enabled = True
         params.initial_stop_atr_mult = 1.8
         params.stop_loss_atr_mult = 2.5
-        params.portfolio_a_enabled = False
+        params.route_a_enabled = False
         strategy = RegimeTrendStrategy(params=params)
         prices, index_prices = _strong_uptrend(120)
 
@@ -602,7 +602,7 @@ class TestTrailingStopMetadata:
         params_no_trail.trail_enabled = False
         params_no_trail.initial_stop_atr_mult = 1.8
         params_no_trail.stop_loss_atr_mult = 2.5
-        params_no_trail.portfolio_a_enabled = False
+        params_no_trail.route_a_enabled = False
         strategy_no_trail = RegimeTrendStrategy(params=params_no_trail)
 
         store2 = FeatureStore(sample_interval=timedelta(seconds=0))
@@ -624,7 +624,7 @@ class TestTrailingStopMetadata:
         """Adaptive threshold values appear in signal metadata."""
         params = _relaxed_params()
         params.adx_adapt_enabled = True
-        params.portfolio_a_enabled = False
+        params.route_a_enabled = False
         strategy = RegimeTrendStrategy(params=params)
         prices, index_prices = _strong_uptrend(120)
 

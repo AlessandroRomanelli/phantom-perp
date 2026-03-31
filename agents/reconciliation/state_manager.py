@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from libs.coinbase.models import Amount, PortfolioResponse, PositionResponse
 from libs.common.exceptions import PortfolioMismatchError
-from libs.common.models.enums import PortfolioTarget, PositionSide
+from libs.common.models.enums import Route, PositionSide
 from libs.common.models.portfolio import PortfolioSnapshot, SystemSnapshot
 from libs.common.models.position import PerpPosition
 from libs.common.utils import utc_now
@@ -26,7 +26,7 @@ def _amount_to_decimal(amt: Amount | None, fallback: Decimal = Decimal("0")) -> 
 
 def build_position(
     resp: PositionResponse,
-    portfolio_target: PortfolioTarget,
+    route: Route,
     *,
     realized_pnl_usdc: Decimal = Decimal("0"),
     cumulative_funding_usdc: Decimal = Decimal("0"),
@@ -36,7 +36,7 @@ def build_position(
 
     Args:
         resp: Raw position data from Coinbase Advanced Trade API.
-        portfolio_target: Which portfolio this position belongs to.
+        route: Which route this position belongs to.
         realized_pnl_usdc: Realized P&L from our internal tracking.
         cumulative_funding_usdc: Cumulative funding from our tracker.
         total_fees_usdc: Total fees from our fill records.
@@ -62,7 +62,7 @@ def build_position(
 
     return PerpPosition(
         instrument=resp.product_id,
-        portfolio_target=portfolio_target,
+        route=route,
         side=side,
         size=size,
         entry_price=entry_price,
@@ -82,7 +82,7 @@ def build_position(
 def build_portfolio_snapshot(
     portfolio_resp: PortfolioResponse,
     position_resps: list[PositionResponse],
-    portfolio_target: PortfolioTarget,
+    route: Route,
     *,
     expected_portfolio_id: str | None = None,
     realized_pnl_today_usdc: Decimal = Decimal("0"),
@@ -95,7 +95,7 @@ def build_portfolio_snapshot(
     Args:
         portfolio_resp: Portfolio-level summary from Coinbase Advanced Trade.
         position_resps: All positions in this portfolio from Coinbase.
-        portfolio_target: A or B.
+        route: A or B.
         expected_portfolio_id: If provided, validate that the response's
             portfolio_uuid matches. Raises PortfolioMismatchError on mismatch.
         realized_pnl_today_usdc: Today's realized P&L from our internal tracking.
@@ -106,14 +106,14 @@ def build_portfolio_snapshot(
     if expected_portfolio_id and portfolio_resp.portfolio_uuid:
         if portfolio_resp.portfolio_uuid != expected_portfolio_id:
             raise PortfolioMismatchError(
-                expected_target=portfolio_target.value,
+                expected_target=route.value,
                 expected_id=expected_portfolio_id,
                 actual_id=portfolio_resp.portfolio_uuid,
             )
 
     now = now or utc_now()
     positions = [
-        build_position(pr, portfolio_target) for pr in position_resps
+        build_position(pr, route) for pr in position_resps
     ]
 
     collateral = Decimal(portfolio_resp.collateral) if portfolio_resp.collateral else Decimal("0")
@@ -138,7 +138,7 @@ def build_portfolio_snapshot(
 
     return PortfolioSnapshot(
         timestamp=now,
-        portfolio_target=portfolio_target,
+        route=route,
         equity_usdc=equity,
         used_margin_usdc=used_margin,
         available_margin_usdc=available,
@@ -159,8 +159,8 @@ def build_system_snapshot(
     """Combine both portfolio snapshots into a system-wide view."""
     return SystemSnapshot(
         timestamp=now or utc_now(),
-        portfolio_a=portfolio_a,
-        portfolio_b=portfolio_b,
+        route_a=portfolio_a,
+        route_b=portfolio_b,
     )
 
 

@@ -53,7 +53,7 @@ class TestLiveCanaryOrder:
         base_url: str = os.environ.get(
             "COINBASE_ADV_REST_URL", "https://api.coinbase.com"
         )
-        portfolio_uuid: str = os.environ.get("COINBASE_PORTFOLIO_A_ID", "")
+        portfolio_uuid: str = os.environ.get("COINBASE_ROUTE_A_ID", "")
 
         # -- Build auth + client ------------------------------------------------
         auth = CoinbaseAuth(api_key=api_key, api_secret=api_secret)

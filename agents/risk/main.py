@@ -31,7 +31,7 @@ from libs.common.models.enums import (
     OrderSide,
     OrderStatus,
     OrderType,
-    PortfolioTarget,
+    Route,
     PositionSide,
     SignalSource,
 )
@@ -43,7 +43,7 @@ from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
 from agents.risk.fee_calculator import estimate_fee
 from agents.risk.funding_cost_estimator import estimate_funding_cost
-from agents.risk.limits import RiskLimits, limits_for_portfolio
+from agents.risk.limits import RiskLimits, limits_for_route
 from agents.risk.liquidation_guard import stop_is_before_liquidation
 from agents.risk.margin_calculator import (
     compute_initial_margin,
@@ -70,9 +70,9 @@ class PaperPortfolioStateFetcher:
             redis_url, decode_responses=False,
         )
         self._defaults = {
-            PortfolioTarget.A: PortfolioSnapshot(
+            Route.A: PortfolioSnapshot(
                 timestamp=utc_now(),
-                portfolio_target=PortfolioTarget.A,
+                route=Route.A,
                 equity_usdc=Decimal("10000"),
                 used_margin_usdc=Decimal("0"),
                 available_margin_usdc=Decimal("10000"),
@@ -83,9 +83,9 @@ class PaperPortfolioStateFetcher:
                 funding_pnl_today_usdc=Decimal("0"),
                 fees_paid_today_usdc=Decimal("0"),
             ),
-            PortfolioTarget.B: PortfolioSnapshot(
+            Route.B: PortfolioSnapshot(
                 timestamp=utc_now(),
-                portfolio_target=PortfolioTarget.B,
+                route=Route.B,
                 equity_usdc=Decimal("10000"),
                 used_margin_usdc=Decimal("0"),
                 available_margin_usdc=Decimal("10000"),
@@ -98,9 +98,9 @@ class PaperPortfolioStateFetcher:
             ),
         }
 
-    async def fetch(self, target: PortfolioTarget) -> PortfolioSnapshot:
+    async def fetch(self, target: Route) -> PortfolioSnapshot:
         """Read latest portfolio snapshot from Redis stream."""
-        suffix = "a" if target == PortfolioTarget.A else "b"
+        suffix = "a" if target == Route.A else "b"
         stream = f"stream:portfolio_state:{suffix}"
         try:
             entries = await self._redis.xrevrange(stream, "+", "-", count=1)
@@ -110,7 +110,7 @@ class PaperPortfolioStateFetcher:
                     data = orjson.loads(raw)
                     return PortfolioSnapshot(
                         timestamp=datetime.fromisoformat(data["timestamp"]),
-                        portfolio_target=target,
+                        route=target,
                         equity_usdc=Decimal(str(data.get("equity_usdc", "10000"))),
                         used_margin_usdc=Decimal(str(data.get("used_margin_usdc", "0"))),
                         available_margin_usdc=Decimal(str(data.get("available_margin_usdc", "10000"))),
@@ -162,14 +162,14 @@ class RiskEngine:
     and market data.
 
     Args:
-        limits_a: Risk limits for Portfolio A.
-        limits_b: Risk limits for Portfolio B.
+        limits_a: Risk limits for Route A.
+        limits_b: Risk limits for Route B.
     """
 
     def __init__(self, limits_a: RiskLimits, limits_b: RiskLimits) -> None:
         self._limits = {
-            PortfolioTarget.A: limits_a,
-            PortfolioTarget.B: limits_b,
+            Route.A: limits_a,
+            Route.B: limits_b,
         }
 
     def evaluate(
@@ -192,7 +192,7 @@ class RiskEngine:
         Returns:
             RiskCheckResult with approval/rejection and optional ProposedOrder.
         """
-        target = idea.portfolio_target
+        target = idea.route
         limits = self._limits[target]
 
         # ------------------------------------------------------------------
@@ -426,7 +426,7 @@ class RiskEngine:
             order_id=generate_id("ord"),
             signal_id=idea.idea_id,
             instrument=idea.instrument,
-            portfolio_target=target,
+            route=target,
             side=OrderSide.BUY if idea.direction == PositionSide.LONG else OrderSide.SELL,
             size=size,
             order_type=OrderType.LIMIT,
@@ -462,7 +462,7 @@ def deserialize_idea(payload: dict[str, Any]) -> RankedTradeIdea:
         idea_id=payload["idea_id"],
         timestamp=datetime.fromisoformat(payload["timestamp"]),
         instrument=payload["instrument"],
-        portfolio_target=PortfolioTarget(payload["portfolio_target"]),
+        route=Route(payload["route"]),
         direction=PositionSide(payload["direction"]),
         conviction=float(payload["conviction"]),
         sources=[SignalSource(s) for s in payload["sources"].split(",")],
@@ -480,7 +480,7 @@ def order_to_dict(order: ProposedOrder) -> dict[str, Any]:
         "order_id": order.order_id,
         "signal_id": order.signal_id,
         "instrument": order.instrument,
-        "portfolio_target": order.portfolio_target.value,
+        "route": order.route.value,
         "side": order.side.value,
         "size": str(order.size),
         "order_type": order.order_type.value,
@@ -517,8 +517,8 @@ async def run_agent() -> None:
     repo = TunerRepository(db_store)
     log.info("risk_db_initialized")
 
-    limits_a = limits_for_portfolio(PortfolioTarget.A, config)
-    limits_b = limits_for_portfolio(PortfolioTarget.B, config)
+    limits_a = limits_for_route(Route.A, config)
+    limits_b = limits_for_route(Route.B, config)
     engine = RiskEngine(limits_a, limits_b)
 
     log.info(
@@ -553,8 +553,8 @@ async def run_agent() -> None:
     consumer = RedisConsumer(redis_url=settings.infra.redis_url)
     publisher = RedisPublisher(redis_url=settings.infra.redis_url)
 
-    channel_a = Channel.ranked_ideas(PortfolioTarget.A)
-    channel_b = Channel.ranked_ideas(PortfolioTarget.B)
+    channel_a = Channel.ranked_ideas(Route.A)
+    channel_b = Channel.ranked_ideas(Route.B)
 
     await consumer.subscribe(
         channels=[channel_a, channel_b],
@@ -574,14 +574,14 @@ async def run_agent() -> None:
 
                 # Determine portfolio from channel
                 if channel == channel_a:
-                    expected_target = PortfolioTarget.A
+                    expected_target = Route.A
                 else:
-                    expected_target = PortfolioTarget.B
+                    expected_target = Route.B
 
-                if idea.portfolio_target != expected_target:
+                if idea.route != expected_target:
                     log.error(
                         "idea_target_channel_mismatch",
-                        idea_target=idea.portfolio_target.value,
+                        idea_target=idea.route.value,
                         channel=channel,
                     )
                     await consumer.ack(channel, "risk_agent", msg_id)
@@ -603,13 +603,13 @@ async def run_agent() -> None:
                 # Fetch live portfolio state from Coinbase (with timeout)
                 try:
                     portfolio_state = await asyncio.wait_for(
-                        fetcher.fetch(idea.portfolio_target),
+                        fetcher.fetch(idea.route),
                         timeout=15.0,
                     )
                 except asyncio.TimeoutError:
                     log.warning(
                         "portfolio_fetch_timeout",
-                        portfolio=idea.portfolio_target.value,
+                        route=idea.route.value,
                         idea_id=idea.idea_id,
                     )
                     await consumer.ack(channel, "risk_agent", msg_id)
@@ -617,7 +617,7 @@ async def run_agent() -> None:
                 except Exception as exc:
                     log.warning(
                         "portfolio_fetch_error",
-                        portfolio=idea.portfolio_target.value,
+                        route=idea.route.value,
                         idea_id=idea.idea_id,
                         error=str(exc),
                         exc_type=type(exc).__name__,
@@ -638,7 +638,7 @@ async def run_agent() -> None:
                     log.critical(
                         "SYSTEM_HALT",
                         reason=result.rejection_reason,
-                        portfolio=idea.portfolio_target.value,
+                        route=idea.route.value,
                     )
                     # Publish alert and shut down
                     await publisher.publish(
@@ -653,7 +653,7 @@ async def run_agent() -> None:
                     break  # Exit the loop → agent shuts down
 
                 if result.approved and result.proposed_order is not None:
-                    out_channel = Channel.approved_orders(idea.portfolio_target)
+                    out_channel = Channel.approved_orders(idea.route)
                     await publisher.publish(out_channel, order_to_dict(result.proposed_order))
                     # Persist order-signal attribution per D-01
                     try:
@@ -665,7 +665,7 @@ async def run_agent() -> None:
                         await repo.write_order_signal(OrderSignalRecord(
                             order_id=order.order_id,
                             signal_id=order.signal_id,
-                            portfolio_target=order.portfolio_target.value,
+                            route=order.route.value,
                             instrument=order.instrument,
                             conviction=order.conviction,
                             primary_source=primary,
@@ -694,7 +694,7 @@ async def run_agent() -> None:
                     log.info(
                         "order_approved",
                         order_id=result.proposed_order.order_id,
-                        portfolio=idea.portfolio_target.value,
+                        route=idea.route.value,
                         size=str(result.proposed_order.size),
                         side=result.proposed_order.side.value,
                     )
@@ -702,7 +702,7 @@ async def run_agent() -> None:
                     log.info(
                         "idea_rejected",
                         idea_id=idea.idea_id,
-                        portfolio=idea.portfolio_target.value,
+                        route=idea.route.value,
                         reason=result.rejection_reason,
                     )
 

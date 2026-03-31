@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from libs.common.models.enums import PortfolioTarget, PositionSide
+from libs.common.models.enums import Route, PositionSide
 from libs.common.models.funding import FundingPayment
 
 
@@ -20,7 +20,7 @@ from libs.common.models.funding import FundingPayment
 class FundingTracker:
     """Tracks hourly funding payments for a single portfolio."""
 
-    portfolio_target: PortfolioTarget
+    route: Route
     window_hours: int = 24
     _payments: deque[FundingPayment] = field(default_factory=deque)
 
@@ -61,7 +61,7 @@ class FundingTracker:
         fp = FundingPayment(
             timestamp=timestamp,
             instrument=instrument,
-            portfolio_target=self.portfolio_target,
+            route=self.route,
             rate=rate,
             payment_usdc=payment_usdc,
             position_size=position_size,
@@ -105,14 +105,14 @@ class DualFundingTracker:
     """Manages funding trackers for both portfolios."""
 
     tracker_a: FundingTracker = field(
-        default_factory=lambda: FundingTracker(portfolio_target=PortfolioTarget.A),
+        default_factory=lambda: FundingTracker(route=Route.A),
     )
     tracker_b: FundingTracker = field(
-        default_factory=lambda: FundingTracker(portfolio_target=PortfolioTarget.B),
+        default_factory=lambda: FundingTracker(route=Route.B),
     )
 
-    def get_tracker(self, target: PortfolioTarget) -> FundingTracker:
-        return self.tracker_a if target == PortfolioTarget.A else self.tracker_b
+    def get_tracker(self, target: Route) -> FundingTracker:
+        return self.tracker_a if target == Route.A else self.tracker_b
 
     @property
     def combined_24h_usdc(self) -> Decimal:

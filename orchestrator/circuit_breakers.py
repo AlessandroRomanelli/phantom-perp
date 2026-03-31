@@ -15,13 +15,13 @@ from enum import Enum
 
 from libs.common.constants import (
     FUNDING_RATE_CIRCUIT_BREAKER_PCT,
-    PORTFOLIO_A_DAILY_LOSS_KILL_PCT,
-    PORTFOLIO_A_MAX_DRAWDOWN_PCT,
-    PORTFOLIO_B_MAX_DAILY_LOSS_PCT,
-    PORTFOLIO_B_MAX_DRAWDOWN_PCT,
+    ROUTE_A_DAILY_LOSS_KILL_PCT,
+    ROUTE_A_MAX_DRAWDOWN_PCT,
+    ROUTE_B_MAX_DAILY_LOSS_PCT,
+    ROUTE_B_MAX_DRAWDOWN_PCT,
     STALE_DATA_HALT_SECONDS,
 )
-from libs.common.models.enums import PortfolioTarget
+from libs.common.models.enums import Route
 
 
 class KillSwitchReason(str, Enum):
@@ -40,7 +40,7 @@ class KillSwitchEvent:
     """Record of a kill switch activation."""
 
     reason: KillSwitchReason
-    portfolio_target: PortfolioTarget | None  # None = global
+    route: Route | None  # None = global
     message: str
     triggered_at: datetime
     value: str = ""
@@ -51,11 +51,11 @@ class KillSwitchEvent:
 class SystemCircuitBreaker:
     """System-level circuit breaker with per-portfolio and global trips.
 
-    Portfolio A and B can be halted independently. A global halt stops
+    Route A and B can be halted independently. A global halt stops
     both portfolios. Manual reset is required to resume.
     """
 
-    _portfolio_trips: dict[PortfolioTarget, KillSwitchEvent] = field(
+    _portfolio_trips: dict[Route, KillSwitchEvent] = field(
         default_factory=dict,
     )
     _global_trip: KillSwitchEvent | None = None
@@ -64,7 +64,7 @@ class SystemCircuitBreaker:
 
     def trip_portfolio(
         self,
-        target: PortfolioTarget,
+        target: Route,
         reason: KillSwitchReason,
         message: str,
         now: datetime,
@@ -74,7 +74,7 @@ class SystemCircuitBreaker:
         """Halt a single portfolio."""
         event = KillSwitchEvent(
             reason=reason,
-            portfolio_target=target,
+            route=target,
             message=message,
             triggered_at=now,
             value=value,
@@ -92,7 +92,7 @@ class SystemCircuitBreaker:
         """Halt the entire system (both portfolios)."""
         event = KillSwitchEvent(
             reason=reason,
-            portfolio_target=None,
+            route=None,
             message=message,
             triggered_at=now,
         )
@@ -109,7 +109,7 @@ class SystemCircuitBreaker:
 
     # ── Reset methods ───────────────────────────────────────────────────
 
-    def reset_portfolio(self, target: PortfolioTarget) -> bool:
+    def reset_portfolio(self, target: Route) -> bool:
         """Resume a single portfolio. Returns True if was halted."""
         return self._portfolio_trips.pop(target, None) is not None
 
@@ -126,7 +126,7 @@ class SystemCircuitBreaker:
 
     # ── Query methods ───────────────────────────────────────────────────
 
-    def is_halted(self, target: PortfolioTarget) -> bool:
+    def is_halted(self, target: Route) -> bool:
         """Check if a portfolio is halted (own trip OR global trip)."""
         return target in self._portfolio_trips or self._global_trip is not None
 
@@ -134,7 +134,7 @@ class SystemCircuitBreaker:
         """Check if the entire system is halted."""
         return self._global_trip is not None
 
-    def get_trip(self, target: PortfolioTarget) -> KillSwitchEvent | None:
+    def get_trip(self, target: Route) -> KillSwitchEvent | None:
         """Get the active trip for a portfolio, if any."""
         return self._portfolio_trips.get(target)
 
@@ -162,26 +162,26 @@ class SystemCircuitBreaker:
 
 def evaluate_daily_loss(
     daily_loss_pct: float,
-    portfolio_target: PortfolioTarget,
+    route: Route,
     now: datetime,
 ) -> KillSwitchEvent | None:
     """Check if daily loss exceeds the portfolio's kill-switch threshold.
 
-    Portfolio A: 10% (PORTFOLIO_A_DAILY_LOSS_KILL_PCT)
-    Portfolio B: 5%  (PORTFOLIO_B_MAX_DAILY_LOSS_PCT)
+    Route A: 10% (ROUTE_A_DAILY_LOSS_KILL_PCT)
+    Route B: 5%  (ROUTE_B_MAX_DAILY_LOSS_PCT)
     """
     threshold = (
-        PORTFOLIO_A_DAILY_LOSS_KILL_PCT
-        if portfolio_target == PortfolioTarget.A
-        else PORTFOLIO_B_MAX_DAILY_LOSS_PCT
+        ROUTE_A_DAILY_LOSS_KILL_PCT
+        if route == Route.A
+        else ROUTE_B_MAX_DAILY_LOSS_PCT
     )
     if daily_loss_pct >= float(threshold):
         return KillSwitchEvent(
             reason=KillSwitchReason.DAILY_LOSS,
-            portfolio_target=portfolio_target,
+            route=route,
             message=(
                 f"Daily loss {daily_loss_pct:.1f}% exceeds "
-                f"kill switch {threshold}% for {portfolio_target.value}"
+                f"kill switch {threshold}% for {route.value}"
             ),
             triggered_at=now,
             value=f"{daily_loss_pct:.1f}",
@@ -192,26 +192,26 @@ def evaluate_daily_loss(
 
 def evaluate_drawdown(
     drawdown_pct: float,
-    portfolio_target: PortfolioTarget,
+    route: Route,
     now: datetime,
 ) -> KillSwitchEvent | None:
     """Check if drawdown exceeds the portfolio's kill-switch threshold.
 
-    Portfolio A: 25% (PORTFOLIO_A_MAX_DRAWDOWN_PCT)
-    Portfolio B: 15% (PORTFOLIO_B_MAX_DRAWDOWN_PCT)
+    Route A: 25% (ROUTE_A_MAX_DRAWDOWN_PCT)
+    Route B: 15% (ROUTE_B_MAX_DRAWDOWN_PCT)
     """
     threshold = (
-        PORTFOLIO_A_MAX_DRAWDOWN_PCT
-        if portfolio_target == PortfolioTarget.A
-        else PORTFOLIO_B_MAX_DRAWDOWN_PCT
+        ROUTE_A_MAX_DRAWDOWN_PCT
+        if route == Route.A
+        else ROUTE_B_MAX_DRAWDOWN_PCT
     )
     if drawdown_pct >= float(threshold):
         return KillSwitchEvent(
             reason=KillSwitchReason.MAX_DRAWDOWN,
-            portfolio_target=portfolio_target,
+            route=route,
             message=(
                 f"Drawdown {drawdown_pct:.1f}% exceeds "
-                f"kill switch {threshold}% for {portfolio_target.value}"
+                f"kill switch {threshold}% for {route.value}"
             ),
             triggered_at=now,
             value=f"{drawdown_pct:.1f}",
@@ -231,7 +231,7 @@ def evaluate_stale_data(
     if last_data_age_seconds > STALE_DATA_HALT_SECONDS:
         return KillSwitchEvent(
             reason=KillSwitchReason.STALE_DATA,
-            portfolio_target=None,
+            route=None,
             message=(
                 f"Market data {last_data_age_seconds:.0f}s old "
                 f"(limit: {STALE_DATA_HALT_SECONDS}s). Trading halted."
@@ -256,7 +256,7 @@ def evaluate_funding_rate(
         direction = "positive (longs pay)" if rate > 0 else "negative (shorts pay)"
         return KillSwitchEvent(
             reason=KillSwitchReason.FUNDING_RATE,
-            portfolio_target=None,
+            route=None,
             message=(
                 f"Funding rate {direction}: {float(abs(rate)) * 100:.4f}% "
                 f"exceeds circuit breaker {float(FUNDING_RATE_CIRCUIT_BREAKER_PCT) * 100:.2f}%"

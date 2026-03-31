@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import numpy as np
 
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 
 from agents.signals.feature_store import FeatureStore
@@ -210,8 +210,8 @@ class TestMeanReversionStrategy:
         sig = signals[0]
         assert sig.direction == PositionSide.LONG
         assert sig.source == SignalSource.MEAN_REVERSION
-        # Routing depends on conviction vs portfolio_a_min_conviction
-        assert sig.suggested_target in (PortfolioTarget.A, PortfolioTarget.B)
+        # Routing depends on conviction vs route_a_min_conviction
+        assert sig.suggested_route in (Route.A, Route.B)
         assert sig.stop_loss is not None
         assert sig.stop_loss < sig.entry_price
         assert sig.take_profit is not None
@@ -412,7 +412,7 @@ class TestMRConfig:
             "parameters": {
                 "trend_reject_threshold": 0.7,
                 "extended_deviation_threshold": 0.4,
-                "portfolio_a_min_conviction": 0.70,
+                "route_a_min_conviction": 0.70,
                 "vol_lookback": 15,
             }
         }
@@ -420,7 +420,7 @@ class TestMRConfig:
         p = strategy._params
         assert p.trend_reject_threshold == 0.7
         assert p.extended_deviation_threshold == 0.4
-        assert p.portfolio_a_min_conviction == 0.70
+        assert p.route_a_min_conviction == 0.70
         assert p.vol_lookback == 15
 
     def test_defaults_used_when_config_empty(self) -> None:
@@ -428,7 +428,7 @@ class TestMRConfig:
         p = strategy._params
         assert p.trend_reject_threshold == 0.6
         assert p.extended_deviation_threshold == 0.5
-        assert p.portfolio_a_min_conviction == 0.65
+        assert p.route_a_min_conviction == 0.65
         assert p.vol_lookback == 10
         assert p.atr_period == 14
         assert p.stop_loss_atr_mult == 1.5
@@ -617,7 +617,7 @@ class TestMRPortfolioRouting:
             cooldown_bars=0,
             rsi_oversold=80.0,
             trend_reject_threshold=0.99,
-            portfolio_a_min_conviction=0.65,
+            route_a_min_conviction=0.65,
         )
         strategy = MeanReversionStrategy(params=params)
 
@@ -675,7 +675,7 @@ class TestMRPortfolioRouting:
         signals = strategy.evaluate(snap, store)
         assert len(signals) == 1
         assert signals[0].conviction >= 0.65
-        assert signals[0].suggested_target == PortfolioTarget.A
+        assert signals[0].suggested_route == Route.A
 
     def test_low_conviction_routes_to_portfolio_b(self) -> None:
         """Signals with conviction < 0.65 should route to Portfolio B."""
@@ -684,7 +684,7 @@ class TestMRPortfolioRouting:
             cooldown_bars=0,
             rsi_oversold=80.0,
             trend_reject_threshold=0.99,
-            portfolio_a_min_conviction=0.65,
+            route_a_min_conviction=0.65,
         )
         strategy = MeanReversionStrategy(params=params)
         store, snap = _build_store_with_bb_breach("below")
@@ -693,7 +693,7 @@ class TestMRPortfolioRouting:
         assert len(signals) == 1
         # With the default test data, conviction should be moderate
         if signals[0].conviction < 0.65:
-            assert signals[0].suggested_target == PortfolioTarget.B
+            assert signals[0].suggested_route == Route.B
 
 
 class TestMRVolumeBoost:

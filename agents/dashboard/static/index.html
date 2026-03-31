@@ -132,12 +132,12 @@
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3" id="claude-state"></div>
     </section>
 
-    <!-- Portfolio Performance -->
+    <!-- Route Performance -->
     <section>
-      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Portfolio Performance</h2>
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Route Performance</h2>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div id="portfolio-a" class="bg-surface-100 rounded-lg border border-gray-800/60 p-4"></div>
-        <div id="portfolio-b" class="bg-surface-100 rounded-lg border border-gray-800/60 p-4"></div>
+        <div id="route-a" class="bg-surface-100 rounded-lg border border-gray-800/60 p-4"></div>
+        <div id="route-b" class="bg-surface-100 rounded-lg border border-gray-800/60 p-4"></div>
       </div>
     </section>
 
@@ -495,14 +495,14 @@ function renderClaudeState(claudeState) {
   el.innerHTML = instruments.map(id => buildClaudeCard(id, claudeState[id] || null)).join('');
 }
 
-function renderPortfolio(containerId, label, streams) {
+function renderRoute(containerId, label, streams) {
   const el = document.getElementById(containerId);
-  const suffix = containerId === 'portfolio-a' ? 'a' : 'b';
+  const suffix = containerId === 'route-a' ? 'a' : 'b';
   const stream = streams[`stream:portfolio_state:${suffix}`];
   const snap = stream?.latest;
 
   if (!snap) {
-    el.innerHTML = `<div class="text-gray-500 text-sm">Portfolio ${label}: <span class="text-gray-600">awaiting data</span></div>`;
+    el.innerHTML = `<div class="text-gray-500 text-sm">Route ${label}: <span class="text-gray-600">awaiting data</span></div>`;
     return;
   }
 
@@ -553,7 +553,7 @@ function renderPortfolio(containerId, label, streams) {
 
   el.innerHTML = `
     <div class="flex items-center justify-between mb-3">
-      <span class="text-white font-semibold text-sm">Portfolio ${label}</span>
+      <span class="text-white font-semibold text-sm">Route ${label}</span>
       <span class="text-gray-500 text-xs font-mono">${agoFromISO(snap.timestamp)}</span>
     </div>
     <div class="grid grid-cols-3 gap-3 text-xs font-mono mb-2">
@@ -585,7 +585,7 @@ function flattenSignals(signals) {
   // Flatten consecutive signals with same direction+strategy+instrument+target
   const flat = [];
   for (const s of signals) {
-    const key = `${s.direction}|${s.source}|${s.instrument}|${s.suggested_target}`;
+    const key = `${s.direction}|${s.source}|${s.instrument}|${s.suggested_route}`;
     const last = flat.length > 0 ? flat[flat.length - 1] : null;
     if (last && last._key === key) {
       last.count++;
@@ -607,9 +607,9 @@ function renderSignals(signals) {
   const rows = flattenSignals(signals);
   body.innerHTML = rows.slice(0, 10).map(s => {
     const dirCls = s.direction === 'LONG' ? 'text-accent-green' : s.direction === 'SHORT' ? 'text-accent-red' : 'text-gray-400';
-    const target = s.suggested_target === 'autonomous' || s.suggested_target === 'A'
+    const target = s.suggested_route === 'autonomous' || s.suggested_route === 'A'
       ? '<span class="text-purple-400 font-semibold">A</span>'
-      : s.suggested_target ? '<span class="text-gray-500">B</span>' : '<span class="text-gray-600">?</span>';
+      : s.suggested_route ? '<span class="text-gray-500">B</span>' : '<span class="text-gray-600">?</span>';
     const countBadge = s.count > 1
       ? `<span class="text-accent-amber">${s.count}x</span>`
       : `<span class="text-gray-600">1</span>`;
@@ -629,7 +629,7 @@ function squashFills(fills) {
   // Group consecutive fills by instrument + portfolio
   const groups = [];
   for (const f of fills) {
-    const key = `${f.instrument}|${f.portfolio_target}`;
+    const key = `${f.instrument}|${f.route}`;
     const last = groups.length > 0 ? groups[groups.length - 1] : null;
     if (last && last._key === key) {
       last.fills.push(f);
@@ -641,7 +641,7 @@ function squashFills(fills) {
     const fills = g.fills;
     const first = fills[0]; // newest (list is descending)
     const inst = (first.instrument || '?').replace('-PERP', '');
-    const portfolio = first.portfolio_target || '?';
+    const portfolio = first.route || '?';
     const pLabel = portfolio === 'autonomous' ? 'A' : portfolio === 'user_confirmed' ? 'B' : '?';
     let buySize = 0, sellSize = 0, buyNotional = 0, sellNotional = 0, totalFees = 0;
     for (const f of fills) {
@@ -785,8 +785,8 @@ function connect() {
       renderInstruments(data.instruments || {});
       renderFeatureStores(data.feature_stores || {});
       renderClaudeState(data.claude_state || {});
-      renderPortfolio('portfolio-a', 'A (Autonomous)', data.streams || {});
-      renderPortfolio('portfolio-b', 'B (User-Confirmed)', data.streams || {});
+      renderRoute('route-a', 'A (Autonomous)', data.streams || {});
+      renderRoute('route-b', 'B (User-Confirmed)', data.streams || {});
       renderFills(data.fills || []);
       renderSignals(data.signals || []);
       renderRisk(data.streams || {});

@@ -15,7 +15,7 @@ Signal logic:
     Modes that agree sum their components; conflicting modes → no signal.
 
   ATR-based stops with per-instrument configurable multipliers.
-  Portfolio A routing for high-conviction signals.
+  Route A routing for high-conviction signals.
 """
 
 from __future__ import annotations
@@ -63,8 +63,8 @@ class OIDivergenceStrategy(SignalStrategy):
 
     Two independent detection modes are combined with a conviction model.
     When both modes fire in the same direction their scores sum; when they
-    disagree no signal is emitted. Portfolio A receives signals at or above
-    the high-conviction threshold; Portfolio B receives the rest.
+    disagree no signal is emitted. Route A receives signals at or above
+    the high-conviction threshold; Route B receives the rest.
 
     Args:
         params: Strategy parameters. Uses defaults if None.

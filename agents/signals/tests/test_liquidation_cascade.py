@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import numpy as np
 
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 
 from agents.signals.feature_store import FeatureStore
@@ -134,7 +134,7 @@ class TestLiquidationCascadeStrategy:
         sig = signals[0]
         assert sig.direction == PositionSide.LONG
         assert sig.source == SignalSource.LIQUIDATION_CASCADE
-        assert sig.suggested_target == PortfolioTarget.A
+        assert sig.suggested_route == Route.A
         assert sig.metadata["mode"] == "fade"
         assert sig.stop_loss < sig.entry_price
         assert sig.take_profit > sig.entry_price

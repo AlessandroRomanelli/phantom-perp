@@ -9,7 +9,7 @@ class PhantomPerpError(Exception):
 
 
 class PortfolioMismatchError(PhantomPerpError):
-    """Raised when portfolio_target does not match the resolved portfolio_id.
+    """Raised when route does not match the resolved portfolio_id.
 
     This is a critical safety error that should halt the system.
     """

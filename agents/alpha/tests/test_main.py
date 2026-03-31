@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.signal import StandardSignal
 from libs.common.models.trade_idea import RankedTradeIdea
 
@@ -22,7 +22,7 @@ class TestDeserializeSignal:
             "source": "momentum",
             "time_horizon_seconds": 7200,
             "reasoning": "Breakout detected",
-            "suggested_target": "autonomous",
+            "suggested_route": "autonomous",
             "entry_price": "2232.50",
             "stop_loss": "2188.00",
             "take_profit": "2320.00",
@@ -35,7 +35,7 @@ class TestDeserializeSignal:
         assert signal.conviction == 0.78
         assert signal.source == SignalSource.MOMENTUM
         assert signal.time_horizon == timedelta(hours=2)
-        assert signal.suggested_target == PortfolioTarget.A
+        assert signal.suggested_route == Route.A
         assert signal.entry_price == Decimal("2232.50")
         assert signal.stop_loss == Decimal("2188.00")
         assert signal.take_profit == Decimal("2320.00")
@@ -53,7 +53,7 @@ class TestDeserializeSignal:
         }
         signal = deserialize_signal(payload)
 
-        assert signal.suggested_target is None
+        assert signal.suggested_route is None
         assert signal.entry_price is None
         assert signal.stop_loss is None
         assert signal.take_profit is None
@@ -65,7 +65,7 @@ class TestIdeaToDict:
             idea_id="idea-001",
             timestamp=datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC),
             instrument="ETH-PERP",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             direction=PositionSide.LONG,
             conviction=0.82,
             sources=[SignalSource.MOMENTUM, SignalSource.SENTIMENT],
@@ -78,7 +78,7 @@ class TestIdeaToDict:
         d = idea_to_dict(idea)
 
         assert d["idea_id"] == "idea-001"
-        assert d["portfolio_target"] == "autonomous"
+        assert d["route"] == "autonomous"
         assert d["direction"] == "LONG"
         assert d["conviction"] == 0.82
         assert d["sources"] == "momentum,sentiment"
@@ -93,7 +93,7 @@ class TestIdeaToDict:
             idea_id="idea-002",
             timestamp=datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC),
             instrument="ETH-PERP",
-            portfolio_target=PortfolioTarget.B,
+            route=Route.B,
             direction=PositionSide.SHORT,
             conviction=0.65,
             sources=[SignalSource.FUNDING_ARB],
@@ -107,7 +107,7 @@ class TestIdeaToDict:
 
         reconstructed = deserialize_idea(d)
         assert reconstructed.idea_id == "idea-002"
-        assert reconstructed.portfolio_target == PortfolioTarget.B
+        assert reconstructed.route == Route.B
         assert reconstructed.direction == PositionSide.SHORT
         assert reconstructed.conviction == 0.65
         assert reconstructed.sources == [SignalSource.FUNDING_ARB]
@@ -119,7 +119,7 @@ class TestIdeaToDict:
             idea_id="idea-003",
             timestamp=datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC),
             instrument="ETH-PERP",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             direction=PositionSide.LONG,
             conviction=0.5,
             sources=[SignalSource.MOMENTUM],

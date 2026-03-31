@@ -16,7 +16,7 @@ from agents.signals.main import (
     load_session_config,
 )
 from agents.signals.session_classifier import SessionType
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.signal import StandardSignal
 
 
@@ -92,17 +92,17 @@ def test_conviction_normalization_adds_band_high() -> None:
         source=SignalSource.MOMENTUM,
         time_horizon=timedelta(hours=4),
         reasoning="test",
-        suggested_target=PortfolioTarget.B,
+        suggested_route=Route.B,
         entry_price=Decimal("2000"),
         metadata={},
     )
     result = _apply_conviction_normalization(signal)
     assert result.metadata["conviction_band"] == "high"
-    assert result.suggested_target == PortfolioTarget.A  # Unified threshold 0.70
+    assert result.suggested_route == Route.A  # Unified threshold 0.70
 
 
 def test_conviction_normalization_low_keeps_target() -> None:
-    """Low conviction signal keeps its original suggested_target."""
+    """Low conviction signal keeps its original suggested_route."""
     signal = StandardSignal(
         signal_id="test-2",
         timestamp=datetime.now(tz=timezone.utc),
@@ -112,13 +112,13 @@ def test_conviction_normalization_low_keeps_target() -> None:
         source=SignalSource.MEAN_REVERSION,
         time_horizon=timedelta(hours=8),
         reasoning="test",
-        suggested_target=PortfolioTarget.B,
+        suggested_route=Route.B,
         entry_price=Decimal("2000"),
         metadata={"existing_key": "value"},
     )
     result = _apply_conviction_normalization(signal)
     assert result.metadata["conviction_band"] == "low"
-    assert result.suggested_target == PortfolioTarget.B
+    assert result.suggested_route == Route.B
     assert result.metadata["existing_key"] == "value"
 
 
@@ -137,7 +137,7 @@ def test_conviction_normalization_medium_band() -> None:
     )
     result = _apply_conviction_normalization(signal)
     assert result.metadata["conviction_band"] == "medium"
-    assert result.suggested_target is None or result.suggested_target == PortfolioTarget.B
+    assert result.suggested_route is None or result.suggested_route == Route.B
 
 
 def test_apply_and_restore_session_overrides() -> None:

@@ -132,7 +132,7 @@ class AlphaCombiner:
             idea_id=generate_id("idea"),
             timestamp=now,
             instrument=signal.instrument,
-            portfolio_target=target,
+            route=target,
             direction=resolved.direction,
             conviction=resolved.conviction,
             sources=resolved.sources,

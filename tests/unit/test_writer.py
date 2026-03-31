@@ -81,7 +81,7 @@ def funding_arb_yaml(tmp_path: Path) -> Path:
             "zscore_threshold": 2.0,
             "min_conviction": 0.55,
             "cooldown_bars": 12,
-            "portfolio_a_min_conviction": 0.70,
+            "route_a_min_conviction": 0.70,
         },
     }
     import yaml as _yaml
@@ -250,9 +250,9 @@ def test_apply_instrument_param_schema_a(momentum_yaml: Path, registry: dict[str
         0.25, abs=1e-9
     )
     # Other ETH-PERP instrument params remain unchanged
-    assert reloaded["instruments"]["ETH-PERP"]["parameters"]["cooldown_bars"] == 4
+    assert reloaded["instruments"]["ETH-PERP"]["parameters"]["cooldown_bars"] == 8
     # Other instruments untouched
-    assert reloaded["instruments"]["BTC-PERP"]["parameters"]["cooldown_bars"] == 8
+    assert reloaded["instruments"]["BTC-PERP"]["parameters"]["cooldown_bars"] == 16
 
 
 # ---------------------------------------------------------------------------

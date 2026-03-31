@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from libs.coinbase.models import Amount, PortfolioResponse, PositionResponse
-from libs.common.models.enums import PortfolioTarget, PositionSide
+from libs.common.models.enums import Route, PositionSide
 
 from agents.reconciliation.state_manager import (
     build_portfolio_snapshot,
@@ -58,19 +58,19 @@ def _portfolio_resp(
 
 class TestBuildPosition:
     def test_long_position(self) -> None:
-        pos = build_position(_position_resp(), PortfolioTarget.A)
+        pos = build_position(_position_resp(), Route.A)
         assert pos.side == PositionSide.LONG
         assert pos.size == Decimal("2.5")
         assert pos.entry_price == Decimal("2200")
         assert pos.mark_price == Decimal("2250")
         assert pos.unrealized_pnl_usdc == Decimal("125")
-        assert pos.portfolio_target == PortfolioTarget.A
+        assert pos.route == Route.A
         assert pos.is_open is True
 
     def test_short_position(self) -> None:
         pos = build_position(
             _position_resp(side="SHORT", net_size=Decimal("-1.0")),
-            PortfolioTarget.B,
+            Route.B,
         )
         assert pos.side == PositionSide.SHORT
         assert pos.size == Decimal("1.0")
@@ -78,7 +78,7 @@ class TestBuildPosition:
     def test_flat_position(self) -> None:
         pos = build_position(
             _position_resp(side="LONG", net_size=Decimal("0")),
-            PortfolioTarget.A,
+            Route.A,
         )
         assert pos.side == PositionSide.FLAT
         assert pos.is_open is False
@@ -86,17 +86,17 @@ class TestBuildPosition:
     def test_leverage_computed(self) -> None:
         # notional = 2.5 * 2250 = 5625, im_contribution = 1100
         # leverage = 5625 / 1100 ≈ 5.11
-        pos = build_position(_position_resp(), PortfolioTarget.A)
+        pos = build_position(_position_resp(), Route.A)
         assert pos.leverage > Decimal("5")
         assert pos.leverage < Decimal("6")
 
     def test_liquidation_price_none_becomes_zero(self) -> None:
-        pos = build_position(_position_resp(liq=None), PortfolioTarget.A)
+        pos = build_position(_position_resp(liq=None), Route.A)
         assert pos.liquidation_price == Decimal("0")
 
     def test_margin_ratio(self) -> None:
         # With Advanced API, margin_ratio is approximated as 0.5 when im > 0
-        pos = build_position(_position_resp(), PortfolioTarget.A)
+        pos = build_position(_position_resp(), Route.A)
         assert pos.margin_ratio == 0.5
 
 
@@ -105,10 +105,10 @@ class TestBuildPortfolioSnapshot:
         snap = build_portfolio_snapshot(
             _portfolio_resp(),
             [_position_resp()],
-            PortfolioTarget.A,
+            Route.A,
             now=T0,
         )
-        assert snap.portfolio_target == PortfolioTarget.A
+        assert snap.route == Route.A
         # equity = total_balance(10000) + unrealized_pnl(125) = 10125
         assert snap.equity_usdc == Decimal("10125")
         assert snap.used_margin_usdc == Decimal("3000")
@@ -121,7 +121,7 @@ class TestBuildPortfolioSnapshot:
         snap = build_portfolio_snapshot(
             _portfolio_resp(),
             [],
-            PortfolioTarget.A,
+            Route.A,
             now=T0,
         )
         assert abs(snap.margin_utilization_pct - 29.63) < 0.01
@@ -134,7 +134,7 @@ class TestBuildPortfolioSnapshot:
         snap = build_portfolio_snapshot(
             _portfolio_resp(equity=Decimal("0"), unrealized=Decimal("0")),
             [],
-            PortfolioTarget.A,
+            Route.A,
             now=T0,
         )
         assert snap.margin_utilization_pct == 0.0
@@ -143,7 +143,7 @@ class TestBuildPortfolioSnapshot:
         snap = build_portfolio_snapshot(
             _portfolio_resp(unrealized=Decimal("200")),
             [],
-            PortfolioTarget.A,
+            Route.A,
             realized_pnl_today_usdc=Decimal("50"),
             funding_pnl_today_usdc=Decimal("-10"),
             fees_paid_today_usdc=Decimal("5"),
@@ -164,7 +164,7 @@ class TestBuildPortfolioSnapshot:
         snap = build_portfolio_snapshot(
             _portfolio_resp(),
             positions,
-            PortfolioTarget.A,
+            Route.A,
             now=T0,
         )
         assert len(snap.positions) == 2
@@ -179,16 +179,16 @@ class TestBuildSystemSnapshot:
         snap_a = build_portfolio_snapshot(
             _portfolio_resp(equity=Decimal("5000")),
             [],
-            PortfolioTarget.A,
+            Route.A,
             now=T0,
         )
         snap_b = build_portfolio_snapshot(
             _portfolio_resp(equity=Decimal("15000")),
             [],
-            PortfolioTarget.B,
+            Route.B,
             now=T0,
         )
         system = build_system_snapshot(snap_a, snap_b, now=T0)
         assert system.combined_equity_usdc == Decimal("20250")
-        assert system.portfolio_a.equity_usdc == Decimal("5125")
-        assert system.portfolio_b.equity_usdc == Decimal("15125")
+        assert system.route_a.equity_usdc == Decimal("5125")
+        assert system.route_b.equity_usdc == Decimal("15125")

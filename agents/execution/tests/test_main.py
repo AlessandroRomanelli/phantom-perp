@@ -7,7 +7,7 @@ from libs.common.models.enums import (
     OrderSide,
     OrderStatus,
     OrderType,
-    PortfolioTarget,
+    Route,
     SignalSource,
 )
 from libs.common.models.order import ApprovedOrder, Fill, ProposedOrder
@@ -31,7 +31,7 @@ class TestDeserializeProposedOrder:
             order_id="ord-exec-1",
             signal_id="sig-exec-1",
             instrument="ETH-PERP",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             side=OrderSide.BUY,
             size=Decimal("2.5"),
             order_type=OrderType.LIMIT,
@@ -54,7 +54,7 @@ class TestDeserializeProposedOrder:
         reconstructed = deserialize_proposed_order(serialized)
 
         assert reconstructed.order_id == original.order_id
-        assert reconstructed.portfolio_target == PortfolioTarget.A
+        assert reconstructed.route == Route.A
         assert reconstructed.side == original.side
         assert reconstructed.size == original.size
         assert reconstructed.sources == original.sources
@@ -71,7 +71,7 @@ class TestDeserializeProposedOrder:
             order_id="ord-np",
             signal_id="sig-np",
             instrument="ETH-PERP",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             side=OrderSide.SELL,
             size=Decimal("0.5"),
             order_type=OrderType.MARKET,
@@ -101,7 +101,7 @@ class TestDeserializeApprovedOrder:
 
         original = ApprovedOrder(
             order_id="ord-conf-1",
-            portfolio_target=PortfolioTarget.B,
+            route=Route.B,
             instrument="ETH-PERP",
             side=OrderSide.BUY,
             size=Decimal("1.5"),
@@ -117,7 +117,7 @@ class TestDeserializeApprovedOrder:
         reconstructed = deserialize_approved_order(serialized)
 
         assert reconstructed.order_id == original.order_id
-        assert reconstructed.portfolio_target == PortfolioTarget.B
+        assert reconstructed.route == Route.B
         assert reconstructed.side == original.side
         assert reconstructed.size == original.size
         assert reconstructed.limit_price == original.limit_price
@@ -133,7 +133,7 @@ class TestFillSerialization:
         fill = Fill(
             fill_id="fill-001",
             order_id="ord-001",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             instrument="ETH-PERP",
             side=OrderSide.BUY,
             size=Decimal("2.5"),
@@ -148,7 +148,7 @@ class TestFillSerialization:
 
         assert reconstructed.fill_id == "fill-001"
         assert reconstructed.order_id == "ord-001"
-        assert reconstructed.portfolio_target == PortfolioTarget.A
+        assert reconstructed.route == Route.A
         assert reconstructed.side == OrderSide.BUY
         assert reconstructed.size == Decimal("2.5")
         assert reconstructed.price == Decimal("2200")
@@ -160,7 +160,7 @@ class TestFillSerialization:
         fill = Fill(
             fill_id="fill-002",
             order_id="ord-002",
-            portfolio_target=PortfolioTarget.B,
+            route=Route.B,
             instrument="ETH-PERP",
             side=OrderSide.SELL,
             size=Decimal("0.5"),
@@ -173,6 +173,6 @@ class TestFillSerialization:
         serialized = fill_to_dict(fill)
         reconstructed = deserialize_fill(serialized)
 
-        assert reconstructed.portfolio_target == PortfolioTarget.B
+        assert reconstructed.route == Route.B
         assert reconstructed.side == OrderSide.SELL
         assert reconstructed.is_maker is False

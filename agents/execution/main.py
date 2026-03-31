@@ -1,12 +1,12 @@
 """Execution agent — places orders on Coinbase Advanced.
 
 Subscribes to:
-  - stream:approved_orders:a  (Portfolio A — immediate, from risk agent)
-  - stream:confirmed_orders   (Portfolio B — user-confirmed, from confirmation agent)
+  - stream:approved_orders:a  (Route A — immediate, from risk agent)
+  - stream:confirmed_orders   (Route B — user-confirmed, from confirmation agent)
 
 Publishes to:
-  - stream:exchange_events:a  (Portfolio A fills and order events)
-  - stream:exchange_events:b  (Portfolio B fills and order events)
+  - stream:exchange_events:a  (Route A fills and order events)
+  - stream:exchange_events:b  (Route B fills and order events)
 
 Modes:
   - Paper: simulates immediate fills at market price with realistic fees.
@@ -39,7 +39,7 @@ from libs.common.models.enums import (
     OrderSide,
     OrderStatus,
     OrderType,
-    PortfolioTarget,
+    Route,
     SignalSource,
 )
 from libs.common.models.order import ApprovedOrder, Fill, ProposedOrder
@@ -77,7 +77,7 @@ def deserialize_proposed_order(payload: dict[str, Any]) -> ProposedOrder:
         order_id=payload["order_id"],
         signal_id=payload["signal_id"],
         instrument=payload["instrument"],
-        portfolio_target=PortfolioTarget(payload["portfolio_target"]),
+        route=Route(payload["route"]),
         side=OrderSide(payload["side"]),
         size=Decimal(payload["size"]),
         order_type=OrderType(payload["order_type"]),
@@ -109,7 +109,7 @@ def deserialize_approved_order(payload: dict[str, Any]) -> ApprovedOrder:
     """
     return ApprovedOrder(
         order_id=payload["order_id"],
-        portfolio_target=PortfolioTarget(payload["portfolio_target"]),
+        route=Route(payload["route"]),
         instrument=payload["instrument"],
         side=OrderSide(payload["side"]),
         size=Decimal(payload["size"]),
@@ -128,7 +128,7 @@ def fill_to_dict(fill: Fill) -> dict[str, Any]:
     return {
         "fill_id": fill.fill_id,
         "order_id": fill.order_id,
-        "portfolio_target": fill.portfolio_target.value,
+        "route": fill.route.value,
         "instrument": fill.instrument,
         "side": fill.side.value,
         "size": str(fill.size),
@@ -148,7 +148,7 @@ def deserialize_fill(payload: dict[str, Any]) -> Fill:
     return Fill(
         fill_id=payload["fill_id"],
         order_id=payload["order_id"],
-        portfolio_target=PortfolioTarget(payload["portfolio_target"]),
+        route=Route(payload["route"]),
         instrument=payload["instrument"],
         side=OrderSide(payload["side"]),
         size=Decimal(payload["size"]),
@@ -302,7 +302,7 @@ class PaperBroker:
 async def _place_order(
     is_paper: bool,
     paper_broker: PaperBroker | None,
-    portfolio_target: PortfolioTarget,
+    route: Route,
     instrument: str,
     side: str,
     size: Decimal,
@@ -331,7 +331,7 @@ async def _place_order(
     # Live mode: route through CoinbaseClientPool
     assert client_pool is not None, "client_pool is required in live mode"
     product_id = get_instrument(instrument).product_id
-    rest_client = client_pool.get_client(portfolio_target)
+    rest_client = client_pool.get_client(route)
     return await rest_client.create_order(
         product_id=product_id,
         side=side,
@@ -346,7 +346,7 @@ async def _place_order(
 
 async def _cancel_order(
     order_id: str,
-    portfolio_target: PortfolioTarget,
+    route: Route,
     is_paper: bool,
     client_pool: CoinbaseClientPool | None = None,
 ) -> None:
@@ -357,21 +357,21 @@ async def _cancel_order(
 
     Args:
         order_id: Exchange order ID to cancel.
-        portfolio_target: Portfolio that owns the order.
+        route: Route that owns the order.
         is_paper: True if running in paper mode.
         client_pool: Live client pool; required when is_paper=False.
     """
     if is_paper:
         return
     assert client_pool is not None, "client_pool is required in live mode"
-    rest_client = client_pool.get_client(portfolio_target)
+    rest_client = client_pool.get_client(route)
     await rest_client.cancel_order(order_id)
 
 
 async def _execute_with_retry(
     *,
     order_id: str,
-    portfolio_target: PortfolioTarget,
+    route: Route,
     instrument: str,
     side: OrderSide,
     size: Decimal,
@@ -406,7 +406,7 @@ async def _execute_with_retry(
             response = await _place_order(
                 is_paper=is_paper,
                 paper_broker=paper_broker,
-                portfolio_target=portfolio_target,
+                route=route,
                 instrument=instrument,
                 side=side.value,
                 size=size,
@@ -450,7 +450,7 @@ async def _execute_with_retry(
 async def _place_protective_orders(
     *,
     order_id: str,
-    portfolio_target: PortfolioTarget,
+    route: Route,
     instrument: str,
     fill_side: OrderSide,
     fill_size: Decimal,
@@ -477,7 +477,7 @@ async def _place_protective_orders(
             await _place_order(
                 is_paper=is_paper,
                 paper_broker=paper_broker,
-                portfolio_target=portfolio_target,
+                route=route,
                 instrument=instrument,
                 side=sl.side.value,
                 size=sl.size,
@@ -507,7 +507,7 @@ async def _place_protective_orders(
             await _place_order(
                 is_paper=is_paper,
                 paper_broker=paper_broker,
-                portfolio_target=portfolio_target,
+                route=route,
                 instrument=instrument,
                 side=tp.side.value,
                 size=tp.size,
@@ -592,7 +592,7 @@ async def run_agent() -> None:
     # Cap the dedup set to prevent unbounded memory growth
     _DEDUP_SET_MAX = 10_000
 
-    channel_a = Channel.approved_orders(PortfolioTarget.A)
+    channel_a = Channel.approved_orders(Route.A)
     channel_b = Channel.confirmed_orders()
 
     await consumer.subscribe(
@@ -638,7 +638,7 @@ async def run_agent() -> None:
                 if channel == channel_a:
                     proposed = deserialize_proposed_order(payload)
                     order_id = proposed.order_id
-                    portfolio_target = proposed.portfolio_target
+                    route = proposed.route
                     instrument = proposed.instrument
                     side = proposed.side
                     size = proposed.size
@@ -651,7 +651,7 @@ async def run_agent() -> None:
                 elif channel == channel_b:
                     approved = deserialize_approved_order(payload)
                     order_id = approved.order_id
-                    portfolio_target = approved.portfolio_target
+                    route = approved.route
                     instrument = approved.instrument
                     side = approved.side
                     size = approved.size
@@ -680,7 +680,7 @@ async def run_agent() -> None:
                 logger.info(
                     "order_received",
                     order_id=order_id,
-                    portfolio=portfolio_target.value,
+                    route=route.value,
                     direction=direction,
                     size=str(size),
                     source=source_label,
@@ -690,12 +690,12 @@ async def run_agent() -> None:
                 # -----------------------------------------------------------
                 # 2. Check circuit breaker
                 # -----------------------------------------------------------
-                if cb.is_open(portfolio_target):
-                    trip = cb.get_trip(portfolio_target)
+                if cb.is_open(route):
+                    trip = cb.get_trip(route)
                     logger.warning(
                         "order_blocked_circuit_breaker",
                         order_id=order_id,
-                        portfolio=portfolio_target.value,
+                        route=route.value,
                         reason=trip.reason if trip else "unknown",
                     )
                     await consumer.ack(channel, "execution_agent", msg_id)
@@ -741,7 +741,7 @@ async def run_agent() -> None:
                 # -----------------------------------------------------------
                 response, was_maker = await _execute_with_retry(
                     order_id=order_id,
-                    portfolio_target=portfolio_target,
+                    route=route,
                     instrument=instrument,
                     side=side,
                     size=size,
@@ -766,11 +766,11 @@ async def run_agent() -> None:
                         reason="all_retries_exhausted",
                     )
                     # Track consecutive rejections for auto-trip
-                    trip_event = cb.record_rejection(portfolio_target)
+                    trip_event = cb.record_rejection(route)
                     if trip_event:
                         logger.warning(
                             "circuit_breaker_auto_tripped",
-                            portfolio=portfolio_target.value,
+                            route=route.value,
                             reason=trip_event.reason,
                         )
                     await consumer.ack(channel, "execution_agent", msg_id)
@@ -781,18 +781,18 @@ async def run_agent() -> None:
                 # -----------------------------------------------------------
                 fill = build_fill_from_response(
                     order_id=order_id,
-                    portfolio_target=portfolio_target,
+                    route=route,
                     response=response,
                     is_maker=was_maker,
                 )
 
                 # Reset rejection counter on successful exchange response
-                cb.record_success(portfolio_target)
+                cb.record_success(route)
 
                 if fill:
                     # fills — skip here to avoid duplicates in exchange_events.
                     if not is_paper:
-                        events_channel = Channel.exchange_events(portfolio_target)
+                        events_channel = Channel.exchange_events(route)
                         try:
                             await publisher.publish(events_channel, fill_to_dict(fill))
                         except Exception as pub_err:
@@ -810,7 +810,7 @@ async def run_agent() -> None:
                         await repo.write_fill(FillRecord(
                             fill_id=fill.fill_id,
                             order_id=fill.order_id,
-                            portfolio_target=fill.portfolio_target.value,
+                            route=fill.route.value,
                             instrument=fill.instrument,
                             side=fill.side.value,
                             size=fill.size,
@@ -840,7 +840,7 @@ async def run_agent() -> None:
                     logger.info(
                         "order_filled",
                         order_id=order_id,
-                        portfolio=portfolio_target.value,
+                        route=route.value,
                         direction=direction,
                         size=str(fill.size),
                         price=str(fill.price),
@@ -876,7 +876,7 @@ async def run_agent() -> None:
                     if has_sl or take_profit is not None:
                         await _place_protective_orders(
                             order_id=order_id,
-                            portfolio_target=portfolio_target,
+                            route=route,
                             instrument=instrument,
                             fill_side=side,
                             fill_size=fill.size,

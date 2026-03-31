@@ -32,7 +32,7 @@ from agents.signals.strategies.claude_market_analysis import (
 )
 from libs.common.models.enums import (
     MarketRegime,
-    PortfolioTarget,
+    Route,
     PositionSide,
     SignalSource,
 )
@@ -647,7 +647,7 @@ class TestProcessInstrument:
             enabled=True,
             analysis_interval_seconds=240,   # 4 minutes
             min_conviction=0.50,
-            portfolio_a_min_conviction=0.75,
+            route_a_min_conviction=0.75,
         )
 
     def _params_fn(self, params: ClaudeMarketAnalysisParams):  # noqa: ANN202
@@ -832,7 +832,7 @@ class TestProcessInstrument:
         params = ClaudeMarketAnalysisParams(
             analysis_interval_seconds=240,
             min_conviction=0.50,
-            portfolio_a_min_conviction=0.75,
+            route_a_min_conviction=0.75,
         )
 
         with patch(
@@ -930,7 +930,7 @@ class TestProcessInstrument:
 
     @pytest.mark.asyncio
     async def test_high_conviction_routes_to_portfolio_a(self) -> None:
-        """conviction >= portfolio_a_min_conviction → suggested_target=A."""
+        """conviction >= route_a_min_conviction → suggested_route=A."""
         store = _build_store_with_prices([2200.0 + i for i in range(10)])
         queue = self._make_queue()
         snap = _snap(mark=2209.0)
@@ -943,7 +943,7 @@ class TestProcessInstrument:
         mock_validated = {
             "instrument": TEST_INSTRUMENT,
             "direction": PositionSide.LONG,
-            "conviction": 0.80,  # >= portfolio_a_min_conviction=0.75
+            "conviction": 0.80,  # >= route_a_min_conviction=0.75
             "entry_price": Decimal("2209.00"),
             "stop_loss": Decimal("2190.00"),
             "take_profit": Decimal("2250.00"),
@@ -954,7 +954,7 @@ class TestProcessInstrument:
         params = ClaudeMarketAnalysisParams(
             analysis_interval_seconds=240,
             min_conviction=0.50,
-            portfolio_a_min_conviction=0.75,
+            route_a_min_conviction=0.75,
         )
 
         with patch(
@@ -979,11 +979,11 @@ class TestProcessInstrument:
             )
 
         signal = queue.get_nowait()
-        assert signal.suggested_target == PortfolioTarget.A
+        assert signal.suggested_route == Route.A
 
     @pytest.mark.asyncio
     async def test_low_conviction_routes_to_portfolio_b(self) -> None:
-        """conviction < portfolio_a_min_conviction → suggested_target=None (routed to B)."""
+        """conviction < route_a_min_conviction → suggested_route=None (routed to B)."""
         store = _build_store_with_prices([2200.0] * 5)
         queue = self._make_queue()
         snap = _snap()
@@ -996,7 +996,7 @@ class TestProcessInstrument:
         mock_validated = {
             "instrument": TEST_INSTRUMENT,
             "direction": PositionSide.LONG,
-            "conviction": 0.60,  # < portfolio_a_min_conviction=0.75
+            "conviction": 0.60,  # < route_a_min_conviction=0.75
             "entry_price": Decimal("2200.00"),
             "stop_loss": Decimal("2180.00"),
             "take_profit": Decimal("2240.00"),
@@ -1007,7 +1007,7 @@ class TestProcessInstrument:
         params = ClaudeMarketAnalysisParams(
             analysis_interval_seconds=240,
             min_conviction=0.50,
-            portfolio_a_min_conviction=0.75,
+            route_a_min_conviction=0.75,
         )
 
         with patch(
@@ -1032,7 +1032,7 @@ class TestProcessInstrument:
             )
 
         signal = queue.get_nowait()
-        assert signal.suggested_target is None  # router decides (typically Portfolio B)
+        assert signal.suggested_route is None  # router decides (typically Portfolio B)
 
     @pytest.mark.asyncio
     async def test_empty_store_skips_instrument(self) -> None:

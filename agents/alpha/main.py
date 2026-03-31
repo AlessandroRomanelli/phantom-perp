@@ -16,7 +16,7 @@ from typing import Any
 
 from libs.common.config import get_settings, load_yaml_config
 from libs.common.logging import setup_logging
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
 from libs.common.models.trade_idea import RankedTradeIdea
@@ -60,7 +60,7 @@ def deserialize_snapshot(payload: dict[str, Any]) -> MarketSnapshot:
 
 def deserialize_signal(payload: dict[str, Any]) -> StandardSignal:
     """Rebuild a StandardSignal from a Redis stream payload dict."""
-    suggested = payload.get("suggested_target")
+    suggested = payload.get("suggested_route")
     return StandardSignal(
         signal_id=payload["signal_id"],
         timestamp=datetime.fromisoformat(payload["timestamp"]),
@@ -70,7 +70,7 @@ def deserialize_signal(payload: dict[str, Any]) -> StandardSignal:
         source=SignalSource(payload["source"]),
         time_horizon=timedelta(seconds=float(payload["time_horizon_seconds"])),
         reasoning=payload.get("reasoning", ""),
-        suggested_target=PortfolioTarget(suggested) if suggested else None,
+        suggested_route=Route(suggested) if suggested else None,
         entry_price=Decimal(payload["entry_price"]) if payload.get("entry_price") else None,
         stop_loss=Decimal(payload["stop_loss"]) if payload.get("stop_loss") else None,
         take_profit=Decimal(payload["take_profit"]) if payload.get("take_profit") else None,
@@ -87,7 +87,7 @@ def idea_to_dict(idea: RankedTradeIdea) -> dict[str, Any]:
         "idea_id": idea.idea_id,
         "timestamp": idea.timestamp.isoformat(),
         "instrument": idea.instrument,
-        "portfolio_target": idea.portfolio_target.value,
+        "route": idea.route.value,
         "direction": idea.direction.value,
         "conviction": idea.conviction,
         "sources": ",".join(s.value for s in idea.sources),
@@ -176,13 +176,13 @@ async def run_agent() -> None:
                     continue
 
                 for idea in ideas:
-                    target_channel = Channel.ranked_ideas(idea.portfolio_target)
+                    target_channel = Channel.ranked_ideas(idea.route)
                     await publisher.publish(target_channel, idea_to_dict(idea))
                     idea_count += 1
                     logger.info(
                         "idea_emitted",
                         direction=idea.direction.value,
-                        portfolio=idea.portfolio_target.value,
+                        route=idea.route.value,
                         conviction=f"{idea.conviction:.2f}",
                         sources=",".join(s.value for s in idea.sources),
                         regime=regime_detector.current_regime.value,

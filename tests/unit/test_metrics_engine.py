@@ -60,13 +60,13 @@ def _make_fill(
     trade_id: str | None = None,
     primary_source: str = "momentum",
     conviction: float = 0.7,
-    portfolio_target: str = "autonomous",
+    route: str = "autonomous",
 ) -> AttributedFill:
     """Create an AttributedFill with sensible defaults. All keyword args overrideable."""
     return AttributedFill(
         fill_id=fill_id or f"fill-{next(_fill_counter)}",
         order_id=order_id,
-        portfolio_target=portfolio_target,
+        portfolio_target=route,
         instrument=instrument,
         side=side,
         size=size,

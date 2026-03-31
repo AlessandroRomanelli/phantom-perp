@@ -10,7 +10,7 @@ Signal logic:
   7. Follow mode: during accelerating OI drop + extreme imbalance -> SHORT.
   8. Conviction scales with OI drop rate, volatility spike, imbalance, and tier.
   9. Tier-specific stop/TP widths: Tier 3 gets widest stops and biggest targets.
-  10. Short time horizon (<=2h) -> routes to Portfolio A (autonomous).
+  10. Short time horizon (<=2h) -> routes to Route A (autonomous).
   11. Heatmap magnet mode (optional): nearby liquidation clusters boost conviction
       and add metadata when Coinglass heatmap data is wired via set_heatmap_store().
 """
@@ -76,7 +76,7 @@ class LiquidationCascadeParams:
     cluster_score_weight: float = 0.20
     heatmap_fallback_on_missing: bool = True
 
-    # Portfolio A routing — require high conviction for autonomous execution
+    # Route A routing — require high conviction for autonomous execution
     route_a_min_conviction: float = 0.85
 
     # Backward compatibility aliases

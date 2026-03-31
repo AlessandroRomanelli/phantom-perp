@@ -6,7 +6,7 @@ from decimal import Decimal
 import pytest
 
 from libs.common.constants import FEE_MAKER, FEE_TAKER
-from libs.common.models.enums import PortfolioTarget, PositionSide
+from libs.common.models.enums import Route, PositionSide
 from libs.common.models.position import PerpPosition
 
 from agents.risk.fee_calculator import estimate_fee
@@ -46,7 +46,7 @@ def _make_position(
 ) -> PerpPosition:
     return PerpPosition(
         instrument="ETH-PERP",
-        portfolio_target=PortfolioTarget.A,
+        route=Route.A,
         side=side,
         size=size,
         entry_price=mark,

@@ -27,7 +27,7 @@ class TestLoadMonitoringConfig:
                 "heartbeat_interval_seconds": 120,
                 "performance_report": {
                     "frequency": "hourly",
-                    "include_portfolio_breakdown": False,
+                    "include_route_breakdown": False,
                     "include_funding_attribution": False,
                     "include_fee_breakdown": False,
                 },
@@ -38,7 +38,7 @@ class TestLoadMonitoringConfig:
         assert config.margin_alert_threshold_pct == 60.0
         assert config.heartbeat_interval_seconds == 120
         assert config.performance_report.frequency == "hourly"
-        assert config.performance_report.include_portfolio_breakdown is False
+        assert config.performance_report.include_route_breakdown is False
 
     def test_partial_yaml(self) -> None:
         yaml = {"monitoring": {"heartbeat_interval_seconds": 90}}

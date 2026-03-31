@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from libs.common.models.enums import (
     OrderSide,
-    PortfolioTarget,
+    Route,
     PositionSide,
 )
 from libs.common.models.funding import FundingPayment
@@ -31,7 +31,7 @@ class TestPortfolioSnapshotDeserialization:
 
         original = PortfolioSnapshot(
             timestamp=T0,
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             equity_usdc=Decimal("10000"),
             used_margin_usdc=Decimal("3000"),
             available_margin_usdc=Decimal("7000"),
@@ -45,7 +45,7 @@ class TestPortfolioSnapshotDeserialization:
         serialized = portfolio_snapshot_to_dict(original)
         reconstructed = deserialize_portfolio_snapshot(serialized)
 
-        assert reconstructed.portfolio_target == PortfolioTarget.A
+        assert reconstructed.route == Route.A
         assert reconstructed.equity_usdc == Decimal("10000")
         assert reconstructed.used_margin_usdc == Decimal("3000")
         assert reconstructed.margin_utilization_pct == 30.0
@@ -63,7 +63,7 @@ class TestFundingPaymentDeserialization:
         original = FundingPayment(
             timestamp=T0,
             instrument="ETH-PERP",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             rate=Decimal("0.0001"),
             payment_usdc=Decimal("-0.50"),
             position_size=Decimal("2.5"),
@@ -88,7 +88,7 @@ class TestFillDeserialization:
         original = Fill(
             fill_id="fill-001",
             order_id="ord-001",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             instrument="ETH-PERP",
             side=OrderSide.BUY,
             size=Decimal("2.5"),
@@ -113,7 +113,7 @@ class TestAlertSerialization:
         original = Alert(
             alert_type=AlertType.MARGIN_HIGH,
             severity=AlertSeverity.WARNING,
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             message="Margin utilization 55.0%",
             timestamp=T0,
             value=55.0,
@@ -124,7 +124,7 @@ class TestAlertSerialization:
 
         assert reconstructed.alert_type == AlertType.MARGIN_HIGH
         assert reconstructed.severity == AlertSeverity.WARNING
-        assert reconstructed.portfolio_target == PortfolioTarget.A
+        assert reconstructed.route == Route.A
         assert reconstructed.message == "Margin utilization 55.0%"
         assert reconstructed.value == 55.0
         assert reconstructed.threshold == 50.0
@@ -133,14 +133,14 @@ class TestAlertSerialization:
         original = Alert(
             alert_type=AlertType.OPPOSING_POSITIONS,
             severity=AlertSeverity.INFO,
-            portfolio_target=None,
+            route=None,
             message="Opposing positions: A is LONG, B is SHORT",
             timestamp=T0,
         )
         serialized = alert_to_dict(original)
         reconstructed = deserialize_alert(serialized)
 
-        assert reconstructed.portfolio_target is None
+        assert reconstructed.route is None
         assert reconstructed.value is None
         assert reconstructed.threshold is None
 
@@ -148,7 +148,7 @@ class TestAlertSerialization:
         original = Alert(
             alert_type=AlertType.LIQUIDATION_CLOSE,
             severity=AlertSeverity.CRITICAL,
-            portfolio_target=PortfolioTarget.B,
+            route=Route.B,
             message="Liquidation 4.5% away",
             timestamp=T0,
             value=4.5,
@@ -158,4 +158,4 @@ class TestAlertSerialization:
         reconstructed = deserialize_alert(serialized)
 
         assert reconstructed.severity == AlertSeverity.CRITICAL
-        assert reconstructed.portfolio_target == PortfolioTarget.B
+        assert reconstructed.route == Route.B

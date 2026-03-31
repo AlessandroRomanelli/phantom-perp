@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from libs.common.models.enums import PortfolioTarget
+from libs.common.models.enums import Route
 from libs.common.models.order import Fill
 
 
@@ -14,7 +14,7 @@ from libs.common.models.order import Fill
 class FeeSummary:
     """Aggregated fee metrics over a time window."""
 
-    portfolio_target: PortfolioTarget
+    route: Route
     window_label: str
     total_fees_usdc: Decimal
     maker_fees_usdc: Decimal
@@ -34,7 +34,7 @@ class FeeTracker:
     using limit (maker) orders vs hypothetical taker fees.
     """
 
-    portfolio_target: PortfolioTarget
+    route: Route
     taker_rate: Decimal = Decimal("0.000250")
     max_history_hours: int = 168  # 7 days
     _fills: list[Fill] = field(default_factory=list)
@@ -73,7 +73,7 @@ class FeeTracker:
     def _build_summary(self, fills: list[Fill], label: str) -> FeeSummary:
         if not fills:
             return FeeSummary(
-                portfolio_target=self.portfolio_target,
+                route=self.route,
                 window_label=label,
                 total_fees_usdc=Decimal("0"),
                 maker_fees_usdc=Decimal("0"),
@@ -100,7 +100,7 @@ class FeeTracker:
         savings = hypothetical_taker - maker_fees
 
         return FeeSummary(
-            portfolio_target=self.portfolio_target,
+            route=self.route,
             window_label=label,
             total_fees_usdc=total,
             maker_fees_usdc=maker_fees,
@@ -118,14 +118,14 @@ class DualFeeTracker:
     """Manages independent fee trackers for both portfolios."""
 
     tracker_a: FeeTracker = field(
-        default_factory=lambda: FeeTracker(portfolio_target=PortfolioTarget.A),
+        default_factory=lambda: FeeTracker(route=Route.A),
     )
     tracker_b: FeeTracker = field(
-        default_factory=lambda: FeeTracker(portfolio_target=PortfolioTarget.B),
+        default_factory=lambda: FeeTracker(route=Route.B),
     )
 
-    def get_tracker(self, target: PortfolioTarget) -> FeeTracker:
-        return self.tracker_a if target == PortfolioTarget.A else self.tracker_b
+    def get_tracker(self, target: Route) -> FeeTracker:
+        return self.tracker_a if target == Route.A else self.tracker_b
 
     @property
     def combined_daily_fees_usdc(self) -> Decimal:

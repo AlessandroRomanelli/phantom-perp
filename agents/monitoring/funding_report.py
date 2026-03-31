@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from libs.common.models.enums import PortfolioTarget
+from libs.common.models.enums import Route
 from libs.common.models.funding import FundingPayment
 
 
@@ -24,7 +24,7 @@ class FundingReportEntry:
 class FundingSummary:
     """Aggregated funding metrics over a time window."""
 
-    portfolio_target: PortfolioTarget
+    route: Route
     window_label: str
     total_usdc: Decimal
     payment_count: int
@@ -42,7 +42,7 @@ class FundingReporter:
     beyond the max_history window.
     """
 
-    portfolio_target: PortfolioTarget
+    route: Route
     max_history_hours: int = 168  # 7 days
     _payments: list[FundingPayment] = field(default_factory=list)
 
@@ -89,7 +89,7 @@ class FundingReporter:
     ) -> FundingSummary:
         if not payments:
             return FundingSummary(
-                portfolio_target=self.portfolio_target,
+                route=self.route,
                 window_label=label,
                 total_usdc=Decimal("0"),
                 payment_count=0,
@@ -104,7 +104,7 @@ class FundingReporter:
         amounts = [p.payment_usdc for p in payments]
 
         return FundingSummary(
-            portfolio_target=self.portfolio_target,
+            route=self.route,
             window_label=label,
             total_usdc=total,
             payment_count=len(payments),
@@ -132,14 +132,14 @@ class DualFundingReporter:
     """Manages independent funding reporters for both portfolios."""
 
     reporter_a: FundingReporter = field(
-        default_factory=lambda: FundingReporter(portfolio_target=PortfolioTarget.A),
+        default_factory=lambda: FundingReporter(route=Route.A),
     )
     reporter_b: FundingReporter = field(
-        default_factory=lambda: FundingReporter(portfolio_target=PortfolioTarget.B),
+        default_factory=lambda: FundingReporter(route=Route.B),
     )
 
-    def get_reporter(self, target: PortfolioTarget) -> FundingReporter:
-        return self.reporter_a if target == PortfolioTarget.A else self.reporter_b
+    def get_reporter(self, target: Route) -> FundingReporter:
+        return self.reporter_a if target == Route.A else self.reporter_b
 
     @property
     def combined_daily_usdc(self) -> Decimal:

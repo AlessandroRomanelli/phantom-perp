@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from libs.common.models.enums import PortfolioTarget
+from libs.common.models.enums import Route
 from libs.common.utils import utc_now
 
 # Default cooldown before auto-recovery (None = manual reset only)
@@ -20,7 +20,7 @@ DEFAULT_COOLDOWN: timedelta | None = None
 class TripEvent:
     """Record of a circuit breaker trip."""
 
-    portfolio_target: PortfolioTarget
+    route: Route
     reason: str
     tripped_at: datetime
     cooldown: timedelta | None = None
@@ -38,16 +38,16 @@ class CircuitBreaker:
     default (a restart implies operator intervention).
     """
 
-    _trips: dict[PortfolioTarget, TripEvent] = field(default_factory=dict)
+    _trips: dict[Route, TripEvent] = field(default_factory=dict)
     # Consecutive rejection counts for auto-trip
-    _rejection_counts: dict[PortfolioTarget, int] = field(default_factory=dict)
+    _rejection_counts: dict[Route, int] = field(default_factory=dict)
     # Number of consecutive rejections before auto-tripping
     auto_trip_threshold: int = 5
     auto_trip_cooldown: timedelta = timedelta(minutes=5)
 
     def trip(
         self,
-        portfolio_target: PortfolioTarget,
+        route: Route,
         reason: str,
         now: datetime | None = None,
         cooldown: timedelta | None = DEFAULT_COOLDOWN,
@@ -55,7 +55,7 @@ class CircuitBreaker:
         """Trip the circuit breaker for a portfolio.
 
         Args:
-            portfolio_target: Which portfolio to halt.
+            route: Which route to halt.
             reason: Human-readable reason for the trip.
             now: Current time (defaults to utc_now).
             cooldown: Optional auto-recovery duration. None = manual reset only.
@@ -65,61 +65,61 @@ class CircuitBreaker:
         """
         now = now or utc_now()
         event = TripEvent(
-            portfolio_target=portfolio_target,
+            route=route,
             reason=reason,
             tripped_at=now,
             cooldown=cooldown,
         )
-        self._trips[portfolio_target] = event
+        self._trips[route] = event
         return event
 
-    def record_rejection(self, portfolio_target: PortfolioTarget) -> TripEvent | None:
+    def record_rejection(self, route: Route) -> TripEvent | None:
         """Record a consecutive order rejection. Auto-trips after threshold.
 
         Returns the TripEvent if the breaker was tripped, else None.
         """
-        count = self._rejection_counts.get(portfolio_target, 0) + 1
-        self._rejection_counts[portfolio_target] = count
+        count = self._rejection_counts.get(route, 0) + 1
+        self._rejection_counts[route] = count
         if count >= self.auto_trip_threshold:
-            self._rejection_counts[portfolio_target] = 0
+            self._rejection_counts[route] = 0
             return self.trip(
-                portfolio_target,
+                route,
                 reason=f"auto-tripped after {count} consecutive rejections",
                 cooldown=self.auto_trip_cooldown,
             )
         return None
 
-    def record_success(self, portfolio_target: PortfolioTarget) -> None:
+    def record_success(self, route: Route) -> None:
         """Reset rejection counter on successful order placement."""
-        self._rejection_counts.pop(portfolio_target, None)
+        self._rejection_counts.pop(route, None)
 
-    def reset(self, portfolio_target: PortfolioTarget) -> bool:
+    def reset(self, route: Route) -> bool:
         """Reset the circuit breaker for a portfolio.
 
         Returns True if it was previously tripped.
         """
-        return self._trips.pop(portfolio_target, None) is not None
+        return self._trips.pop(route, None) is not None
 
-    def is_open(self, portfolio_target: PortfolioTarget) -> bool:
+    def is_open(self, route: Route) -> bool:
         """Check if the circuit breaker is open (execution blocked).
 
         If a cooldown was set and has expired, the breaker auto-resets.
         Returns True if execution should be blocked.
         """
-        trip = self._trips.get(portfolio_target)
+        trip = self._trips.get(route)
         if trip is None:
             return False
         # Auto-recover after cooldown
         if trip.cooldown is not None:
             elapsed = utc_now() - trip.tripped_at
             if elapsed >= trip.cooldown:
-                self._trips.pop(portfolio_target, None)
+                self._trips.pop(route, None)
                 return False
         return True
 
-    def get_trip(self, portfolio_target: PortfolioTarget) -> TripEvent | None:
+    def get_trip(self, route: Route) -> TripEvent | None:
         """Get the current trip event for a portfolio, if any."""
-        return self._trips.get(portfolio_target)
+        return self._trips.get(route)
 
     @property
     def all_trips(self) -> list[TripEvent]:

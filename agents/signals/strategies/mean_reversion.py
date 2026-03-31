@@ -9,7 +9,7 @@ Signal logic:
   6. Conviction scales with distance beyond band + RSI extremity + volume.
   7. Stop-loss at ATR multiple beyond entry; take-profit at middle band or extended.
   8. Strong reversions get extended take-profit beyond middle band.
-  9. High-conviction signals route to Portfolio A.
+  9. High-conviction signals route to Route A.
   10. Funding rate boost for conviction when funding aligns with direction (Phase 4).
 """
 
@@ -70,7 +70,7 @@ class MeanReversionParams:
 
 class MeanReversionStrategy(SignalStrategy):
     """Bollinger Band mean reversion with RSI confirmation, multi-factor trend
-    filter, adaptive band width, extended targets, and Portfolio A routing.
+    filter, adaptive band width, extended targets, and Route A routing.
 
     Args:
         params: Strategy parameters. Uses defaults if None.

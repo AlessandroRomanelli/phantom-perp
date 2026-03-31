@@ -13,7 +13,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from libs.common.constants import FEE_MAKER, FEE_TAKER
-from libs.common.models.enums import OrderSide, PortfolioTarget, PositionSide
+from libs.common.models.enums import OrderSide, Route, PositionSide
 from libs.common.models.order import Fill
 from libs.common.utils import utc_now
 from libs.storage.models import Base, FillRecord
@@ -29,7 +29,7 @@ from agents.reconciliation.paper_simulator import (
 @pytest.fixture
 def portfolio_a() -> PaperPortfolio:
     return PaperPortfolio(
-        target=PortfolioTarget.A,
+        target=Route.A,
         initial_equity=Decimal("10000"),
     )
 
@@ -399,7 +399,7 @@ class TestPaperPortfolioSnapshot:
     def test_snapshot_portfolio_metadata(self, portfolio_a: PaperPortfolio) -> None:
         snapshot = portfolio_a.build_snapshot({"ETH-PERP": Decimal("2000")})
 
-        assert snapshot.portfolio_target == PortfolioTarget.A
+        assert snapshot.route == Route.A
 
 
 # ---------------------------------------------------------------------------
@@ -418,12 +418,12 @@ def _make_fill(
     price: Decimal = Decimal("2000"),
     fee_usdc: Decimal = Decimal("0.25"),
     is_maker: bool = True,
-    portfolio: PortfolioTarget = PortfolioTarget.A,
+    portfolio: Route = Route.A,
 ) -> Fill:
     return Fill(
         fill_id=fill_id,
         order_id=order_id,
-        portfolio_target=portfolio,
+        route=portfolio,
         instrument=instrument,
         side=side,
         size=size,
@@ -620,7 +620,7 @@ class TestPendingProtectiveOrderTrigger:
         order = PendingProtectiveOrder(
             order_id="sl-1",
             instrument="ETH-PERP",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             side=OrderSide.SELL,
             size=Decimal("1.0"),
             trigger_price=Decimal("1900"),
@@ -636,7 +636,7 @@ class TestPendingProtectiveOrderTrigger:
         order = PendingProtectiveOrder(
             order_id="sl-2",
             instrument="ETH-PERP",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             side=OrderSide.BUY,
             size=Decimal("1.0"),
             trigger_price=Decimal("2100"),
@@ -652,7 +652,7 @@ class TestPendingProtectiveOrderTrigger:
         order = PendingProtectiveOrder(
             order_id="tp-1",
             instrument="ETH-PERP",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             side=OrderSide.SELL,
             size=Decimal("1.0"),
             trigger_price=Decimal("2200"),
@@ -668,7 +668,7 @@ class TestPendingProtectiveOrderTrigger:
         order = PendingProtectiveOrder(
             order_id="tp-2",
             instrument="ETH-PERP",
-            portfolio_target=PortfolioTarget.A,
+            route=Route.A,
             side=OrderSide.BUY,
             size=Decimal("1.0"),
             trigger_price=Decimal("1800"),

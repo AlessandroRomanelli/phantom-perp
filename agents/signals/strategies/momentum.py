@@ -8,7 +8,7 @@ Signal logic:
   5. RSI confirmation: reject long if overbought, reject short if oversold.
   6. Adaptive conviction: ADX (0-0.35) + RSI (0-0.35) + vol/volatility (0-0.30) (MOM-02).
   7. Swing point stops with ATR fallback (MOM-03).
-  8. Portfolio A routing for high-conviction signals (MOM-04).
+  8. Route A routing for high-conviction signals (MOM-04).
   9. Funding rate boost for conviction when funding aligns with direction (Phase 4).
 """
 
@@ -72,7 +72,7 @@ class MomentumParams:
 
 class MomentumStrategy(SignalStrategy):
     """Multi-timeframe EMA crossover with ADX filter, volume confirmation,
-    adaptive conviction, swing stops, and Portfolio A routing.
+    adaptive conviction, swing stops, and Route A routing.
 
     Args:
         params: Strategy parameters. Uses defaults if None.

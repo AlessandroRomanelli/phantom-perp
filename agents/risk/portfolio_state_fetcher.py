@@ -13,7 +13,7 @@ from decimal import Decimal
 import structlog
 
 from libs.coinbase.client_pool import CoinbaseClientPool
-from libs.common.models.enums import PortfolioTarget, PositionSide
+from libs.common.models.enums import Route, PositionSide
 from libs.common.models.portfolio import PortfolioSnapshot
 from libs.common.models.position import PerpPosition
 from libs.common.utils import utc_now
@@ -40,7 +40,7 @@ class PortfolioStateFetcher:
             ),
         )
 
-    async def fetch(self, target: PortfolioTarget) -> PortfolioSnapshot:
+    async def fetch(self, target: Route) -> PortfolioSnapshot:
         """Fetch live portfolio state from Coinbase.
 
         Args:
@@ -61,7 +61,7 @@ class PortfolioStateFetcher:
         positions = [
             PerpPosition(
                 instrument=p.instrument_id,
-                portfolio_target=target,
+                route=target,
                 side=PositionSide(p.side) if p.side in ("LONG", "SHORT") else PositionSide.FLAT,
                 size=abs(p.net_size),
                 entry_price=p.average_entry_price,
@@ -90,7 +90,7 @@ class PortfolioStateFetcher:
         now = utc_now()
         return PortfolioSnapshot(
             timestamp=now,
-            portfolio_target=target,
+            route=target,
             equity_usdc=portfolio_resp.total_equity,
             used_margin_usdc=portfolio_resp.used_margin,
             available_margin_usdc=portfolio_resp.available_margin,

@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
-from libs.common.models.enums import PortfolioTarget
+from libs.common.models.enums import Route
 
 from orchestrator.circuit_breakers import KillSwitchReason
 from orchestrator.dag import AgentName
@@ -70,11 +70,11 @@ class TestHealthCheck:
     def test_halted_portfolios_listed(self) -> None:
         orch = Orchestrator()
         orch.circuit_breaker.trip_portfolio(
-            PortfolioTarget.A, KillSwitchReason.DAILY_LOSS, "test", T0,
+            Route.A, KillSwitchReason.DAILY_LOSS, "test", T0,
         )
         state = orch.check_health(T0)
-        assert PortfolioTarget.A in state.halted_portfolios
-        assert PortfolioTarget.B not in state.halted_portfolios
+        assert Route.A in state.halted_portfolios
+        assert Route.B not in state.halted_portfolios
 
     def test_stopped_when_no_agents_running(self) -> None:
         orch = Orchestrator()

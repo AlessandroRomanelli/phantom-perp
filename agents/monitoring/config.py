@@ -11,7 +11,7 @@ class PerformanceReportConfig:
     """Settings for periodic performance reports."""
 
     frequency: str = "daily"
-    include_portfolio_breakdown: bool = True
+    include_route_breakdown: bool = True
     include_funding_attribution: bool = True
     include_fee_breakdown: bool = True
 
@@ -37,8 +37,8 @@ def load_monitoring_config(yaml_config: dict[str, Any]) -> MonitoringConfig:
     report_section = section.get("performance_report", {})
     report_config = PerformanceReportConfig(
         frequency=report_section.get("frequency", "daily"),
-        include_portfolio_breakdown=report_section.get(
-            "include_portfolio_breakdown", True,
+        include_route_breakdown=report_section.get(
+            "include_route_breakdown", True,
         ),
         include_funding_attribution=report_section.get(
             "include_funding_attribution", True,

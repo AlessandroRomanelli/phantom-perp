@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 
 from agents.signals.feature_store import FeatureStore
@@ -564,7 +564,7 @@ class TestVWAPProperties:
             min_conviction=0.0,
             cooldown_bars=0,
             min_session_progress=0.0,
-            portfolio_a_min_conviction=0.50,
+            route_a_min_conviction=0.50,
         )
         strategy = VWAPStrategy(params=params)
 
@@ -584,6 +584,6 @@ class TestVWAPProperties:
         assert len(signals) == 1
         # With big deviation, conviction should be decent
         if signals[0].conviction >= 0.50:
-            assert signals[0].suggested_target == PortfolioTarget.A
+            assert signals[0].suggested_route == Route.A
         else:
-            assert signals[0].suggested_target == PortfolioTarget.B
+            assert signals[0].suggested_route == Route.B

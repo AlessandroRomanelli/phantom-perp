@@ -10,7 +10,7 @@ Signal logic:
   6. Three-component conviction: funding z-score extremity (0–0.40)
      + OI confirmation (0–0.35) + funding persistence (0–0.25).
   7. ATR-based stops (tighter SL 1.5×, wider TP 3.0× to capture mean-reversion).
-  8. Portfolio A routing for high-conviction signals.
+  8. Route A routing for high-conviction signals.
 """
 
 from __future__ import annotations
@@ -235,7 +235,7 @@ class ContrarianFundingStrategy(SignalStrategy):
                 entry - atr_d * Decimal(str(p.take_profit_atr_mult)), tick_size,
             )
 
-        # Portfolio A routing for high-conviction signals
+        # Route A routing for high-conviction signals
         suggested_route = (
             Route.A
             if conviction >= p.route_a_min_conviction

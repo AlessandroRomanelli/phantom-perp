@@ -99,7 +99,7 @@ def test_fetch_fills_calls_repository_correctly(monkeypatch: pytest.MonkeyPatch)
     )
     mock_repo_class.assert_called_once_with(mock_store)
     mock_repo.get_fills_by_strategy.assert_called_once_with(
-        portfolio_target="autonomous", days=14
+        route="autonomous", days=14
     )
     assert result == mock_fills
 

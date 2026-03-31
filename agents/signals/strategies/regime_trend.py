@@ -62,7 +62,7 @@ class RegimeTrendParams:
     breakout_lookback: int = 20
     pullback_tolerance_atr: float = 0.3
 
-    # ── Risk management (Portfolio B — default) ──
+    # ── Risk management (Route B — default) ──
     stop_loss_atr_mult: float = 2.5
     take_profit_atr_mult: float = 4.0
 
@@ -349,7 +349,7 @@ class RegimeTrendStrategy(SignalStrategy):
 
         signals: list[StandardSignal] = []
 
-        # Portfolio B signal (wider stops, longer horizon)
+        # Route B signal (wider stops, longer horizon)
         # Use tighter initial stop when trailing stop is enabled (RT-02)
         if p.trail_enabled:
             sl_mult_b = Decimal(str(p.initial_stop_atr_mult))

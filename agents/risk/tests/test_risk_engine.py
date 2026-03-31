@@ -18,7 +18,7 @@ from libs.common.constants import (
 )
 from libs.common.instruments import load_instruments
 from libs.common.models.enums import (
-    PortfolioTarget,
+    Route,
     PositionSide,
     SignalSource,
 )
@@ -80,7 +80,7 @@ def _engine() -> RiskEngine:
 
 
 def _idea(
-    target: PortfolioTarget = PortfolioTarget.A,
+    target: Route = Route.A,
     direction: PositionSide = PositionSide.LONG,
     conviction: float = 0.8,
     entry_price: Decimal = Decimal("2000"),
@@ -93,7 +93,7 @@ def _idea(
         idea_id="test-idea-001",
         timestamp=utc_now(),
         instrument=TEST_INSTRUMENT_ID,
-        portfolio_target=target,
+        route=target,
         direction=direction,
         conviction=conviction,
         sources=sources or [SignalSource.MOMENTUM],
@@ -106,7 +106,7 @@ def _idea(
 
 
 def _portfolio(
-    target: PortfolioTarget = PortfolioTarget.A,
+    target: Route = Route.A,
     equity: Decimal = Decimal("10000"),
     used_margin: Decimal = Decimal("0"),
     positions: list[PerpPosition] | None = None,
@@ -114,7 +114,7 @@ def _portfolio(
 ) -> PortfolioSnapshot:
     return PortfolioSnapshot(
         timestamp=utc_now(),
-        portfolio_target=target,
+        route=target,
         equity_usdc=equity,
         used_margin_usdc=used_margin,
         available_margin_usdc=equity - used_margin,
@@ -131,11 +131,11 @@ def _make_position(
     size: Decimal = Decimal("1"),
     mark: Decimal = Decimal("2000"),
     side: PositionSide = PositionSide.LONG,
-    target: PortfolioTarget = PortfolioTarget.A,
+    target: Route = Route.A,
 ) -> PerpPosition:
     return PerpPosition(
         instrument=TEST_INSTRUMENT_ID,
-        portfolio_target=target,
+        route=target,
         side=side,
         size=size,
         entry_price=mark,
@@ -260,13 +260,13 @@ class TestDailyLossKillSwitch:
         engine = _engine()
         # 6% loss on B (> 5% limit)
         state = _portfolio(
-            target=PortfolioTarget.B,
+            target=Route.B,
             equity=Decimal("10000"),
             net_pnl_today=Decimal("-600"),
         )
 
         result = engine.evaluate(
-            _idea(target=PortfolioTarget.B), state, MARKET_PRICE, utc_now(), FUNDING_RATE,
+            _idea(target=Route.B), state, MARKET_PRICE, utc_now(), FUNDING_RATE,
         )
         assert result.approved is False
         assert "Daily loss" in (result.rejection_reason or "")
@@ -344,17 +344,17 @@ class TestLeverageLimits:
         # Adding 25% of 5000 = 1250 → 0.25 ETH × 5000 = 1250 → total 11250 → 2.25x
         # Still within 3x. Need more extreme values.
         pos = _make_position(
-            size=Decimal("2.5"), mark=Decimal("5000"), target=PortfolioTarget.B,
+            size=Decimal("2.5"), mark=Decimal("5000"), target=Route.B,
         )
         state = _portfolio(
-            target=PortfolioTarget.B,
+            target=Route.B,
             equity=Decimal("5000"),
             used_margin=Decimal("4200"),
             positions=[pos],
         )
 
         result = engine.evaluate(
-            _idea(target=PortfolioTarget.B, entry_price=Decimal("5000"), conviction=1.0),
+            _idea(target=Route.B, entry_price=Decimal("5000"), conviction=1.0),
             state, Decimal("5000"), utc_now(), FUNDING_RATE,
         )
         # Should be rejected (margin utilization or leverage)
@@ -399,8 +399,8 @@ class TestLiquidationDistance:
         At 3x leverage, distance is ~32% → should pass."""
         engine = _engine()
         result = engine.evaluate(
-            _idea(target=PortfolioTarget.B),
-            _portfolio(target=PortfolioTarget.B),
+            _idea(target=Route.B),
+            _portfolio(target=Route.B),
             MARKET_PRICE, utc_now(), FUNDING_RATE,
         )
         assert "Liquidation distance" not in (result.rejection_reason or "")
@@ -478,8 +478,8 @@ class TestHappyPath:
         """Standard Portfolio A trade passes all checks."""
         engine = _engine()
         result = engine.evaluate(
-            _idea(target=PortfolioTarget.A),
-            _portfolio(target=PortfolioTarget.A),
+            _idea(target=Route.A),
+            _portfolio(target=Route.A),
             MARKET_PRICE, utc_now(), FUNDING_RATE,
         )
         assert result.approved is True
@@ -487,7 +487,7 @@ class TestHappyPath:
         assert result.proposed_order is not None
 
         order = result.proposed_order
-        assert order.portfolio_target == PortfolioTarget.A
+        assert order.route == Route.A
         assert order.size > Decimal("0")
         assert order.stop_loss == Decimal("1900")
         assert order.take_profit == Decimal("2200")
@@ -499,15 +499,15 @@ class TestHappyPath:
         """Standard Portfolio B trade passes all checks."""
         engine = _engine()
         result = engine.evaluate(
-            _idea(target=PortfolioTarget.B),
-            _portfolio(target=PortfolioTarget.B),
+            _idea(target=Route.B),
+            _portfolio(target=Route.B),
             MARKET_PRICE, utc_now(), FUNDING_RATE,
         )
         assert result.approved is True
         assert result.proposed_order is not None
 
         order = result.proposed_order
-        assert order.portfolio_target == PortfolioTarget.B
+        assert order.route == Route.B
 
     def test_approved_order_has_correct_side(self) -> None:
         engine = _engine()
@@ -529,13 +529,13 @@ class TestHappyPath:
         """Portfolio A and B should produce orders with different leverage."""
         engine = _engine()
         result_a = engine.evaluate(
-            _idea(target=PortfolioTarget.A),
-            _portfolio(target=PortfolioTarget.A),
+            _idea(target=Route.A),
+            _portfolio(target=Route.A),
             MARKET_PRICE, utc_now(), FUNDING_RATE,
         )
         result_b = engine.evaluate(
-            _idea(target=PortfolioTarget.B),
-            _portfolio(target=PortfolioTarget.B),
+            _idea(target=Route.B),
+            _portfolio(target=Route.B),
             MARKET_PRICE, utc_now(), FUNDING_RATE,
         )
         assert result_a.approved is True
@@ -562,7 +562,7 @@ class TestSerialization:
         assert result.proposed_order is not None
 
         d = order_to_dict(result.proposed_order)
-        assert d["portfolio_target"] == "autonomous"
+        assert d["route"] == "autonomous"
         assert d["side"] == "BUY"
         assert d["instrument"] == TEST_INSTRUMENT_ID
         assert d["status"] == "risk_approved"
@@ -577,7 +577,7 @@ class TestSerialization:
             "idea_id": "idea-abc",
             "timestamp": "2025-06-15T12:00:00+00:00",
             "instrument": TEST_INSTRUMENT_ID,
-            "portfolio_target": "autonomous",
+            "route": "autonomous",
             "direction": "LONG",
             "conviction": "0.75",
             "sources": "momentum,funding_arb",
@@ -589,7 +589,7 @@ class TestSerialization:
         }
         idea = deserialize_idea(payload)
         assert idea.idea_id == "idea-abc"
-        assert idea.portfolio_target == PortfolioTarget.A
+        assert idea.route == Route.A
         assert idea.direction == PositionSide.LONG
         assert idea.conviction == 0.75
         assert idea.entry_price == Decimal("2000.00")

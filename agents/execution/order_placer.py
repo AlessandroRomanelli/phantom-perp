@@ -13,7 +13,7 @@ from decimal import Decimal
 
 import structlog
 
-from libs.common.models.enums import OrderSide, OrderStatus, OrderType, PortfolioTarget
+from libs.common.models.enums import OrderSide, OrderStatus, OrderType, Route
 from libs.common.models.order import ApprovedOrder, Fill, ProposedOrder
 from libs.common.utils import utc_now
 from libs.coinbase.models import OrderResponse
@@ -46,7 +46,7 @@ def plan_from_proposed(
     best_bid: Decimal | None = None,
     best_ask: Decimal | None = None,
 ) -> ExecutionPlan:
-    """Build an execution plan from a ProposedOrder (Portfolio A path)."""
+    """Build an execution plan from a ProposedOrder (Route A path)."""
     return select_algo(
         side=order.side,
         requested_type=order.order_type,
@@ -65,7 +65,7 @@ def plan_from_approved(
     best_bid: Decimal | None = None,
     best_ask: Decimal | None = None,
 ) -> ExecutionPlan:
-    """Build an execution plan from an ApprovedOrder (Portfolio B path)."""
+    """Build an execution plan from an ApprovedOrder (Route B path)."""
     return select_algo(
         side=order.side,
         requested_type=order.order_type,
@@ -119,7 +119,7 @@ def build_result_from_response(
 
 def build_fill_from_response(
     order_id: str,
-    portfolio_target: PortfolioTarget,
+    route: Route,
     response: OrderResponse,
     is_maker: bool,
     now: datetime | None = None,
@@ -135,7 +135,7 @@ def build_fill_from_response(
     return Fill(
         fill_id=f"fill-{response.order_id}",
         order_id=order_id,
-        portfolio_target=portfolio_target,
+        route=route,
         instrument=response.product_id,
         side=OrderSide(response.side),
         size=filled,
