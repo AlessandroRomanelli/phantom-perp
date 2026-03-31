@@ -110,6 +110,7 @@
               <th class="text-right px-4 py-2.5">Mark Price</th>
               <th class="text-right px-4 py-2.5">Spread</th>
               <th class="text-right px-4 py-2.5">Funding</th>
+              <th class="text-right px-4 py-2.5">Open Interest</th>
               <th class="text-right px-4 py-2.5">Age</th>
               <th class="text-right px-4 py-2.5">Status</th>
             </tr>
@@ -334,11 +335,19 @@ function updateSession() {
 }
 
 // ---- Renderers ----
+function fmtOI(val) {
+  const v = parseFloat(val);
+  if (!val || isNaN(v) || v === 0) return '--';
+  if (v >= 1_000_000) return (v / 1_000_000).toFixed(2) + 'M';
+  if (v >= 1_000) return (v / 1_000).toFixed(1) + 'k';
+  return v.toFixed(0);
+}
+
 function renderInstruments(instruments) {
   const body = document.getElementById('instruments-body');
   body.innerHTML = INSTRUMENTS.map(id => {
     const d = instruments[id];
-    if (!d) return `<tr><td class="px-4 py-2 text-gray-500">${id}</td><td colspan="5" class="px-4 py-2 text-gray-600 text-right">--</td></tr>`;
+    if (!d) return `<tr><td class="px-4 py-2 text-gray-500">${id}</td><td colspan="6" class="px-4 py-2 text-gray-600 text-right">--</td></tr>`;
     const ageStr = agoFromISO(d.timestamp);
     const ageSec = d.timestamp ? (Date.now() - new Date(d.timestamp).getTime())/1000 : 999;
     let statusCls, statusTxt;
@@ -351,6 +360,7 @@ function renderInstruments(instruments) {
       <td class="px-4 py-2 text-right text-white">$${d.mark_price}</td>
       <td class="px-4 py-2 text-right text-gray-400">${spread}</td>
       <td class="px-4 py-2 text-right text-gray-400">${d.funding_rate || '--'}</td>
+      <td class="px-4 py-2 text-right text-gray-300 font-mono">${fmtOI(d.open_interest)}</td>
       <td class="px-4 py-2 text-right text-gray-500">${ageStr}</td>
       <td class="px-4 py-2 text-right"><span class="${statusCls} font-semibold">${statusTxt}</span></td>
     </tr>`;
