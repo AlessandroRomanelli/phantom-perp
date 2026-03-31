@@ -1,10 +1,8 @@
-"""Per-portfolio Coinbase Advanced Trade REST client pool.
+"""Single-client Coinbase Advanced Trade REST client wrapper.
 
-Coinbase Advanced Trade API keys are portfolio-scoped: each key is
-created under a specific portfolio and can only operate on that
-portfolio. Portfolio-scoped endpoints also require a portfolio_uuid
-in the request path. This module provides a pool that routes API calls
-to the correct client based on the target portfolio.
+Wraps a single CoinbaseRESTClient and exposes the same interface as
+the former dual-portfolio pool so downstream agents need minimal changes.
+get_client(route) returns the same client regardless of the Route value.
 """
 
 from __future__ import annotations
@@ -17,73 +15,49 @@ from libs.common.models.enums import Route
 
 
 class CoinbaseClientPool:
-    """Routes API calls to the per-portfolio REST client.
+    """Single-client wrapper that satisfies the pool interface.
 
-    Each portfolio has its own API key (and therefore its own auth,
-    HTTP client, and rate limiter). Portfolio-scoped endpoints use
-    the portfolio_uuid injected at client construction time.
-
-    Non-portfolio-scoped endpoints (market data, products, funding)
-    can use either client -- by convention we use Portfolio A's.
+    All routes resolve to the same underlying REST client authenticated
+    with a single API key. Use this when operating with one portfolio.
 
     Args:
-        auth_a: CoinbaseAuth for Portfolio A's API key.
-        auth_b: CoinbaseAuth for Portfolio B's API key.
-        base_url: REST API base URL (shared).
-        portfolio_uuid_a: Portfolio UUID for Portfolio A.
-        portfolio_uuid_b: Portfolio UUID for Portfolio B.
+        auth: CoinbaseAuth for the API key.
+        base_url: REST API base URL.
+        portfolio_uuid: Portfolio UUID for portfolio-scoped endpoints.
     """
 
     def __init__(
         self,
-        auth_a: CoinbaseAuth,
-        auth_b: CoinbaseAuth,
+        auth: CoinbaseAuth,
         base_url: str = DEFAULT_REST_BASE_URL,
-        portfolio_uuid_a: str = "",
-        portfolio_uuid_b: str = "",
+        portfolio_uuid: str = "",
     ) -> None:
-        self._client_a = CoinbaseRESTClient(
-            auth=auth_a,
+        self._client = CoinbaseRESTClient(
+            auth=auth,
             base_url=base_url,
             rate_limiter=RateLimiter(),
-            portfolio_uuid=portfolio_uuid_a,
+            portfolio_uuid=portfolio_uuid,
         )
-        self._client_b = CoinbaseRESTClient(
-            auth=auth_b,
-            base_url=base_url,
-            rate_limiter=RateLimiter(),
-            portfolio_uuid=portfolio_uuid_b,
-        )
-        self._clients = {
-            Route.A: self._client_a,
-            Route.B: self._client_b,
-        }
 
     def get_client(self, target: Route) -> CoinbaseRESTClient:
-        """Get the REST client for a specific portfolio.
+        """Get the REST client.
 
         Args:
-            target: Portfolio A or B.
+            target: Ignored — all routes share the same client.
 
         Returns:
-            The CoinbaseRESTClient authenticated with that portfolio's API key.
+            The single CoinbaseRESTClient instance.
         """
-        return self._clients[target]
+        return self._client
 
     @property
     def market_client(self) -> CoinbaseRESTClient:
-        """Client for non-portfolio-scoped endpoints (market data, funding).
-
-        Uses Portfolio A's client by convention. Public endpoints like
-        products, orderbook, candles, and funding rate are not
-        portfolio-scoped and work with any valid API key.
-        """
-        return self._client_a
+        """Client for non-portfolio-scoped endpoints (market data, funding)."""
+        return self._client
 
     async def close(self) -> None:
-        """Close all underlying HTTP clients."""
-        await self._client_a.close()
-        await self._client_b.close()
+        """Close the underlying HTTP client."""
+        await self._client.close()
 
     async def __aenter__(self) -> CoinbaseClientPool:
         return self

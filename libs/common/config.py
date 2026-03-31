@@ -23,11 +23,9 @@ class CoinbaseSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="COINBASE_ADV_")
 
-    # Per-portfolio credentials (Cloud API Keys)
+    # Single-portfolio credentials (Cloud API Key)
     api_key_a: str = ""
     api_secret_a: str = ""
-    api_key_b: str = ""
-    api_secret_b: str = ""
 
     # Shared endpoints
     rest_url: str = "https://api.coinbase.com"
@@ -59,8 +57,7 @@ class PortfolioIDSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="COINBASE_")
 
-    portfolio_a_id: str = Field(default="75b5eaf1-53a6-483a-8ac0-d1da897dff2c")
-    portfolio_b_id: str = Field(default="")
+    portfolio_id: str = Field(default="75b5eaf1-53a6-483a-8ac0-d1da897dff2c")
 
 
 class AppSettings(BaseSettings):
