@@ -1,4 +1,4 @@
-"""Public API for libs.tuner -- bounds registry, audit logging, YAML writer, and Claude integration."""
+"""Public API for libs.tuner -- bounds registry, audit logging, YAML writer, Claude integration, and notifications."""
 
 from __future__ import annotations
 
@@ -11,7 +11,9 @@ from libs.tuner.claude_client import (
     build_user_message,
     call_claude,
 )
+from libs.tuner.notifier import TunerNotifier
 from libs.tuner.recommender import TuningResult, run_tuning_cycle, validate_recommendation
+from libs.tuner.report import compose_tuning_report
 from libs.tuner.writer import apply_parameter_changes
 
 __all__ = [
@@ -31,4 +33,6 @@ __all__ = [
     "TuningResult",
     "validate_recommendation",
     "run_tuning_cycle",
+    "TunerNotifier",
+    "compose_tuning_report",
 ]

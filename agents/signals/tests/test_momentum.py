@@ -677,16 +677,17 @@ class TestMomentumPortfolioRouting:
         import numpy as np
         atr_vals = np.array([1.0] * 10)
 
-        # Create a scenario with very high conviction
+        # Create a scenario with very high conviction:
+        # ADX=80 (max component), RSI=30 (ideal oversold for bullish), vol_ratio=3.0, cur_atr >> atr_vals
         conv = strategy._compute_conviction(
-            adx_value=80.0,  # Very strong trend
-            rsi_value=45.0,  # Ideal RSI for bullish
+            adx_value=80.0,   # Very strong trend → 0.35
+            rsi_value=30.0,   # Oversold — ideal for bullish → 0.175
             is_bullish=True,
-            volume_ratio=3.0,  # High volume
+            volume_ratio=3.0,  # High volume → 0.15
             atr_vals=atr_vals,
-            cur_atr=1.0,
+            cur_atr=5.0,       # Above all atr_vals → vol_pct=1.0 → 0.15
         )
-        # Should produce high conviction
+        # Should produce high conviction: 0.35+0.175+0.15+0.15 = 0.825
         assert conv >= 0.75
 
     def test_low_conviction_routes_to_portfolio_b(self) -> None:

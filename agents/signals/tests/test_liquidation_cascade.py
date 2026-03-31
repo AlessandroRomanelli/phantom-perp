@@ -505,3 +505,239 @@ class TestVolumeSurgeConfirmation:
         assert len(signals) == 1
         assert "tier" in signals[0].metadata
         assert signals[0].metadata["tier"] in (1, 2, 3)
+
+
+# ---------------------------------------------------------------------------
+# TestHeatmapMagnetMode — tests for the Coinglass cluster conviction boost
+# ---------------------------------------------------------------------------
+
+from agents.signals.coinglass_poller import LiquidationCluster
+
+
+class TestHeatmapMagnetMode:
+    """Tests for heatmap magnet mode (set_heatmap_store / conviction boost)."""
+
+    # -- helpers -----------------------------------------------------------
+
+    def _nearby_store(
+        self,
+        instrument: str = TEST_INSTRUMENT_ID,
+        price_level: float = 2190.0,  # <3% below 2200 snap price
+        notional: float = 5_000_000.0,
+        distance_pct: float = 0.5,
+    ) -> dict[str, list[LiquidationCluster]]:
+        """Build a heatmap store with one cluster close to current price."""
+        cluster = LiquidationCluster(
+            price_level=price_level,
+            notional_usd=notional,
+            distance_pct=distance_pct,
+        )
+        return {instrument: [cluster]}
+
+    def _strategy_with_cascade(
+        self,
+        min_conviction: float = 0.0,
+        heatmap_fallback_on_missing: bool = True,
+        magnet_proximity_pct: float = 3.0,
+        cluster_score_weight: float = 0.20,
+        heatmap_magnet_enabled: bool = True,
+    ) -> tuple["LiquidationCascadeStrategy", "FeatureStore", "MarketSnapshot"]:
+        """Build a strategy instance + cascade store for ETH-PERP (price ~2200)."""
+        params = LiquidationCascadeParams(
+            oi_lookback=10,
+            tier1_min_oi_drop_pct=1.5,
+            imbalance_threshold=0.2,
+            min_conviction=min_conviction,
+            cooldown_bars=0,
+            heatmap_magnet_enabled=heatmap_magnet_enabled,
+            heatmap_fallback_on_missing=heatmap_fallback_on_missing,
+            magnet_proximity_pct=magnet_proximity_pct,
+            cluster_score_weight=cluster_score_weight,
+        )
+        strategy = LiquidationCascadeStrategy(params=params)
+        store, snap = _build_cascade_store(
+            oi_start=80000, oi_end=76000,  # 5% OI drop
+            price_start=2250, price_end=2200,  # Price dumped → LONG fade
+            imbalance=-0.5,
+        )
+        return strategy, store, snap
+
+    # -- tests -------------------------------------------------------------
+
+    def test_heatmap_boost_increases_conviction(self) -> None:
+        """Nearby cluster boosts conviction above OI-only baseline."""
+        # Use a mild cascade (Tier 1, modest imbalance, low volatility) so that
+        # base conviction is well below 1.0 and there is room to boost.
+        params_no_heatmap = LiquidationCascadeParams(
+            oi_lookback=10,
+            tier1_min_oi_drop_pct=1.5,
+            imbalance_threshold=0.2,
+            min_conviction=0.0,
+            cooldown_bars=0,
+            heatmap_magnet_enabled=False,  # disabled — pure OI baseline
+        )
+        strategy_base = LiquidationCascadeStrategy(params=params_no_heatmap)
+        store, snap = _build_cascade_store(
+            oi_start=80000, oi_end=77600,  # 3% OI drop (Tier 1)
+            price_start=2250, price_end=2200,
+            imbalance=-0.35,
+        )
+        base_signals = strategy_base.evaluate(snap, store)
+        assert len(base_signals) == 1
+        baseline_conviction = base_signals[0].conviction
+        assert baseline_conviction < 0.95, (
+            f"Need room to boost; baseline was {baseline_conviction}"
+        )
+
+        # Same cascade, heatmap enabled + nearby large cluster
+        params_with_heatmap = LiquidationCascadeParams(
+            oi_lookback=10,
+            tier1_min_oi_drop_pct=1.5,
+            imbalance_threshold=0.2,
+            min_conviction=0.0,
+            cooldown_bars=0,
+            heatmap_magnet_enabled=True,
+            cluster_score_weight=0.20,
+            magnet_proximity_pct=3.0,
+        )
+        strategy_heatmap = LiquidationCascadeStrategy(params=params_with_heatmap)
+        heatmap = self._nearby_store(notional=8_000_000.0, distance_pct=1.0)
+        strategy_heatmap.set_heatmap_store(heatmap)
+
+        boosted_signals = strategy_heatmap.evaluate(snap, store)
+        assert len(boosted_signals) == 1
+        assert boosted_signals[0].conviction > baseline_conviction
+
+    def test_no_heatmap_store_falls_back_to_base(self) -> None:
+        """Strategy with no set_heatmap_store call behaves exactly as before."""
+        strategy, store, snap = self._strategy_with_cascade(min_conviction=0.0)
+        # Do NOT call set_heatmap_store
+
+        signals = strategy.evaluate(snap, store)
+        assert len(signals) == 1
+        # Metadata does not contain heatmap keys — pure OI-based signal
+        m = signals[0].metadata
+        assert "heatmap_clusters_nearby" not in m
+
+    def test_empty_heatmap_for_instrument_falls_back(self) -> None:
+        """Store exists but has no entry for the instrument → no boost, signal still fires."""
+        strategy, store, snap = self._strategy_with_cascade(min_conviction=0.0)
+        # Wire a store for a different instrument
+        strategy.set_heatmap_store({"BTC-PERP": []})
+
+        signals = strategy.evaluate(snap, store)
+        assert len(signals) == 1
+        # No boost should have been applied
+        m = signals[0].metadata
+        assert m.get("heatmap_conviction_boost", 0.0) == 0.0
+
+    def test_cluster_proximity_threshold_respected(self) -> None:
+        """Cluster beyond proximity_pct does not contribute to conviction boost."""
+        strategy, store, snap = self._strategy_with_cascade(
+            min_conviction=0.0,
+            magnet_proximity_pct=2.0,
+        )
+        # Cluster at 5% distance — outside 2% proximity threshold
+        far_cluster = LiquidationCluster(
+            price_level=2090.0,   # ~5% from 2200
+            notional_usd=10_000_000.0,
+            distance_pct=5.0,
+        )
+        strategy.set_heatmap_store({TEST_INSTRUMENT_ID: [far_cluster]})
+
+        signals = strategy.evaluate(snap, store)
+        assert len(signals) == 1
+        assert signals[0].metadata.get("heatmap_clusters_nearby") == 0
+        assert signals[0].metadata.get("heatmap_conviction_boost") == 0.0
+
+    def test_signal_metadata_contains_heatmap_fields(self) -> None:
+        """When nearby clusters exist, metadata includes all four heatmap keys."""
+        strategy, store, snap = self._strategy_with_cascade(min_conviction=0.0)
+        heatmap = self._nearby_store(
+            price_level=2190.0, notional=6_000_000.0, distance_pct=0.45,
+        )
+        strategy.set_heatmap_store(heatmap)
+
+        signals = strategy.evaluate(snap, store)
+        assert len(signals) == 1
+        m = signals[0].metadata
+        assert "heatmap_clusters_nearby" in m
+        assert "nearest_cluster_price" in m
+        assert "nearest_cluster_notional" in m
+        assert "heatmap_conviction_boost" in m
+        assert m["heatmap_clusters_nearby"] >= 1
+        assert m["nearest_cluster_price"] == 2190.0
+        assert m["nearest_cluster_notional"] == 6_000_000.0
+        assert m["heatmap_conviction_boost"] > 0.0
+
+    def test_fallback_on_missing_false_suppresses_signal(self) -> None:
+        """With heatmap_fallback_on_missing=False and no heatmap data, no signal fires."""
+        strategy, store, snap = self._strategy_with_cascade(
+            min_conviction=0.0,
+            heatmap_fallback_on_missing=False,
+        )
+        # Do NOT call set_heatmap_store — _heatmap_store is None
+
+        signals = strategy.evaluate(snap, store)
+        assert signals == []
+
+    def test_conviction_capped_at_one_with_huge_cluster(self) -> None:
+        """Even with an enormous cluster, boosted conviction stays <= 1.0."""
+        # Start with a near-1.0 base conviction by using extreme inputs
+        params = LiquidationCascadeParams(
+            oi_lookback=10,
+            tier1_min_oi_drop_pct=1.5,
+            imbalance_threshold=0.2,
+            min_conviction=0.0,
+            cooldown_bars=0,
+            cluster_score_weight=0.50,  # very high weight
+        )
+        strategy = LiquidationCascadeStrategy(params=params)
+        store, snap = _build_cascade_store(
+            oi_start=80000, oi_end=72000,  # 10% drop (tier3)
+            price_start=2250, price_end=2200,
+            imbalance=-0.8,
+        )
+        # Enormous cluster
+        giant_cluster = LiquidationCluster(
+            price_level=2195.0, notional_usd=1_000_000_000.0, distance_pct=0.2,
+        )
+        strategy.set_heatmap_store({TEST_INSTRUMENT_ID: [giant_cluster]})
+
+        signals = strategy.evaluate(snap, store)
+        assert len(signals) == 1
+        assert signals[0].conviction <= 1.0
+
+    def test_find_nearby_clusters_filters_correctly(self) -> None:
+        """_find_nearby_clusters returns only clusters within threshold, sorted by notional."""
+        clusters = [
+            LiquidationCluster(price_level=2180.0, notional_usd=3_000_000.0, distance_pct=1.0),
+            LiquidationCluster(price_level=2150.0, notional_usd=5_000_000.0, distance_pct=2.5),
+            LiquidationCluster(price_level=2100.0, notional_usd=8_000_000.0, distance_pct=4.5),  # outside
+        ]
+        nearby = LiquidationCascadeStrategy._find_nearby_clusters(
+            clusters, current_price=2200.0, proximity_pct=3.0,
+        )
+        assert len(nearby) == 2
+        # Sorted descending by notional
+        assert nearby[0].notional_usd == 5_000_000.0
+        assert nearby[1].notional_usd == 3_000_000.0
+
+    def test_config_loading_picks_up_heatmap_params(self) -> None:
+        """YAML config dict overrides are applied to heatmap params."""
+        config = {
+            "parameters": {
+                "heatmap_magnet_enabled": False,
+                "cluster_min_notional_usd": 1_000_000.0,
+                "magnet_proximity_pct": 5.0,
+                "cluster_score_weight": 0.15,
+                "heatmap_fallback_on_missing": False,
+            }
+        }
+        strategy = LiquidationCascadeStrategy(config=config)
+        p = strategy._params
+        assert p.heatmap_magnet_enabled is False
+        assert p.cluster_min_notional_usd == 1_000_000.0
+        assert p.magnet_proximity_pct == 5.0
+        assert p.cluster_score_weight == 0.15
+        assert p.heatmap_fallback_on_missing is False

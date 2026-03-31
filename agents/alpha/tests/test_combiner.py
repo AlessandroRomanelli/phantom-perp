@@ -50,6 +50,7 @@ def _sig(
 def _build_combiner(
     cooldown_seconds: float = 0,
     window_seconds: float = 60,
+    min_flip_interval_seconds: float = 180,
 ) -> AlphaCombiner:
     return AlphaCombiner(
         router=PortfolioRouter(),
@@ -57,6 +58,7 @@ def _build_combiner(
         scorecard=StrategyScorecard(),
         combination_window=timedelta(seconds=window_seconds),
         cooldown=timedelta(seconds=cooldown_seconds),
+        min_flip_interval=timedelta(seconds=min_flip_interval_seconds),
     )
 
 
@@ -198,7 +200,9 @@ class TestConflictHandling:
 
     def test_equal_opposition_cancels(self) -> None:
         """When long and short have equal conviction, no idea is emitted."""
-        combiner = _build_combiner(cooldown_seconds=0, window_seconds=60)
+        combiner = _build_combiner(
+            cooldown_seconds=0, window_seconds=60, min_flip_interval_seconds=0,
+        )
         long_sig = _sig(
             source=SignalSource.MOMENTUM,
             direction=PositionSide.LONG,
@@ -246,7 +250,7 @@ class TestCooldown:
         assert len(ideas2) == 1
 
     def test_cooldown_per_direction(self) -> None:
-        """Cooldown only blocks same direction — opposite direction passes."""
+        """Bidirectional cooldown blocks opposite direction too within cooldown window."""
         combiner = _build_combiner(cooldown_seconds=30)
         long_sig = _sig(direction=PositionSide.LONG, signal_id="long")
         short_sig = _sig(
@@ -257,10 +261,9 @@ class TestCooldown:
 
         combiner.add_signal(long_sig, now=T0)
 
-        # SHORT should not be blocked by LONG cooldown
+        # SHORT is also blocked — bidirectional cooldown applies to any direction
         ideas = combiner.add_signal(short_sig, now=T0 + timedelta(seconds=5))
-        assert len(ideas) == 1
-        assert ideas[0].direction == PositionSide.SHORT
+        assert len(ideas) == 0
 
 
 class TestBufferWindow:

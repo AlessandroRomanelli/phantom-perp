@@ -75,7 +75,8 @@ class TestGetFundingRate:
                     "price": "2250.00",
                     "future_product_details": {
                         "perpetual_details": {
-                            "funding_rate": "0.0001"
+                            "funding_rate": "0.0001",
+                            "open_interest": "34109.86",
                         }
                     }
                 })
@@ -83,6 +84,23 @@ class TestGetFundingRate:
             result = await client.get_funding_rate("ETH-PERP-INTX")
             assert str(result.funding_rate) == "0.0001"
             assert str(result.mark_price) == "2250.00"
+            assert result.open_interest == Decimal("34109.86")
+
+    async def test_open_interest_defaults_to_zero_when_absent(self, client: CoinbaseRESTClient) -> None:
+        with respx.mock(base_url="https://api.coinbase.com") as mock:
+            mock.get("/api/v3/brokerage/products/ETH-PERP-INTX").mock(
+                return_value=Response(200, json={
+                    "product_id": "ETH-PERP-INTX",
+                    "price": "2250.00",
+                    "future_product_details": {
+                        "perpetual_details": {
+                            "funding_rate": "0.0001",
+                        }
+                    }
+                })
+            )
+            result = await client.get_funding_rate("ETH-PERP-INTX")
+            assert result.open_interest == Decimal("0")
 
 
 @pytest.mark.asyncio

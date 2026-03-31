@@ -19,10 +19,41 @@ from typing import Any
 
 import numpy as np
 import orjson
-import redis.asyncio as aioredis
+import redis.asyncio as aioredis  # noqa: TC002
 import yaml
 from sqlalchemy.exc import SQLAlchemyError
 
+from agents.alpha.regime_detector import RegimeDetector
+from agents.signals.claude_scheduler import run_claude_scheduler
+from agents.signals.coinglass_poller import run_coinglass_poller
+from agents.signals.conviction_normalizer import normalize_conviction, should_route_portfolio_a
+from agents.signals.feature_store import FeatureStore
+from agents.signals.orch_client import OrchestratorParams
+from agents.signals.orch_scheduler import run_orchestrator_scheduler
+from agents.signals.session_classifier import SessionType, classify_session
+from agents.signals.strategies.base import SignalStrategy  # noqa: TC001
+from agents.signals.strategies.claude_market_analysis import (
+    ClaudeMarketAnalysisParams,
+    ClaudeMarketAnalysisStrategy,
+)
+from agents.signals.strategies.contrarian_funding import (
+    ContrarianFundingParams,
+    ContrarianFundingStrategy,
+)
+from agents.signals.strategies.correlation import CorrelationParams, CorrelationStrategy
+from agents.signals.strategies.liquidation_cascade import (
+    LiquidationCascadeParams,
+    LiquidationCascadeStrategy,
+)
+from agents.signals.strategies.mean_reversion import MeanReversionParams, MeanReversionStrategy
+from agents.signals.strategies.momentum import MomentumParams, MomentumStrategy
+from agents.signals.strategies.oi_divergence import OIDivergenceParams, OIDivergenceStrategy
+from agents.signals.strategies.orderbook_imbalance import (
+    OrderbookImbalanceParams,
+    OrderbookImbalanceStrategy,
+)
+from agents.signals.strategies.regime_trend import RegimeTrendParams, RegimeTrendStrategy
+from agents.signals.strategies.vwap import VWAPParams, VWAPStrategy
 from libs.common.config import (
     get_settings,
     load_strategy_config,
@@ -34,30 +65,12 @@ from libs.common.instruments import get_active_instrument_ids
 from libs.common.logging import setup_logging
 from libs.common.models.enums import PortfolioTarget
 from libs.common.models.market_snapshot import MarketSnapshot
-from libs.common.models.signal import StandardSignal
+from libs.common.models.signal import StandardSignal  # noqa: TC001
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
 from libs.storage.models import SignalRecord
 from libs.storage.relational import RelationalStore, init_db
 from libs.storage.repository import TunerRepository
-
-from agents.signals.conviction_normalizer import normalize_conviction, should_route_portfolio_a
-from agents.signals.feature_store import FeatureStore
-from agents.signals.session_classifier import SessionType, classify_session
-from agents.signals.strategies.base import SignalStrategy
-from agents.signals.strategies.correlation import CorrelationParams, CorrelationStrategy
-from agents.signals.strategies.liquidation_cascade import (
-    LiquidationCascadeParams,
-    LiquidationCascadeStrategy,
-)
-from agents.signals.strategies.mean_reversion import MeanReversionParams, MeanReversionStrategy
-from agents.signals.strategies.momentum import MomentumParams, MomentumStrategy
-from agents.signals.strategies.orderbook_imbalance import (
-    OrderbookImbalanceParams,
-    OrderbookImbalanceStrategy,
-)
-from agents.signals.strategies.regime_trend import RegimeTrendParams, RegimeTrendStrategy
-from agents.signals.strategies.vwap import VWAPParams, VWAPStrategy
 
 logger = setup_logging("signals", json_output=False)
 
@@ -128,6 +141,9 @@ STRATEGY_CLASSES: dict[str, type[SignalStrategy]] = {
     "regime_trend": RegimeTrendStrategy,
     "orderbook_imbalance": OrderbookImbalanceStrategy,
     "vwap": VWAPStrategy,
+    "funding_arb": ContrarianFundingStrategy,
+    "claude_market_analysis": ClaudeMarketAnalysisStrategy,
+    "oi_divergence": OIDivergenceStrategy,
 }
 
 STRATEGY_PARAMS_CLASSES: dict[str, type] = {
@@ -138,6 +154,9 @@ STRATEGY_PARAMS_CLASSES: dict[str, type] = {
     "regime_trend": RegimeTrendParams,
     "orderbook_imbalance": OrderbookImbalanceParams,
     "vwap": VWAPParams,
+    "funding_arb": ContrarianFundingParams,
+    "claude_market_analysis": ClaudeMarketAnalysisParams,
+    "oi_divergence": OIDivergenceParams,
 }
 
 
@@ -409,9 +428,9 @@ async def run_agent() -> None:
 
     # Per-instrument feature stores: slow (5 min) for trend/reversion strategies,
     # fast (30s) for high-frequency strategies like orderbook_imbalance.
-    _SLOW_INTERVAL = timedelta(seconds=300)  # 5 min bars
-    _FAST_INTERVAL = timedelta(seconds=30)   # 30s bars
-    _FAST_STRATEGIES = frozenset({"orderbook_imbalance", "liquidation_cascade"})
+    _SLOW_INTERVAL = timedelta(seconds=300)  # noqa: N806  # 5 min bars
+    _FAST_INTERVAL = timedelta(seconds=30)   # noqa: N806  # 30s bars
+    _FAST_STRATEGIES = frozenset({"orderbook_imbalance", "liquidation_cascade"})  # noqa: N806
 
     slow_stores: dict[str, FeatureStore] = {}
     fast_stores: dict[str, FeatureStore] = {}
@@ -442,6 +461,104 @@ async def run_agent() -> None:
         fast_interval_sec=_FAST_INTERVAL.total_seconds(),
         fast_strategies=sorted(_FAST_STRATEGIES),
     )
+
+    # --- Claude Market Analysis integration ---
+    # Shared mutable dicts updated in the main loop; scheduler reads from them.
+    latest_snapshots: dict[str, MarketSnapshot] = {}
+    regime_detector = RegimeDetector()
+
+    # Create one signal queue per instrument for Claude → strategy bridging.
+    # Queue maxsize is per-instrument max_queue_size from strategy config.
+    claude_queues: dict[str, asyncio.Queue[StandardSignal]] = {}
+    for iid in instrument_ids:
+        from agents.signals.claude_scheduler import _load_params  # noqa: PLC0415
+        p = _load_params(iid)
+        claude_queues[iid] = asyncio.Queue(maxsize=p.max_queue_size)
+
+    # Wire each ClaudeMarketAnalysisStrategy instance to its queue.
+    for iid, strats in strategies_by_instrument.items():
+        q = claude_queues.get(iid)
+        if q is None:
+            continue
+        for s in strats:
+            if isinstance(s, ClaudeMarketAnalysisStrategy):
+                s.set_queue(q)
+                logger.info(
+                    "claude_strategy_wired",
+                    instrument=iid,
+                    queue_maxsize=q.maxsize,
+                )
+
+    # Launch the Claude scheduler as a background task.
+    asyncio.create_task(
+        run_claude_scheduler(
+            instrument_ids=instrument_ids,
+            slow_stores=slow_stores,
+            claude_queues=claude_queues,
+            regime_detector=regime_detector,
+            settings=settings,
+            latest_snapshots=latest_snapshots,
+            redis_client=publisher._redis,
+        ),
+        name="claude_scheduler",
+    )
+    logger.info("claude_scheduler_task_launched", instruments=instrument_ids)
+
+    # --- Coinglass heatmap poller integration ---
+    # Shared mutable dict updated by poller; LiquidationCascadeStrategy reads from it.
+    import os  # noqa: PLC0415
+    latest_heatmaps: dict[str, list] = {}
+    coinglass_api_key = os.environ.get("COINGLASS_API_KEY", "")
+    if coinglass_api_key:
+        asyncio.create_task(
+            run_coinglass_poller(
+                instrument_ids=instrument_ids,
+                latest_heatmaps=latest_heatmaps,
+                latest_snapshots=latest_snapshots,  # type: ignore[arg-type]
+                api_key=coinglass_api_key,
+            ),
+            name="coinglass_poller",
+        )
+        logger.info("coinglass_poller_task_launched", instruments=instrument_ids)
+    else:
+        logger.info("coinglass_poller_skipped", reason="COINGLASS_API_KEY not set")
+
+    # Wire heatmap store into each LiquidationCascadeStrategy instance.
+    for iid, strats in strategies_by_instrument.items():
+        for s in strats:
+            if isinstance(s, LiquidationCascadeStrategy):
+                s.set_heatmap_store(latest_heatmaps)
+                logger.info(
+                    "liquidation_cascade_heatmap_wired",
+                    instrument=iid,
+                )
+
+    # --- LLM Strategy Orchestrator ---
+    # Shared mutable dicts — no locks needed (asyncio single-threaded; scheduler
+    # is sole writer, main loop is sole reader).
+    orchestrator_gate_map: dict[tuple[str, str], bool] = {}
+    orchestrator_param_adj: dict[tuple[str, str], dict[str, Any]] = {}
+
+    orch_config = load_strategy_config("orchestrator")
+    orch_params = OrchestratorParams(**(orch_config or {}).get("parameters", {}))
+
+    if orch_params.enabled:
+        asyncio.create_task(
+            run_orchestrator_scheduler(
+                instrument_ids=instrument_ids,
+                slow_stores=slow_stores,
+                latest_snapshots=latest_snapshots,
+                regime_detector=regime_detector,
+                redis_client=publisher._redis,
+                gate_map=orchestrator_gate_map,
+                param_adjustments=orchestrator_param_adj,
+                params=orch_params,
+            ),
+            name="orchestrator_scheduler",
+        )
+        logger.info("orchestrator_scheduler_task_launched", instruments=instrument_ids)
+    else:
+        logger.info("orchestrator_scheduler_skipped", reason="disabled in config")
 
     await consumer.subscribe(
         channels=[Channel.MARKET_SNAPSHOTS],
@@ -499,16 +616,28 @@ async def run_agent() -> None:
                 # Classify current session for session-aware overrides
                 session_info = classify_session(snapshot.timestamp)
 
+                # Keep latest snapshot and regime current for Claude scheduler
+                latest_snapshots[instrument] = snapshot
+                regime_detector.update(snapshot)
+
                 # Run this instrument's strategies
                 for strategy in strategies_by_instrument.get(instrument, []):
                     store = fast_store if strategy.name in _FAST_STRATEGIES else slow_store
                     if store.sample_count < strategy.min_history:
                         continue
 
+                    # Orchestrator gate map check (ORCH-12) — safe default True
+                    if not orchestrator_gate_map.get((instrument, strategy.name), True):
+                        continue  # strategy disabled by orchestrator for this instrument
+
                     # Apply session overrides temporarily
                     overrides = get_session_overrides(
                         session_config, strategy.name, session_info.session_type, instrument,
                     )
+                    # Merge orchestrator param adjustments (ORCH-11) — orchestrator wins
+                    orch_adj = orchestrator_param_adj.get((instrument, strategy.name), {})
+                    if orch_adj:
+                        overrides = {**overrides, **orch_adj}
                     originals = _apply_session_overrides(strategy, overrides)
 
                     try:

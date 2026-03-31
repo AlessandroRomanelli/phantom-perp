@@ -42,27 +42,56 @@
 <body class="text-gray-300 min-h-screen overflow-y-auto scrollbar-thin">
 
   <!-- Header -->
-  <header class="sticky top-0 z-50 bg-surface-50/90 backdrop-blur-md border-b border-gray-800/60">
+  <header id="site-header" class="sticky top-0 z-50 bg-surface-50/90 backdrop-blur-md border-b border-gray-800/60">
     <div class="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
       <div class="flex items-center gap-3">
         <h1 class="text-lg font-semibold text-white font-mono tracking-tight">phantom-perp</h1>
-        <span class="text-xs font-mono text-gray-500">v1.1</span>
+        <span class="text-xs font-mono text-gray-500">v1.2</span>
         <span id="ws-status" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-800 text-gray-400">
           <span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
           connecting
         </span>
       </div>
       <div class="flex items-center gap-4 text-xs font-mono text-gray-500">
-        <span id="clock"></span>
-        <span id="msg-count"></span>
+        <span id="clock" class="hidden sm:inline"></span>
+        <span id="msg-count" class="hidden sm:inline"></span>
+        <!-- Hamburger — mobile only -->
+        <button id="menu-toggle" class="sm:hidden flex flex-col gap-1 p-1.5 rounded hover:bg-gray-800 transition-colors" aria-label="Toggle menu" onclick="toggleMobileMenu()">
+          <span class="menu-bar block w-5 h-0.5 bg-gray-400 transition-all duration-200"></span>
+          <span class="menu-bar block w-5 h-0.5 bg-gray-400 transition-all duration-200"></span>
+          <span class="menu-bar block w-5 h-0.5 bg-gray-400 transition-all duration-200"></span>
+        </button>
       </div>
     </div>
   </header>
 
+  <!-- Mobile menu drawer — fixed, sits just below the header, full viewport width -->
+  <div id="mobile-menu"
+       class="sm:hidden hidden fixed left-0 right-0 z-40 border-b border-gray-800/60"
+       style="top: 49px; background: rgba(10,10,15,0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);">
+    <div class="px-4 py-3 space-y-3">
+      <!-- Clock + message count -->
+      <div class="flex items-center justify-between text-xs font-mono text-gray-400">
+        <span id="clock-mobile"></span>
+        <span id="msg-count-mobile"></span>
+      </div>
+      <!-- Strategy pills -->
+      <div>
+        <span class="text-gray-600 text-xs font-mono uppercase tracking-wider">Strategies</span>
+        <div class="flex flex-wrap gap-1.5 mt-1.5" id="strat-pills-mobile"></div>
+      </div>
+      <!-- Session -->
+      <div class="flex items-center gap-2 text-xs font-mono">
+        <span class="text-gray-500">Session:</span>
+        <span id="session-label-mobile" class="px-2 py-0.5 rounded text-xs font-medium"></span>
+      </div>
+    </div>
+  </div>
+
   <main class="max-w-[1600px] mx-auto px-4 py-4 space-y-4">
 
-    <!-- Strategy Overview -->
-    <section id="strategy-bar" class="flex items-center gap-3 text-xs font-mono">
+    <!-- Strategy Overview — desktop only -->
+    <section id="strategy-bar" class="hidden sm:flex items-center gap-3 text-xs font-mono">
       <span class="text-gray-500">Strategies:</span>
       <div class="flex gap-1.5" id="strat-pills"></div>
       <span class="text-gray-600 mx-2">|</span>
@@ -81,6 +110,7 @@
               <th class="text-right px-4 py-2.5">Mark Price</th>
               <th class="text-right px-4 py-2.5">Spread</th>
               <th class="text-right px-4 py-2.5">Funding</th>
+              <th class="text-right px-4 py-2.5">Open Interest</th>
               <th class="text-right px-4 py-2.5">Age</th>
               <th class="text-right px-4 py-2.5">Status</th>
             </tr>
@@ -92,8 +122,14 @@
 
     <!-- Feature Stores -->
     <section>
-      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Feature Stores</h2>
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Feature Stores <span class="text-gray-600 font-normal normal-case text-xs">(slow / fast bars)</span></h2>
       <div class="flex gap-2" id="feature-stores"></div>
+    </section>
+
+    <!-- Claude Market Analysis -->
+    <section>
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Claude Market Analysis</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3" id="claude-state"></div>
     </section>
 
     <!-- Portfolio Performance -->
@@ -196,7 +232,7 @@
   </main>
 
   <footer class="max-w-[1600px] mx-auto px-4 py-3 text-xs text-gray-600 font-mono">
-    phantom-perp v1.1 &middot; 7 strategies &middot; 5 instruments &middot; WebSocket live
+    phantom-perp v1.2 &middot; 10 strategies &middot; 3 crypto instruments &middot; WebSocket live
   </footer>
 
 <script>
@@ -206,7 +242,8 @@ const STRATEGIES = [
   {id:'momentum',label:'MOM'},{id:'mean_reversion',label:'MR'},
   {id:'liquidation_cascade',label:'LIQ'},{id:'correlation',label:'CORR'},
   {id:'regime_trend',label:'RT'},{id:'orderbook_imbalance',label:'OBI'},
-  {id:'vwap',label:'VWAP'}
+  {id:'vwap',label:'VWAP'},{id:'funding_arb',label:'FUND'},
+  {id:'claude_market_analysis',label:'CLAUDE'},{id:'oi_divergence',label:'OID'}
 ];
 
 let prevLengths = {};
@@ -258,27 +295,59 @@ function getSession() {
   return {label:'crypto_weekday', cls:'bg-cyan-900/40 text-accent-cyan'};
 }
 
+// ---- Mobile menu ----
+function toggleMobileMenu() {
+  const menu = document.getElementById('mobile-menu');
+  const bars = document.querySelectorAll('.menu-bar');
+  const open = !menu.classList.contains('hidden');
+  if (open) {
+    menu.classList.add('hidden');
+    bars[0].style.transform = '';
+    bars[1].style.opacity = '';
+    bars[2].style.transform = '';
+  } else {
+    // Pin the drawer top to the actual rendered header height
+    const headerH = document.getElementById('site-header').getBoundingClientRect().height;
+    menu.style.top = headerH + 'px';
+    menu.classList.remove('hidden');
+    // Animate to X
+    bars[0].style.transform = 'translateY(6px) rotate(45deg)';
+    bars[1].style.opacity = '0';
+    bars[2].style.transform = 'translateY(-6px) rotate(-45deg)';
+  }
+}
+
 // ---- Init static ----
 function initStratPills() {
-  const el = document.getElementById('strat-pills');
-  el.innerHTML = STRATEGIES.map(s =>
+  const pillHtml = STRATEGIES.map(s =>
     `<span class="px-2 py-0.5 rounded bg-blue-900/30 text-accent-blue text-xs">${s.label}</span>`
   ).join('');
+  document.getElementById('strat-pills').innerHTML = pillHtml;
+  document.getElementById('strat-pills-mobile').innerHTML = pillHtml;
 }
 
 function updateSession() {
   const s = getSession();
-  const el = document.getElementById('session-label');
-  el.textContent = s.label;
-  el.className = `px-2 py-0.5 rounded text-xs font-medium ${s.cls}`;
+  for (const id of ['session-label', 'session-label-mobile']) {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = s.label; el.className = `px-2 py-0.5 rounded text-xs font-medium ${s.cls}`; }
+  }
 }
 
 // ---- Renderers ----
+function fmtOI(val) {
+  const v = parseFloat(val);
+  if (!val || isNaN(v) || v === 0) return '--';
+  if (v >= 1_000_000) return (v / 1_000_000).toFixed(2) + 'M';
+  if (v >= 1_000) return (v / 1_000).toFixed(1) + 'k';
+  return v.toFixed(0);
+}
+
 function renderInstruments(instruments) {
   const body = document.getElementById('instruments-body');
   body.innerHTML = INSTRUMENTS.map(id => {
     const d = instruments[id];
-    if (!d) return `<tr><td class="px-4 py-2 text-gray-500">${id}</td><td colspan="5" class="px-4 py-2 text-gray-600 text-right">--</td></tr>`;
+    if (!d) return `<tr><td class="px-4 py-2 text-gray-500">${id}</td><td colspan="6" class="px-4 py-2 text-gray-600 text-right">--</td></tr>`;
     const ageStr = agoFromISO(d.timestamp);
     const ageSec = d.timestamp ? (Date.now() - new Date(d.timestamp).getTime())/1000 : 999;
     let statusCls, statusTxt;
@@ -291,6 +360,7 @@ function renderInstruments(instruments) {
       <td class="px-4 py-2 text-right text-white">$${d.mark_price}</td>
       <td class="px-4 py-2 text-right text-gray-400">${spread}</td>
       <td class="px-4 py-2 text-right text-gray-400">${d.funding_rate || '--'}</td>
+      <td class="px-4 py-2 text-right text-gray-300 font-mono">${fmtOI(d.open_interest)}</td>
       <td class="px-4 py-2 text-right text-gray-500">${ageStr}</td>
       <td class="px-4 py-2 text-right"><span class="${statusCls} font-semibold">${statusTxt}</span></td>
     </tr>`;
@@ -303,13 +373,126 @@ function renderFeatureStores(stores) {
     el.innerHTML = '<span class="text-gray-600 text-sm font-mono">Awaiting signals agent data</span>';
     return;
   }
-  el.innerHTML = INSTRUMENTS.map(id => {
-    const count = stores[id] || 0;
-    const color = count > 0 ? 'border-accent-green/30 text-accent-green' : 'border-gray-700 text-gray-600';
+  el.innerHTML = ['ETH-PERP','BTC-PERP','SOL-PERP'].map(id => {
+    const d = stores[id];
+    const slow = d?.slow ?? 0;
+    const fast = d?.fast ?? 0;
+    const ok = slow > 0 || fast > 0;
+    const color = ok ? 'border-accent-green/30 text-accent-green' : 'border-gray-700 text-gray-600';
     return `<div class="px-3 py-1.5 rounded border ${color} text-xs font-mono">
-      ${id} <span class="font-semibold ml-1">${count}</span>
+      ${id.replace('-PERP','')}
+      <span class="font-semibold ml-1" title="slow bars">${slow}</span>
+      <span class="text-gray-600 mx-0.5">/</span>
+      <span class="font-semibold" title="fast bars">${fast}</span>
     </div>`;
   }).join('');
+}
+
+// Track which Claude cards are expanded (persists across re-renders)
+const claudeExpanded = {};
+
+function toggleClaude(id) {
+  claudeExpanded[id] = !claudeExpanded[id];
+  // Re-render just this card so other cards aren't disturbed
+  const card = document.querySelector(`[data-claude-id="${id}"]`);
+  if (card) card.outerHTML = buildClaudeCard(id, window._lastClaudeState?.[id] || null);
+}
+
+function buildClaudeCard(id, s) {
+  const expanded = !!claudeExpanded[id];
+
+  if (!s) return `<div data-claude-id="${id}" class="bg-surface-100 rounded-lg border border-gray-800/60 p-3">
+    <div class="flex items-center justify-between">
+      <span class="text-white font-medium text-sm font-mono">${id}</span>
+      <span class="text-gray-600 text-xs">awaiting</span>
+    </div>
+    <div class="text-gray-600 text-xs font-mono mt-2">No analysis yet</div>
+  </div>`;
+
+  const dir = s.direction || 'NO_SIGNAL';
+  let dirCls, dirBg;
+  if (dir === 'LONG') { dirCls = 'text-accent-green glow-green'; dirBg = 'bg-green-900/20 border-green-800/40'; }
+  else if (dir === 'SHORT') { dirCls = 'text-accent-red glow-red'; dirBg = 'bg-red-900/20 border-red-800/40'; }
+  else { dirCls = 'text-gray-500'; dirBg = 'bg-surface-100 border-gray-800/60'; }
+
+  const conviction = s.conviction ? parseFloat(s.conviction) : 0;
+  const convBar = conviction > 0 ? convictionBar(conviction) : '<span class="text-gray-600">—</span>';
+  const regime = s.regime || '?';
+  const trigger = s.trigger || '';
+  const ts = s.timestamp ? agoFromISO(s.timestamp) : '--';
+  const vol = s.volatility_1h ? parseFloat(s.volatility_1h).toFixed(3) : '--';
+  const reasoning = s.reasoning || '';
+  const belowThreshold = s.below_threshold;
+  const emitted = s.signal_emitted;
+
+  // Status badge
+  let badge = '';
+  if (emitted) badge = '<span class="px-1.5 py-0.5 rounded text-[10px] bg-green-900/40 text-accent-green font-semibold">SIGNAL</span>';
+  else if (belowThreshold) badge = '<span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-900/40 text-accent-amber font-semibold">LOW CONV</span>';
+  else if (dir === 'NO_SIGNAL') badge = '<span class="px-1.5 py-0.5 rounded text-[10px] bg-gray-800 text-gray-500 font-semibold">PASS</span>';
+
+  // Entry/stop/tp
+  let priceRow = '';
+  if (s.entry_price) {
+    priceRow = `<div class="flex gap-3 text-[10px] font-mono mt-1">
+      <span class="text-gray-500">Entry <span class="text-gray-300">$${s.entry_price}</span></span>
+      ${s.stop_loss ? `<span class="text-gray-500">SL <span class="text-accent-red">$${s.stop_loss}</span></span>` : ''}
+      ${s.take_profit ? `<span class="text-gray-500">TP <span class="text-accent-green">$${s.take_profit}</span></span>` : ''}
+    </div>`;
+  }
+
+  // Chevron icon
+  const chevron = expanded
+    ? `<svg class="w-3.5 h-3.5 text-gray-500 transition-transform rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>`
+    : `<svg class="w-3.5 h-3.5 text-gray-500 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>`;
+
+  // Reasoning: 2-line clamp when collapsed, full when expanded
+  const reasoningBlock = reasoning ? `
+    <div class="text-gray-500 text-[11px] font-mono leading-relaxed mt-1.5 border-t border-gray-800/40 pt-1.5 ${expanded ? '' : 'line-clamp-2'}">${reasoning}</div>
+  ` : '';
+
+  // Extra detail rows shown only when expanded
+  let expandedDetail = '';
+  if (expanded) {
+    const extras = [];
+    if (s.market_context) extras.push(`<div class="text-gray-500 text-[11px] font-mono leading-relaxed"><span class="text-gray-600">context</span> ${s.market_context}</div>`);
+    if (s.risk_factors) extras.push(`<div class="text-gray-500 text-[11px] font-mono leading-relaxed"><span class="text-gray-600">risk</span> ${Array.isArray(s.risk_factors) ? s.risk_factors.join(', ') : s.risk_factors}</div>`);
+    if (s.time_horizon) extras.push(`<div class="font-mono text-[11px]"><span class="text-gray-600">horizon</span> <span class="text-gray-400">${s.time_horizon}</span></div>`);
+    if (s.trigger) extras.push(`<div class="font-mono text-[11px]"><span class="text-gray-600">trigger</span> <span class="text-gray-400">${s.trigger}</span></div>`);
+    if (extras.length) expandedDetail = `<div class="mt-2 space-y-1 border-t border-gray-800/30 pt-2">${extras.join('')}</div>`;
+  }
+
+  return `<div data-claude-id="${id}" class="bg-surface-100 rounded-lg border ${dirBg} p-3">
+    <button onclick="toggleClaude('${id}')" class="w-full text-left focus:outline-none">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+          <span class="text-white font-medium text-sm font-mono">${id.replace('-PERP','')}</span>
+          <span class="${dirCls} font-bold text-sm font-mono">${dir}</span>
+          ${badge}
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-gray-600 text-xs font-mono">${ts}</span>
+          ${chevron}
+        </div>
+      </div>
+      <div class="flex items-center gap-3 text-xs font-mono mb-2">
+        ${conviction > 0 ? `<div>${convBar}</div>` : ''}
+        <span class="text-gray-500">regime <span class="text-gray-300">${regime}</span></span>
+        <span class="text-gray-500">vol <span class="text-gray-300">${vol}</span></span>
+        ${!expanded && trigger ? `<span class="text-gray-600">${trigger}</span>` : ''}
+      </div>
+      ${priceRow}
+    </button>
+    ${reasoningBlock}
+    ${expandedDetail}
+  </div>`;
+}
+
+function renderClaudeState(claudeState) {
+  window._lastClaudeState = claudeState;
+  const el = document.getElementById('claude-state');
+  const instruments = ['ETH-PERP', 'BTC-PERP', 'SOL-PERP'];
+  el.innerHTML = instruments.map(id => buildClaudeCard(id, claudeState[id] || null)).join('');
 }
 
 function renderPortfolio(containerId, label, streams) {
@@ -601,6 +784,7 @@ function connect() {
       const data = JSON.parse(new TextDecoder().decode(e.data));
       renderInstruments(data.instruments || {});
       renderFeatureStores(data.feature_stores || {});
+      renderClaudeState(data.claude_state || {});
       renderPortfolio('portfolio-a', 'A (Autonomous)', data.streams || {});
       renderPortfolio('portfolio-b', 'B (User-Confirmed)', data.streams || {});
       renderFills(data.fills || []);
@@ -613,14 +797,18 @@ function connect() {
       // Header stats
       const total = Object.values(data.streams || {}).reduce((s, v) => s + (v.length || 0), 0);
       const active = Object.values(data.streams || {}).filter(v => (v.length || 0) > 0).length;
-      document.getElementById('msg-count').textContent = `${total.toLocaleString()} msgs / ${active} active streams`;
+      const countTxt = `${total.toLocaleString()} msgs / ${active} active`;
+      document.getElementById('msg-count').textContent = countTxt + ' streams';
+      document.getElementById('msg-count-mobile').textContent = countTxt;
     } catch {}
   };
 }
 
 // ---- Clock ----
 function updateClock() {
-  document.getElementById('clock').textContent = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+  const t = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+  document.getElementById('clock').textContent = t;
+  document.getElementById('clock-mobile').textContent = t;
 }
 
 // ---- Boot ----

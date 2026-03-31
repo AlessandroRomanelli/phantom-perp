@@ -7,6 +7,7 @@ clients every 2 seconds. Serves a single-page HTML dashboard at /.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 from pathlib import Path
 from typing import Any
@@ -89,7 +90,7 @@ async def _collect_state(r: aioredis.Redis) -> dict[str, Any]:
     per_instrument: dict[str, Any] = {}
     try:
         entries = await r.xrevrange("stream:market_snapshots", "+", "-", count=100)
-        for entry_id, fields in entries:
+        for _entry_id, fields in entries:
             parsed = _parse_entry(fields)
             if parsed and parsed.get("instrument") and parsed["instrument"] not in per_instrument:
                 per_instrument[parsed["instrument"]] = parsed
@@ -110,13 +111,34 @@ async def _collect_state(r: aioredis.Redis) -> dict[str, Any]:
         pass
 
     # Feature store status
-    store_status: dict[str, int] = {}
+    store_status: dict[str, Any] = {}
     try:
         data = await r.hgetall("phantom:feature_store_status")
-        store_status = {
+        # Redis keys are "ETH-PERP:slow" and "ETH-PERP:fast" — aggregate per instrument
+        raw: dict[str, int] = {
             (k.decode() if isinstance(k, bytes) else k): int(v)
             for k, v in data.items()
         }
+        # Build per-instrument dict with slow/fast breakdown
+        for key, count in raw.items():
+            if ":" in key:
+                instrument, speed = key.rsplit(":", 1)
+            else:
+                instrument, speed = key, "slow"
+            if instrument not in store_status:
+                store_status[instrument] = {"slow": 0, "fast": 0}
+            store_status[instrument][speed] = count
+    except Exception:
+        pass
+
+    # Claude last analysis state per instrument
+    claude_state: dict[str, Any] = {}
+    try:
+        data = await r.hgetall("phantom:claude:last_analysis")
+        for k, v in data.items():
+            instrument = k.decode() if isinstance(k, bytes) else k
+            with contextlib.suppress(Exception):
+                claude_state[instrument] = orjson.loads(v)
     except Exception:
         pass
 
@@ -144,6 +166,7 @@ async def _collect_state(r: aioredis.Redis) -> dict[str, Any]:
         "signals": recent_signals,
         "feature_stores": store_status,
         "fills": recent_fills[:20],
+        "claude_state": claude_state,
     }
 
 

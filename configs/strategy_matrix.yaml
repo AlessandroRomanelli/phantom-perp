@@ -65,3 +65,27 @@ strategies:
       - SOL-PERP
       # - QQQ-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
       # - SPY-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
+
+  claude_market_analysis:
+    enabled: true
+    instruments:
+      - ETH-PERP
+      - BTC-PERP
+      - SOL-PERP
+      # QQQ/SPY excluded: Claude analysis targets crypto perps only
+
+  oi_divergence:
+    enabled: true
+    instruments:
+      - ETH-PERP
+      - BTC-PERP
+      - SOL-PERP
+      # QQQ/SPY excluded: OI divergence is crypto-native (perpetuals OI data)
+
+  funding_arb:
+    enabled: true
+    instruments:
+      - ETH-PERP
+      - BTC-PERP
+      - SOL-PERP
+      # QQQ/SPY excluded: funding rates are crypto-perp-native (no equity perps)

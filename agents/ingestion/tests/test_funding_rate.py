@@ -17,11 +17,12 @@ def state() -> IngestionState:
     return IngestionState(instrument_id="ETH-PERP")
 
 
-def _make_funding_response() -> FundingRateResponse:
+def _make_funding_response(open_interest: Decimal = Decimal("0")) -> FundingRateResponse:
     return FundingRateResponse(
         product_id="ETH-PERP-INTX",
         funding_rate=Decimal("0.0001"),
         mark_price=Decimal("2230.60"),
+        open_interest=open_interest,
     )
 
 
@@ -86,6 +87,30 @@ class TestPollFundingOnce:
         call_kwargs = mock_client.get_funding_rate.call_args.kwargs
         assert call_kwargs["product_id"] == "BTC-PERP"
         assert state.last_funding_update is not None
+
+    @pytest.mark.asyncio
+    async def test_updates_open_interest_from_response(self, state: IngestionState) -> None:
+        mock_client = AsyncMock()
+        mock_client.get_funding_rate.return_value = _make_funding_response(
+            open_interest=Decimal("34109.86")
+        )
+
+        await poll_funding_once(mock_client, state)
+
+        assert state.open_interest == Decimal("34109.86")
+
+    @pytest.mark.asyncio
+    async def test_does_not_overwrite_oi_with_zero(self, state: IngestionState) -> None:
+        """If the API returns open_interest=0, do not clobber a previously good value."""
+        state.open_interest = Decimal("30000")
+        mock_client = AsyncMock()
+        mock_client.get_funding_rate.return_value = _make_funding_response(
+            open_interest=Decimal("0")
+        )
+
+        await poll_funding_once(mock_client, state)
+
+        assert state.open_interest == Decimal("30000")
 
     @pytest.mark.asyncio
     async def test_no_publish_without_publisher(self, state: IngestionState) -> None:

@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir .
 
 COPY libs/ libs/
 COPY agents/signals/ agents/signals/
+COPY agents/alpha/ agents/alpha/
 COPY configs/ configs/
 
 CMD ["python", "-m", "agents.signals.main"]

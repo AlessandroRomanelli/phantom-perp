@@ -21,21 +21,25 @@ class TestCooldownPerInstrument:
         assert len(eth_strategies) > 0, "Expected at least one strategy for ETH-PERP"
         assert len(btc_strategies) > 0, "Expected at least one strategy for BTC-PERP"
 
-        # Same strategy names should appear in both
-        eth_names = sorted(s.name for s in eth_strategies)
-        btc_names = sorted(s.name for s in btc_strategies)
-        assert eth_names == btc_names, (
-            f"Strategy names differ: ETH={eth_names}, BTC={btc_names}"
+        # Strategy sets may differ per instrument (e.g. OBI disabled on ETH-PERP)
+        # Find strategies that appear in both instruments
+        eth_names = {s.name for s in eth_strategies}
+        btc_names = {s.name for s in btc_strategies}
+        common_names = eth_names & btc_names
+        assert len(common_names) > 0, (
+            f"Expected at least one common strategy, got ETH={eth_names}, BTC={btc_names}"
         )
 
-        # But they must be distinct object instances
-        for eth_s in eth_strategies:
-            for btc_s in btc_strategies:
-                if eth_s.name == btc_s.name:
-                    assert id(eth_s) != id(btc_s), (
-                        f"Strategy '{eth_s.name}' shares the same object "
-                        f"instance across instruments"
-                    )
+        # Strategies present in both instruments must be distinct object instances
+        eth_by_name = {s.name: s for s in eth_strategies}
+        btc_by_name = {s.name: s for s in btc_strategies}
+        for name in common_names:
+            eth_s = eth_by_name[name]
+            btc_s = btc_by_name[name]
+            assert id(eth_s) != id(btc_s), (
+                f"Strategy '{name}' shares the same object "
+                f"instance across instruments"
+            )
 
     def test_cooldown_per_instrument_isolation(self) -> None:
         """Prove that signaling on ETH does not suppress the same strategy on BTC."""

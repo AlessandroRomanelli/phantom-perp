@@ -16,32 +16,51 @@ from agents.alpha.scorecard import StrategyScorecard
 
 # Per-regime multipliers: strategies that perform better in each regime
 # get a conviction boost; strategies that perform worse get dampened.
+# New M002 sources (CONTRARIAN_FUNDING, OI_DIVERGENCE, CLAUDE_MARKET_ANALYSIS)
+# are included with appropriate regime-specific factors.
 _REGIME_BOOSTS: dict[MarketRegime, dict[SignalSource, float]] = {
     MarketRegime.TRENDING_UP: {
         SignalSource.MOMENTUM: 1.3,
         SignalSource.MEAN_REVERSION: 0.7,
+        # Funding arb less useful in strong trends; dampen contrarian source
+        SignalSource.CONTRARIAN_FUNDING: 0.7,
+        # Qualitative signal: neutral across all regimes
+        SignalSource.CLAUDE_MARKET_ANALYSIS: 1.0,
     },
     MarketRegime.TRENDING_DOWN: {
         SignalSource.MOMENTUM: 1.3,
         SignalSource.MEAN_REVERSION: 0.7,
+        SignalSource.CONTRARIAN_FUNDING: 0.7,
+        SignalSource.CLAUDE_MARKET_ANALYSIS: 1.0,
     },
     MarketRegime.RANGING: {
         SignalSource.MEAN_REVERSION: 1.3,
         SignalSource.MOMENTUM: 0.7,
         SignalSource.FUNDING_ARB: 1.2,
+        # Funding dislocations most exploitable in ranging markets
+        SignalSource.CONTRARIAN_FUNDING: 1.3,
+        SignalSource.CLAUDE_MARKET_ANALYSIS: 1.0,
     },
     MarketRegime.HIGH_VOLATILITY: {
         SignalSource.MOMENTUM: 0.8,
         SignalSource.ORDERBOOK_IMBALANCE: 1.2,
         SignalSource.LIQUIDATION_CASCADE: 1.3,
+        # OI divergence and funding signals most reliable in volatile markets
+        SignalSource.CONTRARIAN_FUNDING: 1.3,
+        SignalSource.OI_DIVERGENCE: 1.3,
+        SignalSource.CLAUDE_MARKET_ANALYSIS: 1.0,
     },
     MarketRegime.LOW_VOLATILITY: {
         SignalSource.FUNDING_ARB: 1.3,
         SignalSource.MOMENTUM: 0.7,
+        SignalSource.CLAUDE_MARKET_ANALYSIS: 1.0,
     },
     MarketRegime.SQUEEZE: {
         SignalSource.MOMENTUM: 1.2,
         SignalSource.ORDERBOOK_IMBALANCE: 1.2,
+        # OI divergence highly relevant before/during squeeze events
+        SignalSource.OI_DIVERGENCE: 1.3,
+        SignalSource.CLAUDE_MARKET_ANALYSIS: 1.0,
     },
 }
 
@@ -184,13 +203,13 @@ def _weighted_conviction(
     regime: MarketRegime,
     scorecard: StrategyScorecard,
 ) -> float:
-    """Aggregate weighted conviction for a group of same-direction signals."""
+    """Aggregate weighted conviction for a group of same-direction signals.
+
+    Returns the raw weighted sum (not a normalized average) so that regime
+    boosts are semantically effective in 1v1 conflict resolution.  Normalizing
+    by weight_sum would cancel any boost applied to a single-signal side,
+    making regime weighting a no-op for the most common conflict case.
+    """
     if not signals:
         return 0.0
-    total = 0.0
-    weight_sum = 0.0
-    for s in signals:
-        w = _signal_weight(s, regime, scorecard)
-        total += s.conviction * w
-        weight_sum += w
-    return total / weight_sum if weight_sum > 0 else 0.0
+    return sum(s.conviction * _signal_weight(s, regime, scorecard) for s in signals)

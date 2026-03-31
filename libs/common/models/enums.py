@@ -57,6 +57,7 @@ class SignalSource(str, Enum):
     MOMENTUM = "momentum"
     MEAN_REVERSION = "mean_reversion"
     FUNDING_ARB = "funding_arb"
+    CONTRARIAN_FUNDING = "contrarian_funding"
     ORDERBOOK_IMBALANCE = "orderbook_imbalance"
     LIQUIDATION_CASCADE = "liquidation_cascade"
     SENTIMENT = "sentiment"
@@ -65,6 +66,8 @@ class SignalSource(str, Enum):
     REGIME_TREND = "regime_trend"
     VWAP = "vwap"
     VOLUME_PROFILE = "volume_profile"
+    CLAUDE_MARKET_ANALYSIS = "claude_market_analysis"
+    OI_DIVERGENCE = "oi_divergence"
 
 
 class MarketRegime(str, Enum):

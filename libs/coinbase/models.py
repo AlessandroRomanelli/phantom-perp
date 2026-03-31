@@ -68,13 +68,14 @@ class FundingRateResponse(BaseModel):
     """Funding rate extracted from product details.
 
     Advanced Trade has no dedicated funding endpoint. The funding rate
-    is extracted from the product details response under
+    and open interest are extracted from the product details response under
     future_product_details.perpetual_details.
     """
 
     product_id: str
     funding_rate: Decimal
     mark_price: Decimal = Decimal("0")
+    open_interest: Decimal = Decimal("0")
 
 
 class OrderResponse(BaseModel):
