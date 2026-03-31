@@ -73,10 +73,19 @@ def vwap_yaml(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def funding_arb_yaml(tmp_path: Path) -> Path:
-    """Copy funding_arb.yaml to a temp dir (no instruments block)."""
-    src = CONFIGS_DIR / "funding_arb.yaml"
+    """Write a minimal funding_arb-like YAML with no instruments block (tests creation path)."""
     dst = tmp_path / "funding_arb.yaml"
-    shutil.copy2(src, dst)
+    minimal = {
+        "strategy": {"name": "funding_arb", "enabled": True, "weight": 0.20},
+        "parameters": {
+            "zscore_threshold": 2.0,
+            "min_conviction": 0.55,
+            "cooldown_bars": 12,
+            "portfolio_a_min_conviction": 0.70,
+        },
+    }
+    import yaml as _yaml
+    dst.write_text(_yaml.safe_dump(minimal))
     return dst
 
 

@@ -151,6 +151,7 @@ class TestOrderbookImbalanceStrategy:
             lookback_bars=10,
             imbalance_threshold=0.0,  # Disable threshold for this test
             min_conviction=0.0,
+            portfolio_a_min_conviction=0.0,  # Disable portfolio gate to test TWA math only
             cooldown_bars=0,
         )
         strategy = OrderbookImbalanceStrategy(params=params)
@@ -237,13 +238,13 @@ class TestOrderbookImbalanceStrategy:
             assert signals[0].suggested_target == PortfolioTarget.B
 
     def test_portfolio_b_low_conviction(self) -> None:
-        """When conviction < portfolio_a_min_conviction, target is Portfolio B."""
+        """OBI is Portfolio A only — when conviction < portfolio_a_min_conviction, no signal."""
         params = OrderbookImbalanceParams(
             lookback_bars=10,
             imbalance_threshold=0.25,
             min_conviction=0.0,
             cooldown_bars=0,
-            portfolio_a_min_conviction=0.99,  # Very high threshold -> always B
+            portfolio_a_min_conviction=0.99,  # Very high threshold → conviction never reaches it
         )
         strategy = OrderbookImbalanceStrategy(params=params)
         imbalances = [0.0] * 14 + [0.5] * 16
@@ -251,8 +252,8 @@ class TestOrderbookImbalanceStrategy:
 
         signals = strategy.evaluate(snap, store)
 
-        assert len(signals) == 1
-        assert signals[0].suggested_target == PortfolioTarget.B
+        # OBI is Portfolio A only — sub-threshold conviction returns no signal
+        assert len(signals) == 0
 
     def test_signal_metadata(self) -> None:
         """Emitted signal has metadata with tw_imbalance, spread_bps, and time_horizon."""

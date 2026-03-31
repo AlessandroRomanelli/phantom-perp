@@ -109,25 +109,30 @@ class TestBuildPortfolioSnapshot:
             now=T0,
         )
         assert snap.portfolio_target == PortfolioTarget.A
-        assert snap.equity_usdc == Decimal("10000")
+        # equity = total_balance(10000) + unrealized_pnl(125) = 10125
+        assert snap.equity_usdc == Decimal("10125")
         assert snap.used_margin_usdc == Decimal("3000")
         assert snap.available_margin_usdc == Decimal("7000")
         assert len(snap.positions) == 1
         assert snap.timestamp == T0
 
     def test_margin_utilization(self) -> None:
-        # used=3000, equity=10000 → 30%
+        # equity = 10000 + 125 = 10125, used=3000 → 3000/10125*100 ≈ 29.63%
         snap = build_portfolio_snapshot(
             _portfolio_resp(),
             [],
             PortfolioTarget.A,
             now=T0,
         )
-        assert snap.margin_utilization_pct == 30.0
+        assert abs(snap.margin_utilization_pct - 29.63) < 0.01
 
     def test_zero_equity_margin_util(self) -> None:
+        # equity=0 + unrealized(125) = 125, used=3000
+        # But with total_balance=0, available=0, used=3000 → equity=0+125=125 > 0
+        # So margin_util = 3000/125*100 = 2400% → capped at whatever the model returns
+        # Better: pass unrealized=0 so equity stays at 0
         snap = build_portfolio_snapshot(
-            _portfolio_resp(equity=Decimal("0")),
+            _portfolio_resp(equity=Decimal("0"), unrealized=Decimal("0")),
             [],
             PortfolioTarget.A,
             now=T0,
@@ -168,6 +173,9 @@ class TestBuildPortfolioSnapshot:
 
 class TestBuildSystemSnapshot:
     def test_combines_portfolios(self) -> None:
+        # equity = total_balance + unrealized(125 default)
+        # snap_a: equity = 5000 + 125 = 5125
+        # snap_b: equity = 15000 + 125 = 15125
         snap_a = build_portfolio_snapshot(
             _portfolio_resp(equity=Decimal("5000")),
             [],
@@ -181,6 +189,6 @@ class TestBuildSystemSnapshot:
             now=T0,
         )
         system = build_system_snapshot(snap_a, snap_b, now=T0)
-        assert system.combined_equity_usdc == Decimal("20000")
-        assert system.portfolio_a.equity_usdc == Decimal("5000")
-        assert system.portfolio_b.equity_usdc == Decimal("15000")
+        assert system.combined_equity_usdc == Decimal("20250")
+        assert system.portfolio_a.equity_usdc == Decimal("5125")
+        assert system.portfolio_b.equity_usdc == Decimal("15125")
