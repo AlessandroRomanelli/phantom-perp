@@ -205,6 +205,58 @@ class TestCreateOrder:
                     "ETH-PERP-INTX", "BUY", Decimal("1"),
                 )
 
+    async def test_stop_market_maps_to_stop_limit_with_slippage(
+        self, client: CoinbaseRESTClient,
+    ) -> None:
+        """STOP_MARKET orders must be translated to stop_limit_stop_limit_gtc
+        with a 1% slippage buffer: SELL side limit = stop * 0.99,
+        BUY side limit = stop * 1.01."""
+        _success_response = {
+            "success": True,
+            "success_response": {
+                "order_id": "sl-ord",
+                "product_id": "ETH-PERP-INTX",
+                "status": "PENDING",
+            },
+        }
+
+        # --- SELL stop (stop-loss on a long position) ---
+        with respx.mock(base_url="https://api.coinbase.com") as mock:
+            route = mock.post("/api/v3/brokerage/orders").mock(
+                return_value=Response(200, json=_success_response)
+            )
+            await client.create_order(
+                product_id="ETH-PERP-INTX",
+                side="SELL",
+                size=Decimal("1.0"),
+                order_type="STOP_MARKET",
+                stop_price=Decimal("2000.00"),
+            )
+            import json as _json
+            body = _json.loads(route.calls[0].request.content)
+            cfg = body["order_configuration"]["stop_limit_stop_limit_gtc"]
+            assert cfg["stop_price"] == "2000.00"
+            # SELL: limit = stop * 0.99 = 1980.0000
+            assert Decimal(cfg["limit_price"]) == Decimal("2000.00") * Decimal("0.99")
+
+        # --- BUY stop (stop-loss on a short position) ---
+        with respx.mock(base_url="https://api.coinbase.com") as mock:
+            route = mock.post("/api/v3/brokerage/orders").mock(
+                return_value=Response(200, json=_success_response)
+            )
+            await client.create_order(
+                product_id="ETH-PERP-INTX",
+                side="BUY",
+                size=Decimal("1.0"),
+                order_type="STOP_MARKET",
+                stop_price=Decimal("2500.00"),
+            )
+            body = _json.loads(route.calls[0].request.content)
+            cfg = body["order_configuration"]["stop_limit_stop_limit_gtc"]
+            assert cfg["stop_price"] == "2500.00"
+            # BUY: limit = stop * 1.01 = 2525.0000
+            assert Decimal(cfg["limit_price"]) == Decimal("2500.00") * Decimal("1.01")
+
 
 @pytest.mark.asyncio
 class TestCancelOrder:

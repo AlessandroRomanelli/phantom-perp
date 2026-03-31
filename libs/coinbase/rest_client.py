@@ -353,6 +353,22 @@ class CoinbaseRESTClient:
                 "limit_price": str(limit_price) if limit_price else "0",
                 "stop_price": str(stop_price) if stop_price else "0",
             }
+        elif order_type == "STOP_MARKET":
+            # Coinbase Advanced Trade has no native stop-market type.
+            # Map to stop_limit_stop_limit_gtc with a 1% slippage buffer so
+            # the limit price is guaranteed to fill against the stop trigger.
+            # SELL stops: limit = stop * 0.99 (willing to sell 1% below stop)
+            # BUY  stops: limit = stop * 1.01 (willing to buy 1% above stop)
+            effective_stop = stop_price or Decimal("0")
+            if side.upper() == "SELL":
+                slippage_limit = effective_stop * Decimal("0.99")
+            else:
+                slippage_limit = effective_stop * Decimal("1.01")
+            order_config["stop_limit_stop_limit_gtc"] = {
+                "base_size": str(size),
+                "limit_price": str(slippage_limit),
+                "stop_price": str(effective_stop),
+            }
 
         body: dict[str, Any] = {
             "product_id": product_id,
