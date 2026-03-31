@@ -13,7 +13,7 @@ from libs.coinbase.auth import CoinbaseAuth
 from libs.coinbase.rate_limiter import RateLimiter
 from libs.coinbase.rest_client import CoinbaseRESTClient
 from libs.common.constants import DEFAULT_REST_BASE_URL
-from libs.common.models.enums import PortfolioTarget
+from libs.common.models.enums import Route
 
 
 class CoinbaseClientPool:
@@ -55,11 +55,11 @@ class CoinbaseClientPool:
             portfolio_uuid=portfolio_uuid_b,
         )
         self._clients = {
-            PortfolioTarget.A: self._client_a,
-            PortfolioTarget.B: self._client_b,
+            Route.A: self._client_a,
+            Route.B: self._client_b,
         }
 
-    def get_client(self, target: PortfolioTarget) -> CoinbaseRESTClient:
+    def get_client(self, target: Route) -> CoinbaseRESTClient:
         """Get the REST client for a specific portfolio.
 
         Args:

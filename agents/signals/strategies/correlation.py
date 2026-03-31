@@ -20,7 +20,7 @@ from typing import Any
 import numpy as np
 
 from libs.common.instruments import get_instrument
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
 from libs.common.utils import generate_id, round_to_tick, utc_now
@@ -51,8 +51,8 @@ class CorrelationParams:
     funding_rate_boost: float = 0.10
     funding_z_score_threshold: float = 1.5
     funding_min_samples: int = 10
-    # Portfolio A routing (CORR-03)
-    portfolio_a_min_conviction: float = 0.70
+    # Route A routing (CORR-03)
+    route_a_min_conviction: float = 0.70
 
 
 class CorrelationStrategy(SignalStrategy):
@@ -102,9 +102,9 @@ class CorrelationStrategy(SignalStrategy):
                 funding_min_samples=p.get(
                     "funding_min_samples", self._params.funding_min_samples,
                 ),
-                portfolio_a_min_conviction=p.get(
-                    "portfolio_a_min_conviction",
-                    self._params.portfolio_a_min_conviction,
+                route_a_min_conviction=p.get(
+                    "route_a_min_conviction",
+                    self._params.route_a_min_conviction,
                 ),
             )
 
@@ -242,11 +242,11 @@ class CorrelationStrategy(SignalStrategy):
         if conviction < p.min_conviction:
             return []
 
-        # Portfolio A routing (CORR-03, D-10)
-        suggested_target = (
-            PortfolioTarget.A
-            if conviction >= p.portfolio_a_min_conviction
-            else PortfolioTarget.B
+        # Route A routing (CORR-03, D-10)
+        suggested_route = (
+            Route.A
+            if conviction >= p.route_a_min_conviction
+            else Route.B
         )
 
         entry = snapshot.last_price
@@ -284,7 +284,7 @@ class CorrelationStrategy(SignalStrategy):
             source=SignalSource.CORRELATION,
             time_horizon=timedelta(hours=6),
             reasoning=reasoning,
-            suggested_target=suggested_target,
+            suggested_route=suggested_route,
             entry_price=entry,
             stop_loss=stop_loss,
             take_profit=take_profit,

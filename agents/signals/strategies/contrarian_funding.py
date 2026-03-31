@@ -24,7 +24,7 @@ import numpy as np
 
 from agents.signals.strategies.base import SignalStrategy
 from libs.common.instruments import get_instrument
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.signal import StandardSignal
 from libs.common.utils import generate_id, round_to_tick, utc_now
 from libs.indicators.volatility import atr
@@ -51,7 +51,7 @@ class ContrarianFundingParams:
     stop_loss_atr_mult: float = 1.5   # Tighter SL — contrarian trades cut losses fast
     take_profit_atr_mult: float = 3.0  # Wider TP — target is mean-reversion, not funding
     cooldown_bars: int = 12
-    portfolio_a_min_conviction: float = 0.70
+    route_a_min_conviction: float = 0.70
     enabled: bool = True
 
 
@@ -110,9 +110,9 @@ class ContrarianFundingStrategy(SignalStrategy):
                     "take_profit_atr_mult", self._params.take_profit_atr_mult,
                 ),
                 cooldown_bars=p.get("cooldown_bars", self._params.cooldown_bars),
-                portfolio_a_min_conviction=p.get(
-                    "portfolio_a_min_conviction",
-                    self._params.portfolio_a_min_conviction,
+                route_a_min_conviction=p.get(
+                    "route_a_min_conviction",
+                    self._params.route_a_min_conviction,
                 ),
                 enabled=p.get("enabled", self._params.enabled),
             )
@@ -236,10 +236,10 @@ class ContrarianFundingStrategy(SignalStrategy):
             )
 
         # Portfolio A routing for high-conviction signals
-        suggested_target = (
-            PortfolioTarget.A
-            if conviction >= p.portfolio_a_min_conviction
-            else PortfolioTarget.B
+        suggested_route = (
+            Route.A
+            if conviction >= p.route_a_min_conviction
+            else Route.B
         )
 
         reasoning = (
@@ -258,7 +258,7 @@ class ContrarianFundingStrategy(SignalStrategy):
             source=SignalSource.CONTRARIAN_FUNDING,
             time_horizon=timedelta(hours=p.max_holding_hours),
             reasoning=reasoning,
-            suggested_target=suggested_target,
+            suggested_route=suggested_route,
             entry_price=entry,
             stop_loss=stop_loss,
             take_profit=take_profit,

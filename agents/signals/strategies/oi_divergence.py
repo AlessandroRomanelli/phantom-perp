@@ -29,7 +29,7 @@ import numpy as np
 
 from agents.signals.strategies.base import SignalStrategy
 from libs.common.instruments import get_instrument
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.signal import StandardSignal
 from libs.common.utils import generate_id, round_to_tick, utc_now
 from libs.indicators.volatility import atr
@@ -54,7 +54,7 @@ class OIDivergenceParams:
     min_conviction: float = 0.45
     cooldown_bars: int = 12
     max_holding_hours: int = 8
-    portfolio_a_min_conviction: float = 0.70
+    route_a_min_conviction: float = 0.70
     enabled: bool = True
 
 
@@ -108,9 +108,9 @@ class OIDivergenceStrategy(SignalStrategy):
                 max_holding_hours=p.get(
                     "max_holding_hours", self._params.max_holding_hours,
                 ),
-                portfolio_a_min_conviction=p.get(
-                    "portfolio_a_min_conviction",
-                    self._params.portfolio_a_min_conviction,
+                route_a_min_conviction=p.get(
+                    "route_a_min_conviction",
+                    self._params.route_a_min_conviction,
                 ),
                 enabled=p.get("enabled", self._params.enabled),
             )
@@ -253,10 +253,10 @@ class OIDivergenceStrategy(SignalStrategy):
             )
 
         # Portfolio routing: high conviction → A, else → B
-        suggested_target = (
-            PortfolioTarget.A
-            if conviction >= p.portfolio_a_min_conviction
-            else PortfolioTarget.B
+        suggested_route = (
+            Route.A
+            if conviction >= p.route_a_min_conviction
+            else Route.B
         )
 
         reasoning = (
@@ -275,7 +275,7 @@ class OIDivergenceStrategy(SignalStrategy):
             source=SignalSource.OI_DIVERGENCE,
             time_horizon=timedelta(hours=p.max_holding_hours),
             reasoning=reasoning,
-            suggested_target=suggested_target,
+            suggested_route=suggested_route,
             entry_price=entry,
             stop_loss=stop_loss,
             take_profit=take_profit,

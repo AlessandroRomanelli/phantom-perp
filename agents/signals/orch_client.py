@@ -112,7 +112,7 @@ def _build_orchestrator_system_prompt() -> str:
         "1. Enable strategies that are well-suited to the current regime and conditions.\n"
         "2. Disable strategies that are likely to generate false signals in the current regime.\n"
         "3. Suggest param_adjustments only for known tunable parameters "
-        "(min_conviction, portfolio_a_min_conviction, cooldown_bars, stop_loss_atr_mult, "
+        "(min_conviction, route_a_min_conviction, cooldown_bars, stop_loss_atr_mult, "
         "take_profit_atr_mult, weight, funding_rate_boost, adx_threshold).\n"
         "4. Keep param_adjustments minimal — only adjust when there is strong evidence "
         "from the market data.\n"

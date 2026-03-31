@@ -17,7 +17,7 @@ parameters:
   cooldown_bars: 16
   trend_reject_threshold: 0.6
   extended_deviation_threshold: 0.5
-  portfolio_a_min_conviction: 0.85
+  route_a_min_conviction: 0.85
   vol_lookback: 10
 
 instruments:

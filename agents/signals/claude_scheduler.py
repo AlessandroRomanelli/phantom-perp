@@ -27,7 +27,7 @@ from agents.signals.claude_market_client import (
 )
 from libs.common.models.enums import (
     MarketRegime,
-    PortfolioTarget,
+    Route,
     PositionSide,
     SignalSource,
 )
@@ -335,9 +335,9 @@ async def _process_instrument(
     time_horizon_hours: float = validated.get("time_horizon_hours", params.default_time_horizon_hours)
 
     # Portfolio routing: high conviction → A, otherwise None (router decides)
-    suggested_target: PortfolioTarget | None = None
-    if conviction >= params.portfolio_a_min_conviction:
-        suggested_target = PortfolioTarget.A
+    suggested_route: Route | None = None
+    if conviction >= params.route_a_min_conviction:
+        suggested_route = Route.A
 
     signal = StandardSignal(
         signal_id=generate_id("claude"),
@@ -348,7 +348,7 @@ async def _process_instrument(
         source=SignalSource.CLAUDE_MARKET_ANALYSIS,
         time_horizon=timedelta(hours=time_horizon_hours),
         reasoning=str(validated.get("reasoning", "")),
-        suggested_target=suggested_target,
+        suggested_route=suggested_route,
         entry_price=validated.get("entry_price"),
         stop_loss=validated.get("stop_loss"),
         take_profit=validated.get("take_profit"),
@@ -458,6 +458,6 @@ def _load_params(instrument_id: str) -> ClaudeMarketAnalysisParams:
         analysis_interval_seconds=p.get("analysis_interval_seconds", 300),
         max_queue_size=p.get("max_queue_size", 50),
         min_conviction=p.get("min_conviction", 0.50),
-        portfolio_a_min_conviction=p.get("portfolio_a_min_conviction", 0.75),
+        route_a_min_conviction=p.get("route_a_min_conviction", 0.75),
         default_time_horizon_hours=p.get("default_time_horizon_hours", 4.0),
     )

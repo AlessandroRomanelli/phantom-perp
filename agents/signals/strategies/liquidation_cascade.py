@@ -26,7 +26,7 @@ import numpy as np
 import structlog
 
 from libs.common.instruments import get_instrument
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
 from libs.common.utils import generate_id, round_to_tick, utc_now
@@ -77,7 +77,7 @@ class LiquidationCascadeParams:
     heatmap_fallback_on_missing: bool = True
 
     # Portfolio A routing — require high conviction for autonomous execution
-    portfolio_a_min_conviction: float = 0.85
+    route_a_min_conviction: float = 0.85
 
     # Backward compatibility aliases
     @property
@@ -170,8 +170,8 @@ class LiquidationCascadeStrategy(SignalStrategy):
                 heatmap_fallback_on_missing=p.get(
                     "heatmap_fallback_on_missing", self._params.heatmap_fallback_on_missing,
                 ),
-                portfolio_a_min_conviction=p.get(
-                    "portfolio_a_min_conviction", self._params.portfolio_a_min_conviction,
+                route_a_min_conviction=p.get(
+                    "route_a_min_conviction", self._params.route_a_min_conviction,
                 ),
             )
 
@@ -407,10 +407,10 @@ class LiquidationCascadeStrategy(SignalStrategy):
         }
         metadata.update(heatmap_metadata)
 
-        suggested_target = (
-            PortfolioTarget.A
-            if conviction >= p.portfolio_a_min_conviction
-            else PortfolioTarget.B
+        suggested_route = (
+            Route.A
+            if conviction >= p.route_a_min_conviction
+            else Route.B
         )
 
         signal = StandardSignal(
@@ -422,7 +422,7 @@ class LiquidationCascadeStrategy(SignalStrategy):
             source=SignalSource.LIQUIDATION_CASCADE,
             time_horizon=timedelta(hours=2),
             reasoning=reasoning,
-            suggested_target=suggested_target,
+            suggested_route=suggested_route,
             entry_price=entry,
             stop_loss=stop_loss,
             take_profit=take_profit,

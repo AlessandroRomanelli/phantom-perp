@@ -23,7 +23,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from libs.common.instruments import get_instrument
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
 from libs.common.utils import generate_id, round_to_tick, utc_now
@@ -61,7 +61,7 @@ class MomentumParams:
     # Phase 2 additions
     vol_lookback: int = 10
     vol_min_ratio: float = 0.5
-    portfolio_a_min_conviction: float = 0.75
+    route_a_min_conviction: float = 0.75
     swing_lookback: int = 20
     swing_order: int = 3
     # Phase 4 additions: funding rate boost
@@ -107,8 +107,8 @@ class MomentumStrategy(SignalStrategy):
                 cooldown_bars=p.get("cooldown_bars", self._params.cooldown_bars),
                 vol_lookback=p.get("vol_lookback", self._params.vol_lookback),
                 vol_min_ratio=p.get("vol_min_ratio", self._params.vol_min_ratio),
-                portfolio_a_min_conviction=p.get(
-                    "portfolio_a_min_conviction", self._params.portfolio_a_min_conviction,
+                route_a_min_conviction=p.get(
+                    "route_a_min_conviction", self._params.route_a_min_conviction,
                 ),
                 swing_lookback=p.get("swing_lookback", self._params.swing_lookback),
                 swing_order=p.get("swing_order", self._params.swing_order),
@@ -275,11 +275,11 @@ class MomentumStrategy(SignalStrategy):
                 stop_loss = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)), tick_size)
             take_profit = round_to_tick(entry - atr_d * Decimal(str(p.take_profit_atr_mult)), tick_size)
 
-        # Portfolio A routing (MOM-04)
-        suggested_target = (
-            PortfolioTarget.A
-            if conviction >= p.portfolio_a_min_conviction
-            else PortfolioTarget.B
+        # Route A routing (MOM-04)
+        suggested_route = (
+            Route.A
+            if conviction >= p.route_a_min_conviction
+            else Route.B
         )
 
         # Compute volatility percentile for metadata
@@ -318,7 +318,7 @@ class MomentumStrategy(SignalStrategy):
             source=SignalSource.MOMENTUM,
             time_horizon=timedelta(hours=4),
             reasoning=reasoning,
-            suggested_target=suggested_target,
+            suggested_route=suggested_route,
             entry_price=entry,
             stop_loss=stop_loss,
             take_profit=take_profit,

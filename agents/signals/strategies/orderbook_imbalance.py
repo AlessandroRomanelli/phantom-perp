@@ -18,7 +18,7 @@ from typing import Any
 import numpy as np
 
 from libs.common.instruments import get_instrument
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
 from libs.common.utils import generate_id, round_to_tick, utc_now
@@ -40,7 +40,7 @@ class OrderbookImbalanceParams:
     take_profit_atr_mult: float = 2.0
     min_conviction: float = 0.45       # Higher bar due to noisy data (D-10)
     cooldown_bars: int = 3             # Short cooldown for frequent firing (D-09)
-    portfolio_a_min_conviction: float = 0.65  # Portfolio A threshold (OBI-04)
+    route_a_min_conviction: float = 0.65  # Route A threshold (OBI-04)
     enabled: bool = True
 
 
@@ -76,9 +76,9 @@ class OrderbookImbalanceStrategy(SignalStrategy):
                 ),
                 min_conviction=p.get("min_conviction", self._params.min_conviction),
                 cooldown_bars=p.get("cooldown_bars", self._params.cooldown_bars),
-                portfolio_a_min_conviction=p.get(
-                    "portfolio_a_min_conviction",
-                    self._params.portfolio_a_min_conviction,
+                route_a_min_conviction=p.get(
+                    "route_a_min_conviction",
+                    self._params.route_a_min_conviction,
                 ),
                 enabled=p.get("enabled", self._params.enabled),
             )
@@ -169,11 +169,11 @@ class OrderbookImbalanceStrategy(SignalStrategy):
         if conviction < p.min_conviction:
             return []
 
-        # Portfolio A only — short-horizon signals are not suitable for
-        # user-confirmed Portfolio B (opportunity gone before confirmation).
-        if conviction < p.portfolio_a_min_conviction:
+        # Route A only — short-horizon signals are not suitable for
+        # user-confirmed Route B (opportunity gone before confirmation).
+        if conviction < p.route_a_min_conviction:
             return []
-        suggested_target = PortfolioTarget.A
+        suggested_route = Route.A
 
         # Entry, stop, take profit
         entry = snapshot.last_price
@@ -200,7 +200,7 @@ class OrderbookImbalanceStrategy(SignalStrategy):
             source=SignalSource.ORDERBOOK_IMBALANCE,
             time_horizon=timedelta(hours=1),
             reasoning=reasoning,
-            suggested_target=suggested_target,
+            suggested_route=suggested_route,
             entry_price=entry,
             stop_loss=stop_loss,
             take_profit=take_profit,

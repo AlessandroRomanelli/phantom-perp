@@ -59,13 +59,13 @@ class TunerRepository:
     async def get_fills_by_strategy(
         self, portfolio_target: str = "autonomous", days: int = 30
     ) -> list[AttributedFill]:
-        """Query fills with strategy attribution, filtered by portfolio and time window.
+        """Query fills with strategy attribution, filtered by route and time window.
 
         Returns fills INNER JOINed with order_signals — only fills with attribution
         are returned. This satisfies DATA-01 and DATA-04.
 
         Args:
-            portfolio_target: PortfolioTarget.value to filter by (e.g. "autonomous").
+            portfolio_target: Route.value to filter by (e.g. "autonomous").
             days: Rolling lookback window in days.
 
         Returns:
@@ -109,7 +109,7 @@ class TunerRepository:
         then filled_at. Satisfies DATA-03.
 
         Args:
-            portfolio_target: PortfolioTarget.value to filter by.
+            portfolio_target: Route.value to filter by.
             days: Rolling lookback window in days.
 
         Returns:
@@ -152,7 +152,7 @@ class TunerRepository:
         Returns raw ORM objects for rejection rate and slippage analysis (D-05 item 2).
 
         Args:
-            portfolio_target: PortfolioTarget.value to filter by.
+            portfolio_target: Route.value to filter by.
             days: Rolling lookback window in days.
 
         Returns:

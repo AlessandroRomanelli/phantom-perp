@@ -1,4 +1,4 @@
-"""Per-portfolio risk limits with hard-coded safety caps.
+"""Per-route risk limits with hard-coded safety caps.
 
 Config values from YAML can tighten limits but never loosen them beyond
 the non-negotiable constants defined in libs/common/constants.py.
@@ -12,21 +12,21 @@ from typing import Any
 
 from libs.common.constants import (
     MAX_LEVERAGE_GLOBAL,
-    MAX_LEVERAGE_PORTFOLIO_B,
-    PORTFOLIO_A_DAILY_LOSS_KILL_PCT,
-    PORTFOLIO_A_MAX_DRAWDOWN_PCT,
-    PORTFOLIO_A_MAX_POSITION_PCT_EQUITY,
-    PORTFOLIO_A_MIN_LIQUIDATION_DISTANCE_PCT,
-    PORTFOLIO_B_MAX_DAILY_LOSS_PCT,
-    PORTFOLIO_B_MAX_DRAWDOWN_PCT,
-    PORTFOLIO_B_MIN_LIQUIDATION_DISTANCE_PCT,
+    MAX_LEVERAGE_ROUTE_B,
+    ROUTE_A_DAILY_LOSS_KILL_PCT,
+    ROUTE_A_MAX_DRAWDOWN_PCT,
+    ROUTE_A_MAX_POSITION_PCT_EQUITY,
+    ROUTE_A_MIN_LIQUIDATION_DISTANCE_PCT,
+    ROUTE_B_MAX_DAILY_LOSS_PCT,
+    ROUTE_B_MAX_DRAWDOWN_PCT,
+    ROUTE_B_MIN_LIQUIDATION_DISTANCE_PCT,
 )
-from libs.common.models.enums import PortfolioTarget
+from libs.common.models.enums import Route
 
 
 @dataclass(frozen=True)
 class RiskLimits:
-    """Risk limits for a single portfolio.
+    """Risk limits for a single route.
 
     All percentage values are in points (e.g. 40.0 means 40%).
     """
@@ -48,8 +48,8 @@ def _d(value: object, default: str) -> Decimal:
     return Decimal(str(value)) if value is not None else Decimal(default)
 
 
-def limits_for_portfolio(
-    target: PortfolioTarget,
+def limits_for_route(
+    target: Route,
     config: dict[str, Any],
 ) -> RiskLimits:
     """Build RiskLimits from YAML config, enforcing hard-coded safety caps.
@@ -59,7 +59,7 @@ def limits_for_portfolio(
     For min-type limits (liquidation distance): result = max(config, hard_floor).
 
     Args:
-        target: Which portfolio these limits are for.
+        target: Which route these limits are for.
         config: Parsed YAML config (the full root dict).
 
     Returns:
@@ -67,19 +67,19 @@ def limits_for_portfolio(
     """
     risk = config.get("risk", {})
 
-    if target == PortfolioTarget.A:
-        section = risk.get("portfolio_a", {})
+    if target == Route.A:
+        section = risk.get("route_a", {})
         hard_leverage = MAX_LEVERAGE_GLOBAL
-        hard_liq_dist = PORTFOLIO_A_MIN_LIQUIDATION_DISTANCE_PCT
-        hard_daily_loss = PORTFOLIO_A_DAILY_LOSS_KILL_PCT
-        hard_drawdown = PORTFOLIO_A_MAX_DRAWDOWN_PCT
-        hard_pos_pct = PORTFOLIO_A_MAX_POSITION_PCT_EQUITY
+        hard_liq_dist = ROUTE_A_MIN_LIQUIDATION_DISTANCE_PCT
+        hard_daily_loss = ROUTE_A_DAILY_LOSS_KILL_PCT
+        hard_drawdown = ROUTE_A_MAX_DRAWDOWN_PCT
+        hard_pos_pct = ROUTE_A_MAX_POSITION_PCT_EQUITY
     else:
-        section = risk.get("portfolio_b", {})
-        hard_leverage = MAX_LEVERAGE_PORTFOLIO_B
-        hard_liq_dist = PORTFOLIO_B_MIN_LIQUIDATION_DISTANCE_PCT
-        hard_daily_loss = PORTFOLIO_B_MAX_DAILY_LOSS_PCT
-        hard_drawdown = PORTFOLIO_B_MAX_DRAWDOWN_PCT
+        section = risk.get("route_b", {})
+        hard_leverage = MAX_LEVERAGE_ROUTE_B
+        hard_liq_dist = ROUTE_B_MIN_LIQUIDATION_DISTANCE_PCT
+        hard_daily_loss = ROUTE_B_MAX_DAILY_LOSS_PCT
+        hard_drawdown = ROUTE_B_MAX_DRAWDOWN_PCT
         hard_pos_pct = Decimal("25.0")
 
     cfg_leverage = _d(section.get("max_leverage"), str(hard_leverage))

@@ -24,7 +24,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from libs.common.instruments import get_instrument
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
 from libs.common.utils import generate_id, round_to_tick, utc_now
@@ -60,7 +60,7 @@ class MeanReversionParams:
     # Phase 2 fields:
     trend_reject_threshold: float = 0.6
     extended_deviation_threshold: float = 0.5
-    portfolio_a_min_conviction: float = 0.65
+    route_a_min_conviction: float = 0.65
     vol_lookback: int = 10
     # Phase 4 additions: funding rate boost
     funding_rate_boost: float = 0.08
@@ -107,8 +107,8 @@ class MeanReversionStrategy(SignalStrategy):
                     "extended_deviation_threshold",
                     self._params.extended_deviation_threshold,
                 ),
-                portfolio_a_min_conviction=p.get(
-                    "portfolio_a_min_conviction", self._params.portfolio_a_min_conviction,
+                route_a_min_conviction=p.get(
+                    "route_a_min_conviction", self._params.route_a_min_conviction,
                 ),
                 vol_lookback=p.get("vol_lookback", self._params.vol_lookback),
                 funding_rate_boost=p.get(
@@ -326,11 +326,11 @@ class MeanReversionStrategy(SignalStrategy):
         else:
             stop_loss = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)), tick_size)
 
-        # Portfolio A routing (MR-04, D-01, D-03)
-        suggested_target = (
-            PortfolioTarget.A
-            if conviction >= p.portfolio_a_min_conviction
-            else PortfolioTarget.B
+        # Route A routing (MR-04, D-01, D-03)
+        suggested_route = (
+            Route.A
+            if conviction >= p.route_a_min_conviction
+            else Route.B
         )
 
         reasoning = (
@@ -370,7 +370,7 @@ class MeanReversionStrategy(SignalStrategy):
             source=SignalSource.MEAN_REVERSION,
             time_horizon=timedelta(hours=8),
             reasoning=reasoning,
-            suggested_target=suggested_target,
+            suggested_route=suggested_route,
             entry_price=entry,
             stop_loss=stop_loss,
             take_profit=take_profit,

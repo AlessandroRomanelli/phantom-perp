@@ -45,7 +45,7 @@ class ClaudeMarketAnalysisParams:
             prevents unbounded growth if the signals loop falls behind.
         min_conviction: Minimum conviction threshold.  Signals below this
             level are dropped by the scheduler before enqueueing.
-        portfolio_a_min_conviction: Conviction floor for Portfolio A routing.
+        route_a_min_conviction: Conviction floor for Route A routing.
         default_time_horizon_hours: Default signal horizon when the LLM does
             not specify one explicitly.
     """
@@ -55,7 +55,7 @@ class ClaudeMarketAnalysisParams:
     analysis_interval_seconds: int = 300  # 5 minutes
     max_queue_size: int = 50
     min_conviction: float = 0.50
-    portfolio_a_min_conviction: float = 0.75
+    route_a_min_conviction: float = 0.75
     default_time_horizon_hours: float = 4.0
 
 
@@ -91,9 +91,9 @@ class ClaudeMarketAnalysisStrategy(SignalStrategy):
                 ),
                 max_queue_size=p.get("max_queue_size", self._params.max_queue_size),
                 min_conviction=p.get("min_conviction", self._params.min_conviction),
-                portfolio_a_min_conviction=p.get(
-                    "portfolio_a_min_conviction",
-                    self._params.portfolio_a_min_conviction,
+                route_a_min_conviction=p.get(
+                    "route_a_min_conviction",
+                    self._params.route_a_min_conviction,
                 ),
                 default_time_horizon_hours=p.get(
                     "default_time_horizon_hours",

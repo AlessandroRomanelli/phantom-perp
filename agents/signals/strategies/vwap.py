@@ -30,7 +30,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from libs.common.instruments import get_instrument
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
 from libs.common.utils import generate_id, round_to_tick, utc_now
@@ -53,7 +53,7 @@ class VWAPParams:
     take_profit_atr_mult: float = 1.5     # Tighter TP since targeting mean reversion to VWAP
     min_conviction: float = 0.40
     cooldown_bars: int = 10
-    portfolio_a_min_conviction: float = 0.70
+    route_a_min_conviction: float = 0.70
     lookback_bars: int = 60               # Rolling window for VWAP if no session reset
     use_session_reset: bool = True        # False uses alternative rolling approach (D-07)
     session_length_hours: int = 24        # Session length for progress computation
@@ -103,8 +103,8 @@ class VWAPStrategy(SignalStrategy):
                 ),
                 min_conviction=p.get("min_conviction", self._params.min_conviction),
                 cooldown_bars=p.get("cooldown_bars", self._params.cooldown_bars),
-                portfolio_a_min_conviction=p.get(
-                    "portfolio_a_min_conviction", self._params.portfolio_a_min_conviction,
+                route_a_min_conviction=p.get(
+                    "route_a_min_conviction", self._params.route_a_min_conviction,
                 ),
                 lookback_bars=p.get("lookback_bars", self._params.lookback_bars),
                 use_session_reset=p.get(
@@ -361,11 +361,11 @@ class VWAPStrategy(SignalStrategy):
             stop_loss = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)), tick_size)
             take_profit = round_to_tick(entry - atr_d * Decimal(str(p.take_profit_atr_mult)), tick_size)
 
-        # Portfolio A routing
-        suggested_target = (
-            PortfolioTarget.A
-            if conviction >= p.portfolio_a_min_conviction
-            else PortfolioTarget.B
+        # Route A routing
+        suggested_route = (
+            Route.A
+            if conviction >= p.route_a_min_conviction
+            else Route.B
         )
 
         reasoning = (
@@ -384,7 +384,7 @@ class VWAPStrategy(SignalStrategy):
             source=SignalSource.VWAP,
             time_horizon=timedelta(hours=4),
             reasoning=reasoning,
-            suggested_target=suggested_target,
+            suggested_route=suggested_route,
             entry_price=entry,
             stop_loss=stop_loss,
             take_profit=take_profit,

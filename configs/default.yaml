@@ -54,7 +54,7 @@ portfolio:
         target: "B"
 
 risk:
-  portfolio_a:
+  route_a:
     max_leverage: 5.0
     max_position_size_eth: 3.0
     max_position_pct_equity: 40.0
@@ -66,7 +66,7 @@ risk:
     max_concurrent_positions: 3
     max_funding_cost_per_day_usdc: 20
 
-  portfolio_b:
+  route_b:
     max_leverage: 3.0
     max_position_size_eth: 8.0
     max_position_pct_equity: 25.0

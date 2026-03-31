@@ -7,7 +7,7 @@ min_conviction:
   max: 0.90
   type: float
 
-portfolio_a_min_conviction:
+route_a_min_conviction:
   min: 0.30
   max: 0.95
   type: float

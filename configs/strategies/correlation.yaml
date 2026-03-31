@@ -19,7 +19,7 @@ parameters:
   # Funding rate integration (CORR-02)
   funding_rate_boost: 0.10
   # Portfolio A routing (CORR-03)
-  portfolio_a_min_conviction: 0.85
+  route_a_min_conviction: 0.85
 
 instruments:
   ETH-PERP:

@@ -26,7 +26,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from agents.alpha.regime_detector import RegimeDetector
 from agents.signals.claude_scheduler import run_claude_scheduler
 from agents.signals.coinglass_poller import run_coinglass_poller
-from agents.signals.conviction_normalizer import normalize_conviction, should_route_portfolio_a
+from agents.signals.conviction_normalizer import normalize_conviction, should_route_a
 from agents.signals.feature_store import FeatureStore
 from agents.signals.orch_client import OrchestratorParams
 from agents.signals.orch_scheduler import run_orchestrator_scheduler
@@ -63,7 +63,7 @@ from libs.common.config import (
 )
 from libs.common.instruments import get_active_instrument_ids
 from libs.common.logging import setup_logging
-from libs.common.models.enums import PortfolioTarget
+from libs.common.models.enums import Route
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal  # noqa: TC001
 from libs.messaging.channels import Channel
@@ -270,7 +270,7 @@ def _apply_conviction_normalization(signal: StandardSignal) -> StandardSignal:
 
     Post-processes a signal by:
     1. Computing conviction band via normalize_conviction.
-    2. If conviction meets unified threshold, setting suggested_target to A.
+    2. If conviction meets unified threshold, setting suggested_route to A.
 
     Args:
         signal: Original signal from strategy.
@@ -281,10 +281,10 @@ def _apply_conviction_normalization(signal: StandardSignal) -> StandardSignal:
     result = normalize_conviction(signal.conviction)
     updated_metadata = {**signal.metadata, "conviction_band": result.band}
 
-    if should_route_portfolio_a(signal.conviction):
+    if should_route_a(signal.conviction):
         return replace(
             signal,
-            suggested_target=PortfolioTarget.A,
+            suggested_route=Route.A,
             metadata=updated_metadata,
         )
 
@@ -339,7 +339,7 @@ def signal_to_dict(signal: StandardSignal) -> dict[str, Any]:
         "source": signal.source.value,
         "time_horizon_seconds": int(signal.time_horizon.total_seconds()),
         "reasoning": signal.reasoning,
-        "suggested_target": signal.suggested_target.value if signal.suggested_target else None,
+        "suggested_route": signal.suggested_route.value if signal.suggested_route else None,
         "entry_price": str(signal.entry_price) if signal.entry_price else None,
         "stop_loss": str(signal.stop_loss) if signal.stop_loss else None,
         "take_profit": str(signal.take_profit) if signal.take_profit else None,

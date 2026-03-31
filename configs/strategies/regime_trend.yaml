@@ -30,11 +30,11 @@ parameters:
   take_profit_atr_mult: 4.0
 
   # Portfolio A — autonomous, breakout-only, tighter risk
-  portfolio_a_enabled: true
-  portfolio_a_min_conviction: 0.85
-  portfolio_a_breakout_only: true
-  portfolio_a_stop_loss_atr_mult: 2.5
-  portfolio_a_take_profit_atr_mult: 3.5
+  route_a_enabled: true
+  route_a_min_conviction: 0.85
+  route_a_breakout_only: true
+  route_a_stop_loss_atr_mult: 2.5
+  route_a_take_profit_atr_mult: 3.5
 
   # Adaptive thresholds (RT-01)
   adx_adapt_enabled: true
@@ -103,7 +103,7 @@ instruments:
       min_conviction: 0.35
       cooldown_bars: 30
       # Disable Portfolio A — index moves are slower, confirmation preferred
-      portfolio_a_enabled: false
+      route_a_enabled: false
       trail_enabled: false
 
   SPY-PERP:
@@ -114,5 +114,5 @@ instruments:
       atr_expansion_threshold: 1.0
       min_conviction: 0.35
       cooldown_bars: 30
-      portfolio_a_enabled: false
+      route_a_enabled: false
       trail_enabled: false

@@ -37,7 +37,7 @@ class FillRecord(Base):
     fill_id: Mapped[str] = mapped_column(String, primary_key=True)
     # Nullable: signal-less fills (manual trades, liquidations) have no order_id
     order_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
-    # Stores PortfolioTarget.value e.g. "autonomous" | "user_confirmed"
+    # Stores Route.value e.g. "autonomous" | "user_confirmed"
     portfolio_target: Mapped[str] = mapped_column(String(32), nullable=False)
     instrument: Mapped[str] = mapped_column(String(32), nullable=False)
     # Stores OrderSide.value e.g. "BUY" | "SELL"
@@ -68,7 +68,7 @@ class OrderSignalRecord(Base):
 
     order_id: Mapped[str] = mapped_column(String, primary_key=True)
     signal_id: Mapped[str] = mapped_column(String, nullable=False)
-    # Stores PortfolioTarget.value e.g. "autonomous"
+    # Stores Route.value e.g. "autonomous"
     portfolio_target: Mapped[str] = mapped_column(String(32), nullable=False)
     instrument: Mapped[str] = mapped_column(String(32), nullable=False)
     conviction: Mapped[float] = mapped_column(Float, nullable=False)

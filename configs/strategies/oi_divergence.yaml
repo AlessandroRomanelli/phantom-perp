@@ -15,7 +15,7 @@ parameters:
   min_conviction: 0.45
   cooldown_bars: 24
   max_holding_hours: 8
-  portfolio_a_min_conviction: 0.85
+  route_a_min_conviction: 0.85
 
 instruments:
   ETH-PERP:

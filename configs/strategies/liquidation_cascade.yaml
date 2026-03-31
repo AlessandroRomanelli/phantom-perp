@@ -12,7 +12,7 @@ parameters:
   cooldown_bars: 24
 
   # Portfolio A routing — require high conviction for autonomous execution
-  portfolio_a_min_conviction: 0.85
+  route_a_min_conviction: 0.85
 
   # Tier classification thresholds (LIQ-01)
   tier1_min_oi_drop_pct: 2.0

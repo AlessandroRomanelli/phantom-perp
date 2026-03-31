@@ -25,7 +25,7 @@ from typing import Any
 import numpy as np
 
 from libs.common.instruments import get_instrument
-from libs.common.models.enums import PortfolioTarget, PositionSide, SignalSource
+from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
 from libs.common.utils import generate_id, round_to_tick, utc_now
@@ -66,12 +66,12 @@ class RegimeTrendParams:
     stop_loss_atr_mult: float = 2.5
     take_profit_atr_mult: float = 4.0
 
-    # ── Portfolio A autonomous routing ──
-    portfolio_a_enabled: bool = True
-    portfolio_a_min_conviction: float = 0.7
-    portfolio_a_breakout_only: bool = True
-    portfolio_a_stop_loss_atr_mult: float = 1.5
-    portfolio_a_take_profit_atr_mult: float = 2.5
+    # ── Route A autonomous routing ──
+    route_a_enabled: bool = True
+    route_a_min_conviction: float = 0.7
+    route_a_breakout_only: bool = True
+    route_a_stop_loss_atr_mult: float = 1.5
+    route_a_take_profit_atr_mult: float = 2.5
 
     # ── Adaptive threshold scaling (RT-01) ──
     adx_adapt_enabled: bool = True
@@ -140,11 +140,11 @@ class RegimeTrendStrategy(SignalStrategy):
                 trail_activation_pct=p.get("trail_activation_pct", self._params.trail_activation_pct),
                 trail_distance_atr=p.get("trail_distance_atr", self._params.trail_distance_atr),
                 initial_stop_atr_mult=p.get("initial_stop_atr_mult", self._params.initial_stop_atr_mult),
-                portfolio_a_enabled=p.get("portfolio_a_enabled", self._params.portfolio_a_enabled),
-                portfolio_a_min_conviction=p.get("portfolio_a_min_conviction", self._params.portfolio_a_min_conviction),
-                portfolio_a_breakout_only=p.get("portfolio_a_breakout_only", self._params.portfolio_a_breakout_only),
-                portfolio_a_stop_loss_atr_mult=p.get("portfolio_a_stop_loss_atr_mult", self._params.portfolio_a_stop_loss_atr_mult),
-                portfolio_a_take_profit_atr_mult=p.get("portfolio_a_take_profit_atr_mult", self._params.portfolio_a_take_profit_atr_mult),
+                route_a_enabled=p.get("route_a_enabled", self._params.route_a_enabled),
+                route_a_min_conviction=p.get("route_a_min_conviction", self._params.route_a_min_conviction),
+                route_a_breakout_only=p.get("route_a_breakout_only", self._params.route_a_breakout_only),
+                route_a_stop_loss_atr_mult=p.get("route_a_stop_loss_atr_mult", self._params.route_a_stop_loss_atr_mult),
+                route_a_take_profit_atr_mult=p.get("route_a_take_profit_atr_mult", self._params.route_a_take_profit_atr_mult),
                 min_conviction=p.get("min_conviction", self._params.min_conviction),
                 cooldown_bars=p.get("cooldown_bars", self._params.cooldown_bars),
             )
@@ -380,27 +380,27 @@ class RegimeTrendStrategy(SignalStrategy):
             source=SignalSource.REGIME_TREND,
             time_horizon=timedelta(hours=6),
             reasoning=reasoning_b,
-            suggested_target=PortfolioTarget.B,
+            suggested_route=Route.B,
             entry_price=entry,
             stop_loss=sl_b,
             take_profit=tp_b,
-            metadata={**base_metadata, "portfolio": "B"},
+            metadata={**base_metadata, "route": "B"},
         ))
 
-        # Portfolio A signal (tighter stops, shorter horizon, breakout-only by default)
+        # Route A signal (tighter stops, shorter horizon, breakout-only by default)
         a_eligible = (
-            p.portfolio_a_enabled
-            and conviction >= p.portfolio_a_min_conviction
-            and (not p.portfolio_a_breakout_only or entry_type == "breakout")
+            p.route_a_enabled
+            and conviction >= p.route_a_min_conviction
+            and (not p.route_a_breakout_only or entry_type == "breakout")
         )
 
         if a_eligible:
             if direction == PositionSide.LONG:
-                sl_a = round_to_tick(entry - atr_d * Decimal(str(p.portfolio_a_stop_loss_atr_mult)), tick_size)
-                tp_a = round_to_tick(entry + atr_d * Decimal(str(p.portfolio_a_take_profit_atr_mult)), tick_size)
+                sl_a = round_to_tick(entry - atr_d * Decimal(str(p.route_a_stop_loss_atr_mult)), tick_size)
+                tp_a = round_to_tick(entry + atr_d * Decimal(str(p.route_a_take_profit_atr_mult)), tick_size)
             else:
-                sl_a = round_to_tick(entry + atr_d * Decimal(str(p.portfolio_a_stop_loss_atr_mult)), tick_size)
-                tp_a = round_to_tick(entry - atr_d * Decimal(str(p.portfolio_a_take_profit_atr_mult)), tick_size)
+                sl_a = round_to_tick(entry + atr_d * Decimal(str(p.route_a_stop_loss_atr_mult)), tick_size)
+                tp_a = round_to_tick(entry - atr_d * Decimal(str(p.route_a_take_profit_atr_mult)), tick_size)
 
             signals.append(StandardSignal(
                 signal_id=generate_id("sig"),
@@ -411,11 +411,11 @@ class RegimeTrendStrategy(SignalStrategy):
                 source=SignalSource.REGIME_TREND,
                 time_horizon=timedelta(hours=2),
                 reasoning=f"[Auto] {reasoning_b}",
-                suggested_target=PortfolioTarget.A,
+                suggested_route=Route.A,
                 entry_price=entry,
                 stop_loss=sl_a,
                 take_profit=tp_a,
-                metadata={**base_metadata, "portfolio": "A"},
+                metadata={**base_metadata, "route": "A"},
             ))
 
         self._bars_since_signal = 0

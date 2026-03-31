@@ -2,7 +2,7 @@
 
 Maps raw conviction values to named bands (high/medium/low) for
 consistent cross-strategy conviction interpretation and unified
-Portfolio A routing decisions.
+Route A routing decisions.
 
 Follows the established function-based utility pattern from funding_filter.py:
 frozen dataclass result, no class state, no side effects.
@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-# Unified Portfolio A routing threshold (D-07)
-PORTFOLIO_A_UNIFIED_THRESHOLD: float = 0.70
+# Unified Route A routing threshold (D-07)
+ROUTE_A_UNIFIED_THRESHOLD: float = 0.70
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,13 +56,13 @@ def normalize_conviction(raw: float) -> NormalizedConviction:
     )
 
 
-def should_route_portfolio_a(conviction: float) -> bool:
-    """Check if conviction meets the unified Portfolio A threshold.
+def should_route_a(conviction: float) -> bool:
+    """Check if conviction meets the unified Route A threshold.
 
     Args:
         conviction: Conviction value to check.
 
     Returns:
-        True if conviction >= PORTFOLIO_A_UNIFIED_THRESHOLD.
+        True if conviction >= ROUTE_A_UNIFIED_THRESHOLD.
     """
-    return conviction >= PORTFOLIO_A_UNIFIED_THRESHOLD
+    return conviction >= ROUTE_A_UNIFIED_THRESHOLD
