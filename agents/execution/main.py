@@ -27,9 +27,13 @@ import orjson
 import redis.asyncio as aioredis
 from sqlalchemy.exc import SQLAlchemyError
 
+from libs.coinbase.auth import CoinbaseAuth
+from libs.coinbase.client_pool import CoinbaseClientPool
 from libs.coinbase.models import OrderResponse
+from libs.coinbase.product_discovery import discover_and_update_registry
 from libs.common.config import get_settings, load_yaml_config
 from libs.common.constants import FEE_MAKER, FEE_TAKER
+from libs.common.instruments import get_instrument
 from libs.common.logging import setup_logging
 from libs.common.models.enums import (
     OrderSide,
@@ -308,6 +312,7 @@ async def _place_order(
     client_order_id: str,
     reduce_only: bool,
     last_price: Decimal | None,
+    client_pool: CoinbaseClientPool | None = None,
 ) -> OrderResponse:
     """Route order placement to the correct broker."""
     if is_paper:
@@ -323,14 +328,44 @@ async def _place_order(
             reduce_only=reduce_only,
             last_price=last_price,
         )
-    # Live mode: import and use CoinbaseClientPool
-    # (deferred import so paper mode doesn't require API credentials)
-    from libs.coinbase.auth import CoinbaseAuth
-    from libs.coinbase.client_pool import CoinbaseClientPool
-
-    raise NotImplementedError(
-        "Live execution not yet implemented — use paper mode"
+    # Live mode: route through CoinbaseClientPool
+    assert client_pool is not None, "client_pool is required in live mode"
+    product_id = get_instrument(instrument).product_id
+    rest_client = client_pool.get_client(portfolio_target)
+    return await rest_client.create_order(
+        product_id=product_id,
+        side=side,
+        size=size,
+        order_type=order_type,
+        limit_price=limit_price,
+        stop_price=stop_price,
+        client_order_id=client_order_id,
+        reduce_only=reduce_only,
     )
+
+
+async def _cancel_order(
+    order_id: str,
+    portfolio_target: PortfolioTarget,
+    is_paper: bool,
+    client_pool: CoinbaseClientPool | None = None,
+) -> None:
+    """Cancel an open order on the exchange.
+
+    In paper mode, this is a no-op (simulated orders don't need cancellation).
+    In live mode, routes the cancel through the correct portfolio client.
+
+    Args:
+        order_id: Exchange order ID to cancel.
+        portfolio_target: Portfolio that owns the order.
+        is_paper: True if running in paper mode.
+        client_pool: Live client pool; required when is_paper=False.
+    """
+    if is_paper:
+        return
+    assert client_pool is not None, "client_pool is required in live mode"
+    rest_client = client_pool.get_client(portfolio_target)
+    await rest_client.cancel_order(order_id)
 
 
 async def _execute_with_retry(
@@ -351,6 +386,7 @@ async def _execute_with_retry(
     is_paper: bool,
     paper_broker: PaperBroker | None,
     last_price: Decimal | None,
+    client_pool: CoinbaseClientPool | None = None,
 ) -> tuple[OrderResponse | None, bool]:
     """Place an order with retry logic on failure.
 
@@ -380,6 +416,7 @@ async def _execute_with_retry(
                 client_order_id=order_id,
                 reduce_only=reduce_only,
                 last_price=last_price,
+                client_pool=client_pool,
             )
             return response, current_plan.is_maker
 
@@ -423,6 +460,7 @@ async def _place_protective_orders(
     is_paper: bool,
     paper_broker: PaperBroker | None,
     last_price: Decimal | None,
+    client_pool: CoinbaseClientPool | None = None,
 ) -> None:
     """Place stop-loss and take-profit orders after a primary fill."""
     protective = build_protective_orders(
@@ -449,6 +487,7 @@ async def _place_protective_orders(
                 client_order_id=f"sl-{order_id}",
                 reduce_only=sl.reduce_only,
                 last_price=last_price,
+                client_pool=client_pool,
             )
             logger.info(
                 "stop_loss_placed",
@@ -478,6 +517,7 @@ async def _place_protective_orders(
                 client_order_id=f"tp-{order_id}",
                 reduce_only=tp.reduce_only,
                 last_price=last_price,
+                client_pool=client_pool,
             )
             logger.info(
                 "take_profit_placed",
@@ -522,6 +562,24 @@ async def run_agent() -> None:
 
     is_paper = settings.infra.environment == "paper"
     paper_broker = PaperBroker() if is_paper else None
+    client_pool: CoinbaseClientPool | None = None
+
+    if not is_paper:
+        client_pool = CoinbaseClientPool(
+            auth_a=CoinbaseAuth(
+                settings.coinbase.api_key_a,
+                settings.coinbase.api_secret_a,
+            ),
+            auth_b=CoinbaseAuth(
+                settings.coinbase.api_key_b,
+                settings.coinbase.api_secret_b,
+            ),
+            base_url=settings.coinbase.rest_url,
+            portfolio_uuid_a=settings.portfolios.portfolio_a_id,
+            portfolio_uuid_b=settings.portfolios.portfolio_b_id,
+        )
+        await discover_and_update_registry(client_pool.market_client)
+        logger.info("execution_live_pool_ready")
 
     consumer = RedisConsumer(redis_url=settings.infra.redis_url)
     publisher = RedisPublisher(redis_url=settings.infra.redis_url)
@@ -698,6 +756,7 @@ async def run_agent() -> None:
                     is_paper=is_paper,
                     paper_broker=paper_broker,
                     last_price=market.last_price,
+                    client_pool=client_pool,
                 )
 
                 if response is None:
@@ -827,6 +886,7 @@ async def run_agent() -> None:
                             is_paper=is_paper,
                             paper_broker=paper_broker,
                             last_price=market.last_price,
+                            client_pool=client_pool,
                         )
                 else:
                     logger.info(
@@ -880,6 +940,8 @@ async def run_agent() -> None:
         await redis.aclose()
         if paper_broker:
             await paper_broker.close()
+        if client_pool is not None:
+            await client_pool.close()
         logger.info(
             "execution_agent_stopped",
             orders_processed=order_count,
