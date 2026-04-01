@@ -693,7 +693,7 @@ def _render(
     parts.append("")
     parts.append(f" {BOLD}{CYAN}phantom-perp v1.5{RESET}  {DIM}{now}{RESET}")
     parts.append(
-        f" {DIM}12 strategies | 4 instruments | single portfolio | "
+        f" {DIM}12 strategies | 3 instruments | single portfolio | "
         f"{total_msgs:,} messages across {active}/{len(STREAMS)} active streams{RESET}"
     )
     parts.append(f" {DIM}{sep}{RESET}")

@@ -10,7 +10,6 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      - SPY-PERP
 
   mean_reversion:
     enabled: true
@@ -18,7 +17,6 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      - SPY-PERP
 
   liquidation_cascade:
     enabled: true
@@ -34,7 +32,6 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      - SPY-PERP
 
   regime_trend:
     enabled: true
@@ -42,7 +39,6 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      - SPY-PERP
 
   orderbook_imbalance:
     enabled: true
@@ -50,7 +46,6 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      - SPY-PERP
 
   vwap:
     enabled: true
@@ -58,7 +53,6 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      - SPY-PERP
 
   claude_market_analysis:
     enabled: true
