@@ -69,7 +69,8 @@ def compute_position_size(
     if max_size < min_order_size:
         return Decimal("0")
 
-    # Scale by conviction
-    size = max_size * Decimal(str(conviction))
+    # Scale by conviction using convex (power-function) scaling
+    conviction_scaled = Decimal(str(conviction ** limits.conviction_power))
+    size = max_size * conviction_scaled
 
     return round_size(size, min_order_size)

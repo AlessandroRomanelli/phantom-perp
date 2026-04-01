@@ -41,6 +41,7 @@ class RiskLimits:
     stop_loss_required: bool
     max_concurrent_positions: int
     max_funding_cost_per_day_usdc: Decimal
+    conviction_power: float = 2.0
 
 
 def _d(value: object, default: str) -> Decimal:
@@ -101,4 +102,5 @@ def limits_for_route(
         max_funding_cost_per_day_usdc=_d(
             section.get("max_funding_cost_per_day_usdc"), "20"
         ),
+        conviction_power=float(risk.get("global", {}).get("conviction_power", 2.0)),
     )

@@ -34,6 +34,7 @@ def _default_limits(**overrides: object) -> RiskLimits:
         stop_loss_required=True,
         max_concurrent_positions=3,
         max_funding_cost_per_day_usdc=Decimal("20"),
+        conviction_power=2.0,
     )
     defaults.update(overrides)
     return RiskLimits(**defaults)  # type: ignore[arg-type]
@@ -326,3 +327,47 @@ class TestPositionSizer:
         )
         # Must be a multiple of min_order_size
         assert size % Decimal("0.0001") == 0
+
+
+# ── Convex Sizing ────────────────────────────────────────────────────────
+
+
+class TestConvexSizing:
+    """Verify that conviction_power produces non-linear position scaling."""
+
+    def _size_at(self, conviction: float, power: float = 2.0) -> Decimal:
+        limits = _default_limits(conviction_power=power)
+        return compute_position_size(
+            entry_price=Decimal("2000"),
+            conviction=conviction,
+            equity=Decimal("10000"),
+            used_margin=Decimal("0"),
+            existing_positions=[],
+            limits=limits,
+        )
+
+    def test_convex_scaling_09_conviction(self) -> None:
+        """conviction=0.9 with power=2 → size ≈ 81% of conviction=1.0 size."""
+        size_full = self._size_at(1.0)
+        size_09 = self._size_at(0.9)
+        ratio = float(size_09 / size_full)
+        assert abs(ratio - 0.81) < 0.01, f"Expected ~0.81, got {ratio:.4f}"
+
+    def test_convex_scaling_05_conviction(self) -> None:
+        """conviction=0.5 with power=2 → size ≈ 25% of conviction=1.0 size."""
+        size_full = self._size_at(1.0)
+        size_05 = self._size_at(0.5)
+        ratio = float(size_05 / size_full)
+        assert abs(ratio - 0.25) < 0.01, f"Expected ~0.25, got {ratio:.4f}"
+
+    def test_linear_fallback_power_one(self) -> None:
+        """With conviction_power=1.0, conviction=0.5 → 50% of max size."""
+        size_full = self._size_at(1.0, power=1.0)
+        size_half = self._size_at(0.5, power=1.0)
+        ratio = float(size_half / size_full)
+        assert abs(ratio - 0.50) < 0.01, f"Expected ~0.50, got {ratio:.4f}"
+
+    def test_zero_conviction_returns_zero(self) -> None:
+        """conviction=0 must always produce size=0."""
+        size = self._size_at(0.0)
+        assert size == Decimal("0")
