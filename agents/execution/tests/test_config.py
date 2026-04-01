@@ -43,3 +43,38 @@ class TestLoadExecutionConfig:
         assert cfg.max_retries == 3
         assert cfg.prefer_maker is True  # default
         assert cfg.limit_offset_bps == 5  # default
+
+    def test_instrument_limit_offset_bps_parsed(self) -> None:
+        yaml_config = {
+            "execution": {
+                "limit_offset_bps": 5,
+                "instruments": {
+                    "BTC-PERP": {"limit_offset_bps": 2},
+                    "ETH-PERP": {"limit_offset_bps": 3},
+                    "SOL-PERP": {"limit_offset_bps": 5},
+                },
+            },
+        }
+        cfg = load_execution_config(yaml_config)
+        assert cfg.instrument_limit_offset_bps["BTC-PERP"] == 2
+        assert cfg.instrument_limit_offset_bps["SOL-PERP"] == 5
+
+    def test_instrument_limit_offset_bps_fallback(self) -> None:
+        """Instrument not in map returns the global default."""
+        yaml_config = {
+            "execution": {
+                "limit_offset_bps": 5,
+                "instruments": {
+                    "BTC-PERP": {"limit_offset_bps": 2},
+                },
+            },
+        }
+        cfg = load_execution_config(yaml_config)
+        assert cfg.resolve_limit_offset_bps("XYZ-PERP") == 5
+
+    def test_instrument_limit_offset_bps_empty_instruments(self) -> None:
+        """No instruments key → empty dict; resolve returns global default."""
+        yaml_config = {"execution": {"limit_offset_bps": 7}}
+        cfg = load_execution_config(yaml_config)
+        assert cfg.instrument_limit_offset_bps == {}
+        assert cfg.resolve_limit_offset_bps("BTC-PERP") == 7

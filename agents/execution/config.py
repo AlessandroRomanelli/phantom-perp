@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
 
@@ -18,6 +18,18 @@ class ExecutionConfig:
     retry_on_rejection: bool = True
     max_retries: int = 2
     prefer_maker: bool = True
+    instrument_limit_offset_bps: dict[str, int] = field(default_factory=dict)
+
+    def resolve_limit_offset_bps(self, instrument: str) -> int:
+        """Return per-instrument limit offset bps, falling back to the global default.
+
+        Args:
+            instrument: Instrument symbol, e.g. "BTC-PERP".
+
+        Returns:
+            Configured bps offset for the instrument, or the global limit_offset_bps.
+        """
+        return self.instrument_limit_offset_bps.get(instrument, self.limit_offset_bps)
 
 
 def load_execution_config(yaml_config: dict[str, Any]) -> ExecutionConfig:
@@ -25,6 +37,14 @@ def load_execution_config(yaml_config: dict[str, Any]) -> ExecutionConfig:
     section = yaml_config.get("execution", {})
     if not section:
         return ExecutionConfig()
+
+    # Parse per-instrument limit_offset_bps overrides.
+    instruments_raw: dict[str, Any] = section.get("instruments", {}) or {}
+    instrument_limit_offset_bps: dict[str, int] = {
+        instrument_id: int(inst_cfg["limit_offset_bps"])
+        for instrument_id, inst_cfg in instruments_raw.items()
+        if isinstance(inst_cfg, dict) and "limit_offset_bps" in inst_cfg
+    }
 
     return ExecutionConfig(
         default_order_type=section.get("default_order_type", "limit"),
@@ -34,4 +54,5 @@ def load_execution_config(yaml_config: dict[str, Any]) -> ExecutionConfig:
         retry_on_rejection=section.get("retry_on_rejection", True),
         max_retries=int(section.get("max_retries", 2)),
         prefer_maker=section.get("prefer_maker", True),
+        instrument_limit_offset_bps=instrument_limit_offset_bps,
     )

@@ -86,6 +86,17 @@ execution:
   retry_on_rejection: true
   max_retries: 2
   prefer_maker: true
+  instruments:
+    BTC-PERP:
+      limit_offset_bps: 2
+    ETH-PERP:
+      limit_offset_bps: 3
+    SOL-PERP:
+      limit_offset_bps: 5
+    QQQ-PERP:
+      limit_offset_bps: 4
+    SPY-PERP:
+      limit_offset_bps: 3
 
 confirmation:
   default_ttl_seconds: 300
