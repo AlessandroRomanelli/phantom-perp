@@ -42,8 +42,8 @@ def compute_position_size(
     if entry_price <= 0 or equity <= 0:
         return Decimal("0")
 
-    # 1. Absolute max in ETH
-    max_eth = limits.max_position_size_eth
+    # 1. Absolute max from notional cap (instrument-agnostic)
+    max_from_notional = limits.max_position_notional_usdc / entry_price
 
     # 2. Max from equity percentage
     max_notional = equity * limits.max_position_pct_equity / Decimal("100")
@@ -64,7 +64,7 @@ def compute_position_size(
     max_from_margin = available_margin * limits.max_leverage / entry_price
 
     # Take the most restrictive constraint
-    max_size = min(max_eth, max_from_equity, max_from_leverage, max_from_margin)
+    max_size = min(max_from_notional, max_from_equity, max_from_leverage, max_from_margin)
 
     if max_size < min_order_size:
         return Decimal("0")

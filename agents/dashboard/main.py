@@ -160,6 +160,21 @@ async def _collect_state(r: aioredis.Redis) -> dict[str, Any]:
     # Sort by epoch descending (newest first)
     recent_fills.sort(key=lambda f: f.get("_entry_epoch", 0) or 0, reverse=True)
 
+    # Orchestrator gate map — which strategies the LLM enabled/disabled
+    gate_map: dict[str, dict[str, bool]] = {}
+    try:
+        data = await r.hgetall("phantom:orchestrator:gate_map")
+        for k, v in data.items():
+            key_str = k.decode() if isinstance(k, bytes) else k
+            val_str = v.decode() if isinstance(v, bytes) else v
+            if ":" in key_str:
+                instrument, strategy = key_str.split(":", 1)
+                if instrument not in gate_map:
+                    gate_map[instrument] = {}
+                gate_map[instrument][strategy] = val_str == "1"
+    except Exception:
+        pass
+
     return {
         "streams": streams_info,
         "instruments": per_instrument,
@@ -167,6 +182,7 @@ async def _collect_state(r: aioredis.Redis) -> dict[str, Any]:
         "feature_stores": store_status,
         "fills": recent_fills[:20],
         "claude_state": claude_state,
+        "gate_map": gate_map,
     }
 
 

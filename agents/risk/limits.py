@@ -32,7 +32,7 @@ class RiskLimits:
     """
 
     max_leverage: Decimal
-    max_position_size_eth: Decimal
+    max_position_notional_usdc: Decimal
     max_position_pct_equity: Decimal
     max_margin_utilization_pct: Decimal
     min_liquidation_distance_pct: Decimal
@@ -90,7 +90,7 @@ def limits_for_route(
 
     return RiskLimits(
         max_leverage=min(cfg_leverage, hard_leverage),
-        max_position_size_eth=_d(section.get("max_position_size_eth"), "3.0"),
+        max_position_notional_usdc=_d(section.get("max_position_notional_usdc"), "6000"),
         max_position_pct_equity=min(cfg_pos_pct, hard_pos_pct),
         max_margin_utilization_pct=_d(section.get("max_margin_utilization_pct"), "70.0"),
         min_liquidation_distance_pct=max(cfg_liq_dist, hard_liq_dist),

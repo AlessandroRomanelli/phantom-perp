@@ -25,7 +25,7 @@ from agents.risk.position_sizer import compute_position_size
 def _default_limits(**overrides: object) -> RiskLimits:
     defaults = dict(
         max_leverage=Decimal("5"),
-        max_position_size_eth=Decimal("3"),
+        max_position_notional_usdc=Decimal("6000"),
         max_position_pct_equity=Decimal("40"),
         max_margin_utilization_pct=Decimal("70"),
         min_liquidation_distance_pct=Decimal("8"),
@@ -227,7 +227,7 @@ class TestPositionSizer:
             limits=_default_limits(),
         )
         assert size > Decimal("0")
-        assert size <= Decimal("3")  # max_position_size_eth
+        assert size * Decimal("2000") <= Decimal("6000")  # max_position_notional_usdc
 
     def test_conviction_scales_size(self) -> None:
         full = compute_position_size(
@@ -249,23 +249,23 @@ class TestPositionSizer:
         assert half < full
         assert half > Decimal("0")
 
-    def test_respects_max_eth(self) -> None:
-        """Even with huge equity, size is capped by max ETH."""
+    def test_respects_max_notional(self) -> None:
+        """Even with huge equity, notional is capped by max_position_notional_usdc."""
         size = compute_position_size(
             entry_price=Decimal("2000"),
             conviction=1.0,
             equity=Decimal("1000000"),
             used_margin=Decimal("0"),
             existing_positions=[],
-            limits=_default_limits(max_position_size_eth=Decimal("2")),
+            limits=_default_limits(max_position_notional_usdc=Decimal("4000")),
         )
-        assert size <= Decimal("2")
+        assert size <= Decimal("2")  # 4000 / 2000
 
     def test_respects_max_pct_equity(self) -> None:
         """Position notional is capped at max_position_pct_equity of equity."""
         limits = _default_limits(
             max_position_pct_equity=Decimal("10"),
-            max_position_size_eth=Decimal("100"),  # Not binding
+            max_position_notional_usdc=Decimal("200000"),  # Not binding
         )
         size = compute_position_size(
             entry_price=Decimal("2000"),
@@ -283,7 +283,7 @@ class TestPositionSizer:
         # leverage and margin utilization become the binding constraints instead.
         limits = _default_limits(
             max_position_pct_equity=Decimal("10000"),
-            max_position_size_eth=Decimal("100"),
+            max_position_notional_usdc=Decimal("200000"),
         )
         pos = _make_position(size=Decimal("2"), mark=Decimal("2000"))
         size_with = compute_position_size(

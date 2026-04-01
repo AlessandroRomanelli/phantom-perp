@@ -22,7 +22,7 @@ DEFAULT_CONFIG = {
     "risk": {
         "route_a": {
             "max_leverage": 5.0,
-            "max_position_size_eth": 3.0,
+            "max_position_notional_usdc": 6000,
             "max_position_pct_equity": 40.0,
             "max_margin_utilization_pct": 70.0,
             "min_liquidation_distance_pct": 8.0,
@@ -34,7 +34,7 @@ DEFAULT_CONFIG = {
         },
         "route_b": {
             "max_leverage": 3.0,
-            "max_position_size_eth": 8.0,
+            "max_position_notional_usdc": 16000,
             "max_position_pct_equity": 25.0,
             "max_margin_utilization_pct": 50.0,
             "min_liquidation_distance_pct": 15.0,
@@ -52,7 +52,7 @@ class TestLimitsForRoute:
     def test_route_a_defaults(self) -> None:
         limits = limits_for_route(Route.A, DEFAULT_CONFIG)
         assert limits.max_leverage == Decimal("5.0")
-        assert limits.max_position_size_eth == Decimal("3.0")
+        assert limits.max_position_notional_usdc == Decimal("6000")
         assert limits.max_position_pct_equity == Decimal("40.0")
         assert limits.min_liquidation_distance_pct == Decimal("8.0")
         assert limits.max_daily_loss_pct == Decimal("10.0")
@@ -63,7 +63,7 @@ class TestLimitsForRoute:
     def test_route_b_defaults(self) -> None:
         limits = limits_for_route(Route.B, DEFAULT_CONFIG)
         assert limits.max_leverage == Decimal("3.0")
-        assert limits.max_position_size_eth == Decimal("8.0")
+        assert limits.max_position_notional_usdc == Decimal("16000")
         assert limits.max_position_pct_equity == Decimal("25.0")
         assert limits.min_liquidation_distance_pct == Decimal("15.0")
         assert limits.max_daily_loss_pct == Decimal("5.0")

@@ -32,6 +32,7 @@ from agents.signals.feature_store import FeatureStore
 from agents.signals.orch_client import OrchestratorParams
 from agents.signals.orch_scheduler import run_orchestrator_scheduler
 from agents.signals.session_classifier import SessionType, classify_session
+from agents.signals.warmup import warmup_all_stores
 from agents.signals.strategies.base import SignalStrategy  # noqa: TC001
 from agents.signals.strategies.claude_market_analysis import (
     ClaudeMarketAnalysisParams,
@@ -55,6 +56,9 @@ from agents.signals.strategies.orderbook_imbalance import (
 )
 from agents.signals.strategies.regime_trend import RegimeTrendParams, RegimeTrendStrategy
 from agents.signals.strategies.vwap import VWAPParams, VWAPStrategy
+from libs.coinbase.auth import CoinbaseAuth
+from libs.coinbase.product_discovery import discover_and_update_registry
+from libs.coinbase.rest_client import CoinbaseRESTClient
 from libs.common.config import (
     get_settings,
     load_strategy_config,
@@ -442,6 +446,33 @@ async def run_agent() -> None:
         fast_stores[iid] = await _restore_store(
             publisher._redis, iid, "fast", 500, _FAST_INTERVAL,
         )
+
+    # --- Historical candle warmup ---
+    # Seed FeatureStores from historical candles so strategies can fire
+    # immediately instead of waiting hours for live data to accumulate.
+    # Uses Route A's API key (public market data endpoint, any key works).
+    warmup_client: CoinbaseRESTClient | None = None
+    try:
+        auth = CoinbaseAuth(
+            api_key=settings.coinbase.api_key_a,
+            api_secret=settings.coinbase.api_secret_a,
+        )
+        warmup_client = CoinbaseRESTClient(
+            auth=auth,
+            base_url=settings.coinbase.rest_url,
+        )
+        # Ensure product IDs are resolved before warmup fetches candles
+        await discover_and_update_registry(warmup_client)
+        await warmup_all_stores(warmup_client, slow_stores, fast_stores)
+    except Exception as exc:
+        logger.warning(
+            "warmup_failed_continuing",
+            error=str(exc),
+            exc_type=type(exc).__name__,
+        )
+    finally:
+        if warmup_client is not None:
+            await warmup_client.close()
 
     # Per-instrument strategy instances (each with merged params)
     strategies_by_instrument: dict[str, list[SignalStrategy]] = {

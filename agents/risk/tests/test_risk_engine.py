@@ -50,7 +50,7 @@ load_instruments({
 
 LIMITS_A = RiskLimits(
     max_leverage=Decimal("5"),
-    max_position_size_eth=Decimal("3"),
+    max_position_notional_usdc=Decimal("6000"),
     max_position_pct_equity=Decimal("40"),
     max_margin_utilization_pct=Decimal("70"),
     min_liquidation_distance_pct=Decimal("8"),
@@ -63,7 +63,7 @@ LIMITS_A = RiskLimits(
 
 LIMITS_B = RiskLimits(
     max_leverage=Decimal("3"),
-    max_position_size_eth=Decimal("8"),
+    max_position_notional_usdc=Decimal("16000"),
     max_position_pct_equity=Decimal("25"),
     max_margin_utilization_pct=Decimal("50"),
     min_liquidation_distance_pct=Decimal("15"),
