@@ -106,6 +106,12 @@ class CorrelationStrategy(SignalStrategy):
                     "route_a_min_conviction",
                     self._params.route_a_min_conviction,
                 ),
+                stop_loss_atr_mult=p.get(
+                    "stop_loss_atr_mult", self._params.stop_loss_atr_mult,
+                ),
+                take_profit_atr_mult=p.get(
+                    "take_profit_atr_mult", self._params.take_profit_atr_mult,
+                ),
             )
 
         self._enabled = True

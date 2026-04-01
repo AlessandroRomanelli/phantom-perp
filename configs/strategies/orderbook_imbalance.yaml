@@ -21,6 +21,8 @@ instruments:
   BTC-PERP:
     imbalance_threshold: 0.30
     max_spread_bps: 10.0
+    stop_loss_atr_mult: 2.0
+    take_profit_atr_mult: 2.5
   SOL-PERP:
     # Disabled: net loser on Portfolio A (-$17.66 net P&L on 36 round trips)
     enabled: false
@@ -28,7 +30,11 @@ instruments:
     imbalance_threshold: 0.30
     max_spread_bps: 30.0
     min_conviction: 0.50
+    stop_loss_atr_mult: 2.5
+    take_profit_atr_mult: 3.0
   SPY-PERP:
     imbalance_threshold: 0.30
     max_spread_bps: 30.0
     min_conviction: 0.50
+    stop_loss_atr_mult: 2.5
+    take_profit_atr_mult: 3.0

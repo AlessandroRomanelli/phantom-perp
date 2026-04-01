@@ -57,7 +57,7 @@ instruments:
       rsi_oversold: 28
       rsi_overbought: 72
       adx_max: 45.0
-      stop_loss_atr_mult: 2.5
+      stop_loss_atr_mult: 3.0
       min_conviction: 0.25
       cooldown_bars: 10
       # Phase 2+4 params: most permissive trend reject, SOL reverts fast
