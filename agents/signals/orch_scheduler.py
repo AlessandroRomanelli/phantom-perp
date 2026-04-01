@@ -194,8 +194,20 @@ async def _run_tick(
     # Validate and clip against bounds.yaml
     validated = validate_orchestrator_response(decisions, _BOUNDS_PATH)
 
+    # Filter decisions below the confidence threshold
+    accepted = [
+        d for d in validated if d.get("confidence", 1.0) >= params.min_confidence_threshold
+    ]
+    skipped_count = len(validated) - len(accepted)
+    if skipped_count > 0:
+        _logger.debug(
+            "orchestrator_decisions_filtered",
+            skipped=skipped_count,
+            min_confidence_threshold=params.min_confidence_threshold,
+        )
+
     # Update gate map and param adjustments in-place
-    for decision in validated:
+    for decision in accepted:
         key: tuple[str, str] = (decision["instrument"], decision["strategy"])
         gate_map[key] = decision["enabled"]
         adj: dict[str, Any] = decision.get("param_adjustments") or {}
@@ -210,7 +222,7 @@ async def _run_tick(
 
     _logger.info(
         "orchestrator_run_completed",
-        decisions_count=len(validated),
+        decisions_count=len(accepted),
         instruments=instrument_ids,
     )
 

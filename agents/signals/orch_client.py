@@ -63,6 +63,10 @@ ORCHESTRATOR_TOOL: dict[str, Any] = {
                             "additionalProperties": {"type": "number"},
                         },
                         "reasoning": {"type": "string"},
+                        "confidence": {
+                            "type": "number",
+                            "description": "Confidence in this decision (0.0–1.0).",
+                        },
                     },
                     "required": ["instrument", "strategy", "enabled", "reasoning"],
                 },
@@ -87,9 +91,10 @@ class OrchestratorParams:
     """
 
     enabled: bool = True
-    update_interval_seconds: int = 14400  # 4 hours
+    update_interval_seconds: int = 7200  # 2 hours
     min_interval_seconds: int = 3600  # 1 hour cooldown
     max_tokens: int = 1024
+    min_confidence_threshold: float = 0.7
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +123,9 @@ def _build_orchestrator_system_prompt() -> str:
         "from the market data.\n"
         "5. Reasoning must reference specific numbers from the context (regime, vol, funding).\n"
         "6. Be conservative: in HIGH_VOLATILITY regimes, prefer disabling aggressive strategies.\n"
-        "7. Use the submit_orchestrator_decisions tool to return all your decisions.\n\n"
+        "7. Include a confidence field (0.0–1.0) for each decision: 1.0 = very confident, "
+        "0.0 = highly uncertain.\n"
+        "8. Use the submit_orchestrator_decisions tool to return all your decisions.\n\n"
         "Output: one decision entry per (instrument, strategy) combination you wish to change."
     )
 
@@ -273,6 +280,8 @@ async def call_claude_orchestrator(
         "orchestrator_decisions_received",
         num_decisions=len(decisions),
         summary=raw.get("summary", "")[:120],
+        input_tokens=response.usage.input_tokens,
+        output_tokens=response.usage.output_tokens,
     )
 
     return decisions
@@ -316,6 +325,7 @@ def validate_orchestrator_response(
                 "enabled": bool(d.get("enabled", True)),
                 "reasoning": d.get("reasoning", ""),
                 "param_adjustments": {},
+                "confidence": float(d.get("confidence", 1.0)),
             }
             for d in decisions
         ]
@@ -363,6 +373,7 @@ def validate_orchestrator_response(
                 "enabled": enabled,
                 "reasoning": reasoning,
                 "param_adjustments": clipped_adjustments,
+                "confidence": float(decision.get("confidence", 1.0)),
             }
         )
 
