@@ -19,6 +19,10 @@ from libs.common.models.market_snapshot import MarketSnapshot
 
 logger = setup_logging("warmup", json_output=False)
 
+# Sentinel for fields unavailable from historical candles.
+# FeatureStore stores these as float('nan'); property accessors filter them out.
+_NAN_DECIMAL = Decimal("NaN")
+
 # Coinbase Advanced Trade returns max 300 candles per request.
 _MAX_CANDLES_PER_REQUEST = 300
 
@@ -58,14 +62,13 @@ def _pick_granularity(sample_interval_secs: float) -> tuple[str, float]:
 def _candle_to_snapshot(
     candle: CandleResponse,
     instrument_id: str,
-    open_interest: Decimal = Decimal("0"),
-    funding_rate: Decimal = Decimal("0"),
 ) -> MarketSnapshot:
     """Build a minimal MarketSnapshot from a historical candle.
 
     Price fields (close, high, low, volume) come from the candle.
-    OI and funding rate are backfilled with the current live values
-    so z-score baselines aren't polluted by zeros.
+    OI, funding rate, and orderbook imbalance are set to sentinel values
+    that FeatureStore will store as NaN — filtered out by the property
+    accessors so downstream strategies only see valid live data.
     """
     close = Decimal(candle.close)
     volume = Decimal(candle.volume)
@@ -81,11 +84,11 @@ def _candle_to_snapshot(
         best_ask=close,
         spread_bps=0.0,
         volume_24h=volume,
-        open_interest=open_interest,
-        funding_rate=funding_rate,
+        open_interest=_NAN_DECIMAL,
+        funding_rate=Decimal("0"),
         next_funding_time=ts,
         hours_since_last_funding=0.0,
-        orderbook_imbalance=0.0,
+        orderbook_imbalance=float("nan"),
         volatility_1h=0.0,
         volatility_24h=0.0,
     )
@@ -148,8 +151,6 @@ async def warmup_feature_store(
     client: CoinbaseRESTClient,
     store: FeatureStore,
     instrument_id: str,
-    open_interest: Decimal = Decimal("0"),
-    funding_rate: Decimal = Decimal("0"),
 ) -> int:
     """Warm up a single FeatureStore from historical candles.
 
@@ -157,12 +158,14 @@ async def warmup_feature_store(
     from a Redis checkpoint). Only fills the gap between current sample
     count and the store's max capacity.
 
+    OI, funding rate, and orderbook imbalance are written as NaN since
+    candles don't carry that data. FeatureStore properties filter NaN
+    values so downstream strategies only see valid live samples.
+
     Args:
         client: Coinbase REST client for fetching candles.
         store: FeatureStore to populate.
         instrument_id: Instrument ID (e.g., 'ETH-PERP').
-        open_interest: Current live OI to backfill into warmup samples.
-        funding_rate: Current live funding rate to backfill into warmup samples.
 
     Returns:
         Number of samples added to the store.
@@ -222,11 +225,7 @@ async def warmup_feature_store(
     # Temporarily override the sample interval check by injecting directly.
     added = 0
     for candle in candles:
-        snapshot = _candle_to_snapshot(
-            candle, instrument_id,
-            open_interest=open_interest,
-            funding_rate=funding_rate,
-        )
+        snapshot = _candle_to_snapshot(candle, instrument_id)
         # Force-feed: bypass interval gating by setting _last_sample_time far enough back
         store._last_sample_time = snapshot.timestamp - store._sample_interval - timedelta(seconds=1)
         if store.update(snapshot):
@@ -265,34 +264,9 @@ async def warmup_all_stores(
     for instrument_id in slow_stores:
         results[instrument_id] = {}
 
-        # Fetch current OI and funding rate to backfill into warmup samples.
-        # This prevents z-score pollution from zeros in OI/funding deques.
-        product_id = get_instrument(instrument_id).product_id
-        open_interest = Decimal("0")
-        funding_rate = Decimal("0")
-        try:
-            fr_resp = await client.get_funding_rate(product_id)
-            open_interest = fr_resp.open_interest
-            funding_rate = fr_resp.funding_rate
-            logger.info(
-                "warmup_live_baseline_fetched",
-                instrument=instrument_id,
-                open_interest=str(open_interest),
-                funding_rate=str(funding_rate),
-            )
-        except Exception as exc:
-            logger.warning(
-                "warmup_live_baseline_failed",
-                instrument=instrument_id,
-                error=str(exc),
-                exc_type=type(exc).__name__,
-            )
-
         # Warm up slow store (5-min bars → FIVE_MINUTE candles)
         slow_added = await warmup_feature_store(
             client, slow_stores[instrument_id], instrument_id,
-            open_interest=open_interest,
-            funding_rate=funding_rate,
         )
         results[instrument_id]["slow"] = slow_added
 
@@ -300,8 +274,6 @@ async def warmup_all_stores(
         if instrument_id in fast_stores:
             fast_added = await warmup_feature_store(
                 client, fast_stores[instrument_id], instrument_id,
-                open_interest=open_interest,
-                funding_rate=funding_rate,
             )
             results[instrument_id]["fast"] = fast_added
 

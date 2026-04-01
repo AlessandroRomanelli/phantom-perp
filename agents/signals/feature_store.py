@@ -180,9 +180,15 @@ class FeatureStore:
         )
         store._index_prices.extend(data["index_prices"])
         store._volumes.extend(data["volumes"])
-        store._open_interests.extend(data["open_interests"])
-        store._orderbook_imbalances.extend(data["orderbook_imbalances"])
-        store._funding_rates.extend(data["funding_rates"])
+        store._open_interests.extend(
+            float("nan") if v is None else v for v in data["open_interests"]
+        )
+        store._orderbook_imbalances.extend(
+            float("nan") if v is None else v for v in data["orderbook_imbalances"]
+        )
+        store._funding_rates.extend(
+            float("nan") if v is None else v for v in data["funding_rates"]
+        )
 
         return store
 
@@ -208,13 +214,14 @@ class FeatureStore:
 
     @property
     def funding_rates(self) -> NDArray[np.float64]:
-        """Funding rate history as a numpy array."""
-        return np.array(self._funding_rates, dtype=np.float64)
+        """Funding rate history as a numpy array (NaN values excluded)."""
+        arr = np.array(self._funding_rates, dtype=np.float64)
+        return arr[~np.isnan(arr)]
 
     @property
     def funding_rate_count(self) -> int:
-        """Number of funding rate samples stored."""
-        return len(self._funding_rates)
+        """Number of valid (non-NaN) funding rate samples stored."""
+        return int(np.sum(~np.isnan(np.array(self._funding_rates, dtype=np.float64))))
 
     @property
     def index_prices(self) -> NDArray[np.float64]:
@@ -228,13 +235,15 @@ class FeatureStore:
 
     @property
     def open_interests(self) -> NDArray[np.float64]:
-        """Open interest values as a numpy array."""
-        return np.array(self._open_interests, dtype=np.float64)
+        """Open interest values as a numpy array (NaN values excluded)."""
+        arr = np.array(self._open_interests, dtype=np.float64)
+        return arr[~np.isnan(arr)]
 
     @property
     def orderbook_imbalances(self) -> NDArray[np.float64]:
-        """Orderbook imbalance values as a numpy array."""
-        return np.array(self._orderbook_imbalances, dtype=np.float64)
+        """Orderbook imbalance values as a numpy array (NaN values excluded)."""
+        arr = np.array(self._orderbook_imbalances, dtype=np.float64)
+        return arr[~np.isnan(arr)]
 
     @property
     def timestamps(self) -> NDArray[np.float64]:

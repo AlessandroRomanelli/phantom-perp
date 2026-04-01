@@ -16,7 +16,7 @@ from agents.signals.warmup import (
     warmup_all_stores,
     warmup_feature_store,
 )
-from libs.coinbase.models import CandleResponse, FundingRateResponse
+from libs.coinbase.models import CandleResponse
 
 # ---------------------------------------------------------------------------
 # _pick_granularity
@@ -71,24 +71,10 @@ class TestCandleToSnapshot:
         assert snap.mark_price == Decimal("1840.00")
         assert snap.volume_24h == Decimal("1234.56")
         assert snap.timestamp == datetime.fromtimestamp(1700000000, tz=UTC)
-        # Default fields when no live baseline provided
+        # OI is NaN sentinel, funding is zero (skipped by FeatureStore)
+        assert snap.open_interest.is_nan()
         assert snap.funding_rate == Decimal("0")
-        assert snap.open_interest == Decimal("0")
-        assert snap.orderbook_imbalance == 0.0
-
-    def test_backfills_oi_and_funding(self) -> None:
-        """OI and funding rate from live baseline are injected into snapshots."""
-        candle = CandleResponse(
-            start="1700000000", low="100", high="200",
-            open="150", close="175", volume="10",
-        )
-        snap = _candle_to_snapshot(
-            candle, "BTC-PERP",
-            open_interest=Decimal("2200.50"),
-            funding_rate=Decimal("0.000012"),
-        )
-        assert snap.open_interest == Decimal("2200.50")
-        assert snap.funding_rate == Decimal("0.000012")
+        assert snap.orderbook_imbalance != snap.orderbook_imbalance  # NaN != NaN
 
     def test_preserves_instrument_id(self) -> None:
         candle = CandleResponse(
@@ -299,17 +285,8 @@ class TestWarmupFeatureStore:
 # ---------------------------------------------------------------------------
 
 
-def _mock_funding_response(
-    product_id: str = "MOCK-PERP-INTX",
-    oi: str = "2200.50",
-    fr: str = "0.000012",
-) -> FundingRateResponse:
-    return FundingRateResponse(
-        product_id=product_id,
-        funding_rate=Decimal(fr),
-        mark_price=Decimal("2000"),
-        open_interest=Decimal(oi),
-    )
+def _mock_funding_response() -> None:
+    """No longer needed — warmup doesn't fetch live baseline."""
 
 
 class TestWarmupAllStores:
@@ -323,7 +300,6 @@ class TestWarmupAllStores:
 
         mock_client = AsyncMock()
         mock_client.get_candles.return_value = _make_candles(50, 300)
-        mock_client.get_funding_rate.return_value = _mock_funding_response()
 
         mock_inst = MagicMock()
         mock_inst.product_id = "ETH-PERP-INTX"
@@ -353,7 +329,6 @@ class TestWarmupAllStores:
 
         mock_client = AsyncMock()
         mock_client.get_candles.return_value = _make_candles(50, 300)
-        mock_client.get_funding_rate.return_value = _mock_funding_response()
 
         mock_inst = MagicMock()
         mock_inst.product_id = "MOCK-PERP-INTX"
@@ -369,16 +344,13 @@ class TestWarmupAllStores:
             warmup_mod.get_instrument = original_get  # type: ignore[assignment]
 
     @pytest.mark.asyncio
-    async def test_oi_and_funding_backfilled(self) -> None:
-        """Verifies OI and funding rate are backfilled from live baseline."""
+    async def test_nan_filtered_from_oi_and_funding(self) -> None:
+        """Warmup samples write NaN for OI; FeatureStore filters them out."""
         slow = {"BTC-PERP": FeatureStore(max_samples=20, sample_interval=timedelta(seconds=300))}
         fast: dict[str, FeatureStore] = {}
 
         mock_client = AsyncMock()
         mock_client.get_candles.return_value = _make_candles(20, 300)
-        mock_client.get_funding_rate.return_value = _mock_funding_response(
-            oi="3500.00", fr="0.000025",
-        )
 
         mock_inst = MagicMock()
         mock_inst.product_id = "BTC-PERP-INTX"
@@ -389,25 +361,24 @@ class TestWarmupAllStores:
         try:
             await warmup_all_stores(mock_client, slow, fast)
             store = slow["BTC-PERP"]
-            # All OI values should be the backfilled constant, not zero
-            ois = list(store._open_interests)
-            assert all(oi == 3500.0 for oi in ois), f"Expected all 3500.0, got unique: {set(ois)}"
-            assert len(ois) == store.sample_count
-            # Funding deque should have one entry (constant backfill deduplicates)
-            assert store.funding_rate_count >= 1
-            assert store.funding_rates[-1] == pytest.approx(0.000025)
+            # Price data should be fully populated
+            assert store.sample_count == 20
+            # OI property should return empty — all warmup NaN values filtered
+            assert len(store.open_interests) == 0
+            # Funding deque should be empty — funding_rate=0 is skipped by update()
+            assert store.funding_rate_count == 0
+            # Orderbook imbalance also filtered
+            assert len(store.orderbook_imbalances) == 0
         finally:
             warmup_mod.get_instrument = original_get  # type: ignore[assignment]
 
     @pytest.mark.asyncio
-    async def test_funding_fetch_failure_falls_back_to_zero(self) -> None:
-        """If funding rate fetch fails, warmup proceeds with zero baseline."""
-        slow = {"ETH-PERP": FeatureStore(max_samples=10, sample_interval=timedelta(seconds=300))}
-        fast: dict[str, FeatureStore] = {}
+    async def test_live_data_visible_after_warmup(self) -> None:
+        """After warmup, live snapshots with real OI appear in the property."""
+        store = FeatureStore(max_samples=10, sample_interval=timedelta(seconds=300))
 
         mock_client = AsyncMock()
-        mock_client.get_candles.return_value = _make_candles(10, 300)
-        mock_client.get_funding_rate.side_effect = RuntimeError("API down")
+        mock_client.get_candles.return_value = _make_candles(5, 300)
 
         mock_inst = MagicMock()
         mock_inst.product_id = "ETH-PERP-INTX"
@@ -416,10 +387,36 @@ class TestWarmupAllStores:
         warmup_mod.get_instrument = lambda _: mock_inst  # type: ignore[assignment]
 
         try:
-            results = await warmup_all_stores(mock_client, slow, fast)
-            # Warmup should still succeed with zero OI
-            assert results["ETH-PERP"]["slow"] > 0
-            ois = list(slow["ETH-PERP"]._open_interests)
-            assert all(oi == 0.0 for oi in ois)
+            await warmup_feature_store(mock_client, store, "ETH-PERP")
+            assert store.sample_count == 5
+            assert len(store.open_interests) == 0  # All NaN
+
+            # Simulate a live snapshot with real OI
+            from libs.common.models.market_snapshot import MarketSnapshot
+            live_snap = MarketSnapshot(
+                timestamp=datetime(2024, 6, 1, 12, 0, tzinfo=UTC),
+                instrument="ETH-PERP",
+                mark_price=Decimal("2100"),
+                index_price=Decimal("2100"),
+                last_price=Decimal("2100"),
+                best_bid=Decimal("2099"),
+                best_ask=Decimal("2101"),
+                spread_bps=0.5,
+                volume_24h=Decimal("1000"),
+                open_interest=Decimal("5000"),
+                funding_rate=Decimal("0.0001"),
+                next_funding_time=datetime(2024, 6, 1, 13, 0, tzinfo=UTC),
+                hours_since_last_funding=0.5,
+                orderbook_imbalance=0.15,
+                volatility_1h=0.02,
+                volatility_24h=0.05,
+            )
+            store._last_sample_time = live_snap.timestamp - store._sample_interval - timedelta(seconds=1)
+            store.update(live_snap)
+
+            # Now OI should have exactly 1 valid value
+            assert len(store.open_interests) == 1
+            assert store.open_interests[0] == 5000.0
+            assert store.funding_rate_count == 1
         finally:
             warmup_mod.get_instrument = original_get  # type: ignore[assignment]

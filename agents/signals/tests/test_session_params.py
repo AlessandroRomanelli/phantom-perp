@@ -102,7 +102,7 @@ def test_conviction_normalization_adds_band_high() -> None:
 
 
 def test_conviction_normalization_low_keeps_target() -> None:
-    """Low conviction signal keeps its original suggested_route."""
+    """Low conviction non-Claude signal routes to A (all strategies → A)."""
     signal = StandardSignal(
         signal_id="test-2",
         timestamp=datetime.now(tz=timezone.utc),
@@ -118,12 +118,12 @@ def test_conviction_normalization_low_keeps_target() -> None:
     )
     result = _apply_conviction_normalization(signal)
     assert result.metadata["conviction_band"] == "low"
-    assert result.suggested_route == Route.B
+    assert result.suggested_route == Route.A
     assert result.metadata["existing_key"] == "value"
 
 
 def test_conviction_normalization_medium_band() -> None:
-    """Medium conviction (0.50-0.69) gets medium band but no Portfolio A routing."""
+    """Medium conviction (0.50-0.69) gets medium band and routes to A."""
     signal = StandardSignal(
         signal_id="test-3",
         timestamp=datetime.now(tz=timezone.utc),
@@ -137,7 +137,7 @@ def test_conviction_normalization_medium_band() -> None:
     )
     result = _apply_conviction_normalization(signal)
     assert result.metadata["conviction_band"] == "medium"
-    assert result.suggested_route is None or result.suggested_route == Route.B
+    assert result.suggested_route == Route.A
 
 
 def test_apply_and_restore_session_overrides() -> None:
