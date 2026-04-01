@@ -439,7 +439,7 @@ class TestBuildMarketContext:
         assert "Market Context: ETH-PERP" in ctx
         assert "Regime:" in ctx
         assert "trending_up" in ctx
-        assert "Price (last 24 samples)" in ctx
+        assert "Price (last 24 samples)" in ctx or "Intraday Price" in ctx
         assert "Funding Rate Trend" in ctx
         assert "Open Interest Trend" in ctx
         assert "Volatility & Orderbook" in ctx

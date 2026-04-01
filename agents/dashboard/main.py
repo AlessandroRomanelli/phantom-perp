@@ -142,7 +142,7 @@ async def _collect_state(r: aioredis.Redis) -> dict[str, Any]:
     except Exception:
         pass
 
-    # Recent fills from both portfolios
+    # Recent fills from both routes
     recent_fills: list[dict[str, Any]] = []
     for suffix in ("a", "b"):
         try:

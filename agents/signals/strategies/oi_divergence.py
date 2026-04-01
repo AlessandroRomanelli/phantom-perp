@@ -178,9 +178,13 @@ class OIDivergenceStrategy(SignalStrategy):
             # Price falling but OI rising → coiling → LONG
             div_direction = PositionSide.LONG
 
-        # Divergence score: average magnitude scaled to 0–0.50
+        # Divergence score: magnitude scaled to 0–0.50
+        # Scale: threshold is the floor; 4× threshold maps to full score
         div_magnitude = (abs(price_pct) + abs(oi_pct)) / 2.0
-        div_score = min(div_magnitude / 10.0 * 0.50, 0.50) if div_direction is not None else 0.0
+        div_score = 0.0
+        if div_direction is not None:
+            div_excess = div_magnitude / p.div_threshold_pct  # ≥1.0 at threshold
+            div_score = min(div_excess / 4.0 * 0.50 + 0.25, 0.50)
 
         # --- Mode 2: OI Acceleration ---
         roc_short = (ois[-1] - old_oi_accel_short) / old_oi_accel_short * 100.0
@@ -195,12 +199,12 @@ class OIDivergenceStrategy(SignalStrategy):
             # OI unwinding faster short-term → SHORT
             accel_direction = PositionSide.SHORT
 
-        # Acceleration score: ratio to threshold scaled to 0–0.50
-        accel_score = (
-            min(abs(acceleration) / p.accel_threshold * 0.50, 0.50)
-            if accel_direction is not None
-            else 0.0
-        )
+        # Acceleration score: scaled to 0–0.50 with gradual ramp
+        # Scale: 1× threshold → 0.25, 3× threshold → 0.50
+        accel_score = 0.0
+        if accel_direction is not None:
+            accel_ratio = abs(acceleration) / p.accel_threshold  # ≥1.0 at threshold
+            accel_score = min(accel_ratio / 3.0 * 0.25 + 0.25, 0.50)
 
         # --- Combine modes ---
         if div_direction is None and accel_direction is None:

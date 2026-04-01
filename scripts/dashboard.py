@@ -2,7 +2,7 @@
 """Live terminal dashboard for the phantom-perp pipeline.
 
 Polls Redis Streams and displays a real-time summary of all agents,
-stream throughput, latest market data, signals, orders, and portfolio
+stream throughput, latest market data, signals, orders, and route
 performance.
 
 Usage:
@@ -162,7 +162,7 @@ async def _get_recent_signals(
 async def _get_equity_history(
     r: aioredis.Redis, suffix: str, count: int = 30,
 ) -> list[dict[str, Any]]:
-    """Read recent portfolio snapshots for equity sparkline."""
+    """Read recent route snapshots for equity sparkline."""
     stream = f"stream:portfolio_state:{suffix}"
     try:
         entries = await r.xrevrange(stream, "+", "-", count=count)
@@ -218,11 +218,14 @@ def _format_strategy_overview() -> list[str]:
     strategies = [
         ("momentum", "MOM"),
         ("mean_reversion", "MR"),
+        ("contrarian_funding", "CF"),
         ("liquidation_cascade", "LIQ"),
         ("correlation", "CORR"),
         ("regime_trend", "RT"),
         ("orderbook_imbalance", "OBI"),
         ("vwap", "VWAP"),
+        ("oi_divergence", "OID"),
+        ("claude_market_analysis", "CLAU"),
     ]
 
     # Determine current session type
@@ -383,7 +386,7 @@ def _format_signals(info: dict[str, dict[str, Any]], recent: list[dict[str, Any]
 
         dir_color = GREEN if direction in ("LONG", "BUY") else RED if direction in ("SHORT", "SELL") else WHITE
 
-        # Portfolio routing indicator
+        # Route indicator
         if suggested_route == "autonomous" or suggested_route == "A":
             target_str = f"{MAGENTA}A{RESET}"
         elif suggested_route == "user_confirmed" or suggested_route == "B":
@@ -416,35 +419,21 @@ def _format_signals(info: dict[str, dict[str, Any]], recent: list[dict[str, Any]
 
 def _format_risk(info: dict[str, dict[str, Any]]) -> list[str]:
     lines: list[str] = []
-    ranked_a = info.get("stream:ranked_ideas:a", {}).get("length", 0)
-    ranked_b = info.get("stream:ranked_ideas:b", {}).get("length", 0)
-    approved_a = info.get("stream:approved_orders:a", {}).get("length", 0)
-    approved_b = info.get("stream:approved_orders:b", {}).get("length", 0)
-
-    def _rate(approved: int, total: int) -> str:
-        if total == 0:
-            return ""
-        return f" ({approved / total * 100:.0f}%)"
-
-    lines.append(
-        f"  Route A: {ranked_a} ideas"
-        f" -> {GREEN}{approved_a} approved{RESET}{_rate(approved_a, ranked_a)}"
-    )
-    lines.append(
-        f"  Route B: {ranked_b} ideas"
-        f" -> {GREEN}{approved_b} approved{RESET}{_rate(approved_b, ranked_b)}"
-    )
 
     for label, stream in [("A", "stream:approved_orders:a"), ("B", "stream:approved_orders:b")]:
         snap = info.get(stream, {}).get("latest")
         if snap:
             side = snap.get("side", "?")
             size = snap.get("size", "?")
+            instrument = snap.get("instrument", "?")
             side_color = GREEN if side == "BUY" else RED
             lines.append(
-                f"  Latest {label}: {side_color}{side}{RESET} {size} ETH"
+                f"  Latest {label}: {side_color}{side}{RESET} {size} {instrument}"
                 f" | conviction: {snap.get('conviction', '?')}"
             )
+
+    if not lines:
+        lines.append(f"  {DIM}No approved orders yet{RESET}")
 
     return lines
 
@@ -465,118 +454,136 @@ def _format_execution(info: dict[str, dict[str, Any]]) -> list[str]:
     return lines
 
 
-def _format_portfolio(
+def _format_route_performance(
     info: dict[str, dict[str, Any]],
     equity_a: list[dict[str, Any]],
     equity_b: list[dict[str, Any]],
 ) -> list[str]:
-    """Format portfolio performance from stream:portfolio_state:a/b."""
+    """Format unified portfolio and per-route performance.
+
+    Since v1.5, both routes share a single Coinbase portfolio.
+    Shows one unified portfolio section, then per-route order/signal activity.
+    """
     lines: list[str] = []
     equity_histories = {"a": equity_a, "b": equity_b}
 
-    for label, suffix in [("A (Autonomous)", "a"), ("B (User-Confirmed)", "b")]:
-        stream = f"stream:portfolio_state:{suffix}"
-        data = info.get(stream, {})
-        snap = data.get("latest")
+    # ── Unified Portfolio (read from Route A stream — same data as B) ──
+    stream_a = "stream:portfolio_state:a"
+    data_a = info.get(stream_a, {})
+    snap = data_a.get("latest")
 
-        if not snap:
-            lines.append(f"  {BOLD}Route {label}{RESET}: {DIM}awaiting data{RESET}")
-            continue
+    if not snap:
+        lines.append(f"  {DIM}Awaiting portfolio data{RESET}")
+        return lines
 
-        equity = snap.get("equity_usdc", "?")
-        used_margin = snap.get("used_margin_usdc", "0")
-        avail_margin = snap.get("available_margin_usdc", "0")
-        margin_util = snap.get("margin_utilization_pct")
-        unrealized = snap.get("unrealized_pnl_usdc", "0")
-        realized = snap.get("realized_pnl_today_usdc", "0")
-        funding_pnl = snap.get("funding_pnl_today_usdc", "0")
-        fees = snap.get("fees_paid_today_usdc", "0")
-        positions = snap.get("position_count", 0)
-        ts = snap.get("timestamp")
+    equity = snap.get("equity_usdc", "?")
+    used_margin = snap.get("used_margin_usdc", "0")
+    avail_margin = snap.get("available_margin_usdc", "0")
+    margin_util = snap.get("margin_utilization_pct")
+    unrealized = snap.get("unrealized_pnl_usdc", "0")
+    realized = snap.get("realized_pnl_today_usdc", "0")
+    funding_pnl = snap.get("funding_pnl_today_usdc", "0")
+    fees = snap.get("fees_paid_today_usdc", "0")
+    positions = snap.get("position_count", 0)
+    ts = snap.get("timestamp")
 
-        lines.append(f"  {BOLD}Route {label}{RESET}")
+    lines.append(f"  {BOLD}Unified Portfolio{RESET}  {DIM}(single Coinbase account){RESET}")
+    lines.append(
+        f"    Equity: {BOLD}${equity}{RESET} USDC"
+        f"  |  Margin: ${used_margin} / ${avail_margin}"
+        f"  |  Positions: {positions}"
+    )
+
+    # Margin utilization bar
+    if margin_util is not None:
+        mu_color = GREEN if margin_util < 40 else YELLOW if margin_util < 60 else RED
+        bar_filled = min(int(margin_util / 5), 20)
+        bar_empty = 20 - bar_filled
         lines.append(
-            f"    Equity: {BOLD}${equity}{RESET} USDC"
-            f"  |  Margin: ${used_margin} / ${avail_margin}"
-            f"  |  Positions: {positions}"
+            f"    Margin util: {mu_color}[{'|' * bar_filled}{'.' * bar_empty}]{RESET}"
+            f" {margin_util:.1f}%"
         )
 
-        # Margin utilization bar
-        if margin_util is not None:
-            mu_color = GREEN if margin_util < 40 else YELLOW if margin_util < 60 else RED
-            bar_filled = min(int(margin_util / 5), 20)
-            bar_empty = 20 - bar_filled
-            lines.append(
-                f"    Margin util: {mu_color}[{'|' * bar_filled}{'.' * bar_empty}]{RESET}"
-                f" {margin_util:.1f}%"
-            )
+    # P&L breakdown
+    uclr = _pnl_color(unrealized)
+    rclr = _pnl_color(realized)
+    fclr = _pnl_color(funding_pnl)
+    lines.append(
+        f"    Unrealized: {uclr}{_fmt_pnl(unrealized)}{RESET}"
+        f"  Realized: {rclr}{_fmt_pnl(realized)}{RESET}"
+        f"  Funding: {fclr}{_fmt_pnl(funding_pnl)}{RESET}"
+    )
 
-        # P&L breakdown
-        uclr = _pnl_color(unrealized)
-        rclr = _pnl_color(realized)
-        fclr = _pnl_color(funding_pnl)
+    try:
+        net = float(realized) + float(unrealized) + float(funding_pnl) - float(fees)
+        nclr = GREEN if net > 0 else RED if net < 0 else WHITE
         lines.append(
-            f"    Unrealized: {uclr}{_fmt_pnl(unrealized)}{RESET}"
-            f"  Realized: {rclr}{_fmt_pnl(realized)}{RESET}"
-            f"  Funding: {fclr}{_fmt_pnl(funding_pnl)}{RESET}"
+            f"    Net P&L: {nclr}{BOLD}${net:+,.2f}{RESET} USDC"
+            f"  {DIM}(fees: ${float(fees):,.2f}){RESET}"
         )
+    except (ValueError, TypeError):
+        pass
 
+    # Equity sparkline (use Route A history — same underlying portfolio)
+    history = equity_histories.get("a", [])
+    if len(history) >= 2:
         try:
-            net = float(realized) + float(unrealized) + float(funding_pnl) - float(fees)
-            nclr = GREEN if net > 0 else RED if net < 0 else WHITE
+            equities = [float(s["equity_usdc"]) for s in history]
+            first_eq = equities[0]
+            last_eq = equities[-1]
+            eq_change = last_eq - first_eq
+            eq_pct = (eq_change / first_eq) * 100 if first_eq else 0
+            clr = GREEN if eq_change >= 0 else RED
+            spark = _sparkline(equities)
             lines.append(
-                f"    Net P&L: {nclr}{BOLD}${net:+,.2f}{RESET} USDC"
-                f"  {DIM}(fees: ${float(fees):,.2f}){RESET}"
+                f"    Equity trend: {spark}"
+                f"  {clr}{eq_change:+,.2f} ({eq_pct:+.2f}%){RESET}"
             )
-        except (ValueError, TypeError):
+        except (ValueError, KeyError):
             pass
 
-        # Equity sparkline from history
-        history = equity_histories.get(suffix, [])
-        if len(history) >= 2:
-            try:
-                equities = [float(s["equity_usdc"]) for s in history]
-                first_eq = equities[0]
-                last_eq = equities[-1]
-                eq_change = last_eq - first_eq
-                eq_pct = (eq_change / first_eq) * 100 if first_eq else 0
-                clr = GREEN if eq_change >= 0 else RED
-                spark = _sparkline(equities)
-                lines.append(
-                    f"    Equity trend: {spark}"
-                    f"  {clr}{eq_change:+,.2f} ({eq_pct:+.2f}%){RESET}"
-                )
-            except (ValueError, KeyError):
-                pass
-
-        # Open positions table
-        pos_list = snap.get("positions", [])
-        if pos_list:
+    # Open positions table
+    pos_list = snap.get("positions", [])
+    if pos_list:
+        lines.append(
+            f"    {DIM}{'Instrument':<12} {'Side':<6} {'Size':>10}"
+            f" {'Entry':>12} {'Mark':>12} {'P&L':>12}"
+            f" {'Lev':>5} {'Liq':>12}{RESET}"
+        )
+        for pos in pos_list:
+            p_side = pos.get("side", "?")
+            p_pnl = pos.get("unrealized_pnl_usdc", "0")
+            p_clr = _pnl_color(p_pnl)
+            side_clr = GREEN if p_side == "LONG" else RED
             lines.append(
-                f"    {DIM}{'Instrument':<12} {'Side':<6} {'Size':>10}"
-                f" {'Entry':>12} {'Mark':>12} {'P&L':>12}"
-                f" {'Lev':>5} {'Liq':>12}{RESET}"
+                f"    {WHITE}{pos.get('instrument', '?'):<12}{RESET}"
+                f" {side_clr}{p_side:<6}{RESET}"
+                f" {pos.get('size', '?'):>10}"
+                f" ${pos.get('entry_price', '?'):>11}"
+                f" ${pos.get('mark_price', '?'):>11}"
+                f" {p_clr}${p_pnl:>11}{RESET}"
+                f" {pos.get('leverage', '?'):>5}"
+                f" ${pos.get('liquidation_price', '?'):>11}"
             )
-            for pos in pos_list:
-                p_side = pos.get("side", "?")
-                p_pnl = pos.get("unrealized_pnl_usdc", "0")
-                p_clr = _pnl_color(p_pnl)
-                side_clr = GREEN if p_side == "LONG" else RED
-                lines.append(
-                    f"    {WHITE}{pos.get('instrument', '?'):<12}{RESET}"
-                    f" {side_clr}{p_side:<6}{RESET}"
-                    f" {pos.get('size', '?'):>10}"
-                    f" ${pos.get('entry_price', '?'):>11}"
-                    f" ${pos.get('mark_price', '?'):>11}"
-                    f" {p_clr}${p_pnl:>11}{RESET}"
-                    f" {pos.get('leverage', '?'):>5}"
-                    f" ${pos.get('liquidation_price', '?'):>11}"
-                )
-        else:
-            lines.append(f"    {DIM}No open positions{RESET}")
+    else:
+        lines.append(f"    {DIM}No open positions{RESET}")
 
-        lines.append(f"    {DIM}Updated: {_ts_age(ts)}{RESET}")
-        lines.append("")
+    lines.append(f"    {DIM}Updated: {_ts_age(ts)}{RESET}")
+    lines.append("")
+
+    # ── Per-Route Activity ──
+    lines.append(f"  {BOLD}Route Activity{RESET}")
+    for label, suffix in [("A (Autonomous)", "a"), ("B (User-Confirmed)", "b")]:
+        ideas_stream = f"stream:ranked_ideas:{suffix}"
+        approved_stream = f"stream:approved_orders:{suffix}"
+        ideas_count = info.get(ideas_stream, {}).get("length", 0)
+        approved_count = info.get(approved_stream, {}).get("length", 0)
+        rate_str = f" ({approved_count / ideas_count * 100:.0f}%)" if ideas_count > 0 else ""
+        lines.append(
+            f"    Route {label}: {ideas_count} ideas"
+            f" → {GREEN}{approved_count} approved{RESET}{rate_str}"
+        )
+    lines.append("")
 
     # Funding payments summary
     for label, suffix in [("A", "a"), ("B", "b")]:
@@ -684,9 +691,9 @@ def _render(
 
     parts: list[str] = []
     parts.append("")
-    parts.append(f" {BOLD}{CYAN}phantom-perp v1.0{RESET}  {DIM}{now}{RESET}")
+    parts.append(f" {BOLD}{CYAN}phantom-perp v1.5{RESET}  {DIM}{now}{RESET}")
     parts.append(
-        f" {DIM}7 strategies | 5 instruments | "
+        f" {DIM}12 strategies | 4 instruments | single portfolio | "
         f"{total_msgs:,} messages across {active}/{len(STREAMS)} active streams{RESET}"
     )
     parts.append(f" {DIM}{sep}{RESET}")
@@ -707,8 +714,8 @@ def _render(
     parts.extend(_format_funding(info))
     parts.append("")
 
-    parts.append(f" {BOLD}Route Performance{RESET}")
-    parts.extend(_format_portfolio(info, equity_a, equity_b))
+    parts.append(f" {BOLD}Portfolio & Routes{RESET}")
+    parts.extend(_format_route_performance(info, equity_a, equity_b))
     parts.append("")
 
     parts.append(f" {BOLD}Signals{RESET}")

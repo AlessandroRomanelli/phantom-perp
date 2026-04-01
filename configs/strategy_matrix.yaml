@@ -10,8 +10,7 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      # - QQQ-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
-      # - SPY-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
+      - SPY-PERP
 
   mean_reversion:
     enabled: true
@@ -19,8 +18,7 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      # - QQQ-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
-      # - SPY-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
+      - SPY-PERP
 
   liquidation_cascade:
     enabled: true
@@ -28,7 +26,7 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      # QQQ/SPY disabled: liquidation cascades are crypto-native (D-11)
+      # QQQ/SPY excluded: liquidation cascades are crypto-native (D-11)
 
   correlation:
     enabled: true
@@ -36,8 +34,7 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      # - QQQ-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
-      # - SPY-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
+      - SPY-PERP
 
   regime_trend:
     enabled: true
@@ -45,8 +42,7 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      # - QQQ-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
-      # - SPY-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
+      - SPY-PERP
 
   orderbook_imbalance:
     enabled: true
@@ -54,8 +50,7 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      # - QQQ-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
-      # - SPY-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
+      - SPY-PERP
 
   vwap:
     enabled: true
@@ -63,8 +58,7 @@ strategies:
       - ETH-PERP
       - BTC-PERP
       - SOL-PERP
-      # - QQQ-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
-      # - SPY-PERP  # disabled: Coinbase equity perps misbehaving — revisit later
+      - SPY-PERP
 
   claude_market_analysis:
     enabled: true

@@ -46,7 +46,7 @@
     <div class="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
       <div class="flex items-center gap-3">
         <h1 class="text-lg font-semibold text-white font-mono tracking-tight">phantom-perp</h1>
-        <span class="text-xs font-mono text-gray-500">v1.2</span>
+        <span class="text-xs font-mono text-gray-500">v1.5</span>
         <span id="ws-status" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-800 text-gray-400">
           <span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
           connecting
@@ -132,9 +132,10 @@
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3" id="claude-state"></div>
     </section>
 
-    <!-- Route Performance -->
+    <!-- Portfolio & Routes -->
     <section>
-      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Route Performance</h2>
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Portfolio & Routes</h2>
+      <div id="unified-portfolio" class="bg-surface-100 rounded-lg border border-gray-800/60 p-4 mb-3"></div>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div id="route-a" class="bg-surface-100 rounded-lg border border-gray-800/60 p-4"></div>
         <div id="route-b" class="bg-surface-100 rounded-lg border border-gray-800/60 p-4"></div>
@@ -232,7 +233,7 @@
   </main>
 
   <footer class="max-w-[1600px] mx-auto px-4 py-3 text-xs text-gray-600 font-mono">
-    phantom-perp v1.2 &middot; 10 strategies &middot; 3 crypto instruments &middot; WebSocket live
+    phantom-perp v1.5 &middot; 12 strategies &middot; 4 instruments &middot; single portfolio &middot; WebSocket live
   </footer>
 
 <script>
@@ -240,9 +241,9 @@
 const INSTRUMENTS = ['ETH-PERP','BTC-PERP','SOL-PERP','QQQ-PERP','SPY-PERP'];
 const STRATEGIES = [
   {id:'momentum',label:'MOM'},{id:'mean_reversion',label:'MR'},
-  {id:'liquidation_cascade',label:'LIQ'},{id:'correlation',label:'CORR'},
-  {id:'regime_trend',label:'RT'},{id:'orderbook_imbalance',label:'OBI'},
-  {id:'vwap',label:'VWAP'},{id:'funding_arb',label:'FUND'},
+  {id:'contrarian_funding',label:'CF'},{id:'liquidation_cascade',label:'LIQ'},
+  {id:'correlation',label:'CORR'},{id:'regime_trend',label:'RT'},
+  {id:'orderbook_imbalance',label:'OBI'},{id:'vwap',label:'VWAP'},
   {id:'claude_market_analysis',label:'CLAUDE'},{id:'oi_divergence',label:'OID'}
 ];
 
@@ -495,14 +496,13 @@ function renderClaudeState(claudeState) {
   el.innerHTML = instruments.map(id => buildClaudeCard(id, claudeState[id] || null)).join('');
 }
 
-function renderRoute(containerId, label, streams) {
-  const el = document.getElementById(containerId);
-  const suffix = containerId === 'route-a' ? 'a' : 'b';
-  const stream = streams[`stream:portfolio_state:${suffix}`];
-  const snap = stream?.latest;
+function renderUnifiedPortfolio(streams) {
+  const el = document.getElementById('unified-portfolio');
+  // Both route streams show the same underlying portfolio — read from A
+  const snap = streams['stream:portfolio_state:a']?.latest;
 
   if (!snap) {
-    el.innerHTML = `<div class="text-gray-500 text-sm">Route ${label}: <span class="text-gray-600">awaiting data</span></div>`;
+    el.innerHTML = '<div class="text-gray-500 text-sm">Unified Portfolio: <span class="text-gray-600">awaiting data</span></div>';
     return;
   }
 
@@ -553,7 +553,10 @@ function renderRoute(containerId, label, streams) {
 
   el.innerHTML = `
     <div class="flex items-center justify-between mb-3">
-      <span class="text-white font-semibold text-sm">Route ${label}</span>
+      <div class="flex items-center gap-2">
+        <span class="text-white font-semibold text-sm">Unified Portfolio</span>
+        <span class="text-gray-600 text-xs font-mono">(single Coinbase account)</span>
+      </div>
       <span class="text-gray-500 text-xs font-mono">${agoFromISO(snap.timestamp)}</span>
     </div>
     <div class="grid grid-cols-3 gap-3 text-xs font-mono mb-2">
@@ -578,6 +581,49 @@ function renderRoute(containerId, label, streams) {
       <div><span class="text-gray-500">Net P&L</span><br><span class="${pnlColor(net)} font-semibold">${fmtPnl(net)}</span></div>
     </div>
     ${posTable}
+  `;
+}
+
+function renderRoute(containerId, label, streams) {
+  const el = document.getElementById(containerId);
+  const suffix = containerId === 'route-a' ? 'a' : 'b';
+
+  // Per-route activity: ideas → approved pipeline
+  const ideas = streams[`stream:ranked_ideas:${suffix}`]?.length || 0;
+  const approved = streams[`stream:approved_orders:${suffix}`]?.length || 0;
+  const events = streams[`stream:exchange_events:${suffix}`]?.length || 0;
+  const rate = ideas > 0 ? ((approved/ideas)*100).toFixed(0) + '%' : '--';
+
+  const latestOrder = streams[`stream:approved_orders:${suffix}`]?.latest;
+  let orderRow = '';
+  if (latestOrder) {
+    const side = latestOrder.side || '?';
+    const sideCls = side === 'BUY' ? 'text-accent-green' : 'text-accent-red';
+    const inst = latestOrder.instrument || '?';
+    orderRow = `
+      <div class="mt-2 pt-2 border-t border-gray-800/30 text-xs font-mono">
+        <span class="text-gray-500">Latest:</span>
+        <span class="${sideCls} font-semibold">${side}</span>
+        <span class="text-gray-300">${latestOrder.size || '?'} ${inst}</span>
+        <span class="text-gray-500">conv:</span>
+        <span class="text-gray-300">${latestOrder.conviction || '?'}</span>
+      </div>`;
+  }
+
+  el.innerHTML = `
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-white font-semibold text-sm">Route ${label}</span>
+      <span class="text-xs font-mono text-gray-600">${suffix === 'a' ? 'autonomous' : 'Telegram-confirmed'}</span>
+    </div>
+    <div class="grid grid-cols-3 gap-3 text-xs font-mono">
+      <div><span class="text-gray-500">Ideas</span><br><span class="text-gray-300">${ideas}</span></div>
+      <div><span class="text-gray-500">Approved</span><br><span class="text-accent-green">${approved}</span></div>
+      <div><span class="text-gray-500">Approval Rate</span><br><span class="text-gray-300">${rate}</span></div>
+    </div>
+    <div class="mt-2 text-xs font-mono">
+      <span class="text-gray-500">Exchange events:</span> <span class="text-gray-300">${events}</span>
+    </div>
+    ${orderRow}
   `;
 }
 
@@ -693,16 +739,18 @@ function renderFills(fills) {
 
 function renderRisk(streams) {
   const el = document.getElementById('risk-section');
-  const ra = streams['stream:ranked_ideas:a']?.length || 0;
-  const rb = streams['stream:ranked_ideas:b']?.length || 0;
-  const aa = streams['stream:approved_orders:a']?.length || 0;
-  const ab = streams['stream:approved_orders:b']?.length || 0;
-  const rateA = ra > 0 ? ((aa/ra)*100).toFixed(0) + '%' : '';
-  const rateB = rb > 0 ? ((ab/rb)*100).toFixed(0) + '%' : '';
-  el.innerHTML = `
-    <div class="flex justify-between"><span class="text-gray-500">Portfolio A</span><span>${ra} ideas &rarr; <span class="text-accent-green">${aa} approved</span> ${rateA}</span></div>
-    <div class="flex justify-between"><span class="text-gray-500">Portfolio B</span><span>${rb} ideas &rarr; <span class="text-accent-green">${ab} approved</span> ${rateB}</span></div>
-  `;
+  // Show latest approved order per route
+  let lines = [];
+  for (const [label, suffix] of [['A', 'a'], ['B', 'b']]) {
+    const snap = streams[`stream:approved_orders:${suffix}`]?.latest;
+    if (snap) {
+      const side = snap.side || '?';
+      const sideCls = side === 'BUY' ? 'text-accent-green' : 'text-accent-red';
+      lines.push(`<div class="flex justify-between"><span class="text-gray-500">Route ${label}</span><span class="${sideCls} font-semibold">${side}</span> <span>${snap.size || '?'} ${snap.instrument || '?'}</span> <span class="text-gray-500">conv: ${snap.conviction || '?'}</span></div>`);
+    }
+  }
+  if (!lines.length) lines.push('<span class="text-gray-600">No approved orders yet</span>');
+  el.innerHTML = lines.join('');
 }
 
 function renderExecution(streams) {
@@ -785,6 +833,7 @@ function connect() {
       renderInstruments(data.instruments || {});
       renderFeatureStores(data.feature_stores || {});
       renderClaudeState(data.claude_state || {});
+      renderUnifiedPortfolio(data.streams || {});
       renderRoute('route-a', 'A (Autonomous)', data.streams || {});
       renderRoute('route-b', 'B (User-Confirmed)', data.streams || {});
       renderFills(data.fills || []);

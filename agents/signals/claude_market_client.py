@@ -143,16 +143,24 @@ def build_system_prompt() -> str:
         "on Coinbase International Exchange. Your job is to analyse the provided market "
         "context for a single instrument and decide whether there is a high-confidence "
         "trade opportunity.\n\n"
+        "You receive multi-timeframe data:\n"
+        "- Intraday: 8 hours of 5-minute bars (microstructure, momentum)\n"
+        "- Hourly candles: up to 24 hours (daily trend, support/resistance)\n"
+        "- 6-hour candles: up to 7 days (macro trend, weekly structure)\n"
+        "- Funding rate and OI trends: 2 hours of history\n"
+        "- Live orderbook state and volatility\n\n"
         "Rules:\n"
         "1. Only emit LONG or SHORT when conviction ≥ 0.55. Otherwise use NO_SIGNAL.\n"
-        "2. Entry price must be within ±5% of the current mark price.\n"
-        "3. Stop-loss must be directionally correct: below entry for LONG, above for SHORT.\n"
-        "4. Take-profit must be directionally correct: above entry for LONG, below for SHORT.\n"
-        "5. Reasoning must reference specific numbers from the context provided.\n"
-        "6. Be conservative in HIGH_VOLATILITY regimes — widen stops or use NO_SIGNAL.\n"
-        "7. Funding rate alignment is a strong confirming factor — note it explicitly.\n"
-        "8. Use the submit_market_analysis tool to return your analysis.\n\n"
-        "Output style: be concise — one or two sentences of reasoning is enough."
+        "2. Look for alignment across timeframes — intraday move confirmed by hourly/daily trend.\n"
+        "3. Entry price must be within ±5% of the current mark price.\n"
+        "4. Stop-loss must be directionally correct: below entry for LONG, above for SHORT.\n"
+        "5. Take-profit must be directionally correct: above entry for LONG, below for SHORT.\n"
+        "6. Reasoning must reference specific numbers from the context provided.\n"
+        "7. Be conservative in HIGH_VOLATILITY regimes — widen stops or use NO_SIGNAL.\n"
+        "8. Funding rate alignment is a strong confirming factor — note it explicitly.\n"
+        "9. Use the submit_market_analysis tool to return your analysis.\n\n"
+        "Output style: be concise — two or three sentences of reasoning referencing "
+        "specific price levels, timeframe alignment, and key indicators."
     )
 
 
@@ -188,48 +196,103 @@ def build_market_context(
     lines.append(f"Regime: {regime.value}")
     lines.append("")
 
-    # --- Price stats (last 24 samples) ---
+    # --- Raw arrays from feature store (5-min bars) ---
     closes = store.closes
+    highs = store.highs
+    lows = store.lows
+    volumes = store.volumes
     n = len(closes)
-    window_24 = closes[-24:] if n >= 24 else closes
 
     mark = float(snapshot.mark_price)
-    lines.append("### Price (last 24 samples)")
-    if len(window_24) >= 2:
-        lines.append(f"  min={window_24.min():.2f}  max={window_24.max():.2f}")
-        lines.append(f"  mean={window_24.mean():.2f}  first={window_24[0]:.2f}  last={window_24[-1]:.2f}")
-    lines.append(f"  mark_price={mark:.2f}  samples_stored={n}")
+
+    # --- Intraday price (last 96 samples = 8 hours of 5-min bars) ---
+    window_96 = closes[-96:] if n >= 96 else closes
+    lines.append("### Intraday Price (last 8 hours, 5-min bars)")
+    if len(window_96) >= 2:
+        lines.append(f"  bars={len(window_96)}  min={window_96.min():.2f}  max={window_96.max():.2f}")
+        lines.append(f"  mean={window_96.mean():.2f}  first={window_96[0]:.2f}  last={window_96[-1]:.2f}")
+        pct_8h = (window_96[-1] - window_96[0]) / window_96[0] * 100 if window_96[0] != 0 else 0
+        lines.append(f"  change={pct_8h:+.2f}%")
+    lines.append(f"  mark_price={mark:.2f}  total_samples_stored={n}")
     lines.append("")
 
-    # --- Funding rate trend (last 10 values) ---
+    # --- Hourly candles synthesized from 5-min bars (last 24 hours) ---
+    # Each hourly candle = 12 consecutive 5-min bars
+    hourly_bars = 12
+    max_hourly = min(n // hourly_bars, 24)
+    if max_hourly >= 2:
+        lines.append(f"### Hourly Candles (last {max_hourly} hours, synthesized from 5-min bars)")
+        lines.append("  hour_ago | open | high | low | close | range%")
+        for i in range(max_hourly, 0, -1):
+            end_idx = n - (i - 1) * hourly_bars
+            start_idx = end_idx - hourly_bars
+            c_slice = closes[start_idx:end_idx]
+            h_slice = highs[start_idx:end_idx]
+            l_slice = lows[start_idx:end_idx]
+            o = c_slice[0]
+            c = c_slice[-1]
+            h = h_slice.max()
+            lo = l_slice.min()
+            rng = (h - lo) / lo * 100 if lo > 0 else 0
+            lines.append(f"  -{i:>2}h | {o:.2f} | {h:.2f} | {lo:.2f} | {c:.2f} | {rng:.2f}%")
+        lines.append("")
+
+    # --- 6-hour candles synthesized from 5-min bars (last 7 days) ---
+    six_hour_bars = 72  # 6h × 12 bars/h
+    max_6h = min(n // six_hour_bars, 28)  # up to 7 days
+    if max_6h >= 2:
+        lines.append(f"### 6-Hour Candles (last {max_6h} periods, synthesized)")
+        lines.append("  periods_ago | open | high | low | close | change%")
+        for i in range(max_6h, 0, -1):
+            end_idx = n - (i - 1) * six_hour_bars
+            start_idx = end_idx - six_hour_bars
+            c_slice = closes[start_idx:end_idx]
+            h_slice = highs[start_idx:end_idx]
+            l_slice = lows[start_idx:end_idx]
+            o = c_slice[0]
+            c = c_slice[-1]
+            h = h_slice.max()
+            lo = l_slice.min()
+            chg = (c - o) / o * 100 if o > 0 else 0
+            lines.append(f"  -{i * 6:>3}h | {o:.2f} | {h:.2f} | {lo:.2f} | {c:.2f} | {chg:+.2f}%")
+        lines.append("")
+
+    # --- Funding rate trend (last 24 values = 2 hours of 5-min bars) ---
     funding_arr = store.funding_rates
     nf = len(funding_arr)
-    lines.append("### Funding Rate Trend (last 10 values)")
+    lines.append("### Funding Rate Trend (last 24 values)")
     if nf >= 2:
-        tail = funding_arr[-10:]
+        tail = funding_arr[-24:]
         mean_funding = tail.mean()
         direction = "rising" if tail[-1] > tail[0] else "falling"
-        vals_str = "  ".join(f"{v:.6f}" for v in tail)
-        lines.append(f"  values: {vals_str}")
-        lines.append(f"  mean={mean_funding:.6f}  direction={direction}")
+        # Show first, middle, last for compactness
+        if len(tail) >= 6:
+            sampled = [tail[0], tail[len(tail)//4], tail[len(tail)//2], tail[3*len(tail)//4], tail[-1]]
+            vals_str = "  ".join(f"{v:.6f}" for v in sampled)
+            lines.append(f"  sampled(5): {vals_str}")
+        else:
+            vals_str = "  ".join(f"{v:.6f}" for v in tail)
+            lines.append(f"  values: {vals_str}")
+        lines.append(f"  mean={mean_funding:.6f}  direction={direction}  points={len(tail)}")
     elif nf == 1:
         lines.append(f"  current={funding_arr[0]:.6f}  (insufficient history)")
     else:
         lines.append(f"  current={float(snapshot.funding_rate):.6f}  (no history)")
     lines.append("")
 
-    # --- Open interest trend (last 10 samples) ---
+    # --- Open interest trend (last 24 samples = 2 hours) ---
     oi_arr = store.open_interests
     noi = len(oi_arr)
-    lines.append("### Open Interest Trend (last 10 samples)")
+    lines.append("### Open Interest Trend (last 24 samples)")
     if noi >= 2:
-        tail_oi = oi_arr[-10:]
+        tail_oi = oi_arr[-24:]
         oi_first = tail_oi[0]
         oi_last = tail_oi[-1]
         pct_chg = ((oi_last - oi_first) / oi_first * 100) if oi_first != 0 else 0.0
-        vals_oi = "  ".join(f"{v:.0f}" for v in tail_oi)
-        lines.append(f"  values: {vals_oi}")
-        lines.append(f"  pct_change={pct_chg:+.2f}%  current={oi_last:.0f}")
+        oi_min = tail_oi.min()
+        oi_max = tail_oi.max()
+        lines.append(f"  current={oi_last:.0f}  min={oi_min:.0f}  max={oi_max:.0f}")
+        lines.append(f"  pct_change={pct_chg:+.2f}%  points={len(tail_oi)}")
     else:
         lines.append(f"  current={float(snapshot.open_interest):.0f}  (insufficient history)")
     lines.append("")
