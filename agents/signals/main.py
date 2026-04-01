@@ -27,7 +27,7 @@ from agents.alpha.regime_detector import RegimeDetector
 from agents.signals.claude_scheduler import run_claude_scheduler
 from agents.signals.coinglass_poller import run_coinglass_poller
 from agents.signals.config_watcher import run_config_watcher
-from agents.signals.conviction_normalizer import normalize_conviction, should_route_a
+from agents.signals.conviction_normalizer import normalize_conviction
 from agents.signals.feature_store import FeatureStore
 from agents.signals.orch_client import OrchestratorParams
 from agents.signals.orch_scheduler import run_orchestrator_scheduler
@@ -68,7 +68,7 @@ from libs.common.config import (
 )
 from libs.common.instruments import get_active_instrument_ids
 from libs.common.logging import setup_logging
-from libs.common.models.enums import Route
+from libs.common.models.enums import Route, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal  # noqa: TC001
 from libs.messaging.channels import Channel
@@ -286,14 +286,16 @@ def _apply_conviction_normalization(signal: StandardSignal) -> StandardSignal:
     result = normalize_conviction(signal.conviction)
     updated_metadata = {**signal.metadata, "conviction_band": result.band}
 
-    if should_route_a(signal.conviction):
-        return replace(
-            signal,
-            suggested_route=Route.A,
-            metadata=updated_metadata,
-        )
+    # Route A for all strategies by default.  Only low-conviction Claude
+    # signals fall through to Route B (human confirmation).
+    if signal.source == SignalSource.CLAUDE_MARKET_ANALYSIS and result.band == "low":
+        return replace(signal, metadata=updated_metadata)
 
-    return replace(signal, metadata=updated_metadata)
+    return replace(
+        signal,
+        suggested_route=Route.A,
+        metadata=updated_metadata,
+    )
 
 
 def deserialize_snapshot(payload: dict[str, Any]) -> MarketSnapshot:
@@ -681,7 +683,15 @@ async def run_agent() -> None:
 
                 # Run this instrument's strategies
                 for strategy in strategies_by_instrument.get(instrument, []):
-                    store = fast_store if strategy.name in _FAST_STRATEGIES else slow_store
+                    is_fast = strategy.name in _FAST_STRATEGIES
+                    store = fast_store if is_fast else slow_store
+                    sampled = fast_sampled if is_fast else slow_sampled
+
+                    # Only evaluate when the store recorded a new bar.
+                    # This ensures cooldown_bars counts real bars, not raw ticks.
+                    if not sampled:
+                        continue
+
                     if store.sample_count < strategy.min_history:
                         continue
 
