@@ -26,6 +26,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from agents.alpha.regime_detector import RegimeDetector
 from agents.signals.claude_scheduler import run_claude_scheduler
 from agents.signals.coinglass_poller import run_coinglass_poller
+from agents.signals.config_watcher import run_config_watcher
 from agents.signals.conviction_normalizer import normalize_conviction, should_route_a
 from agents.signals.feature_store import FeatureStore
 from agents.signals.orch_client import OrchestratorParams
@@ -559,6 +560,33 @@ async def run_agent() -> None:
         logger.info("orchestrator_scheduler_task_launched", instruments=instrument_ids)
     else:
         logger.info("orchestrator_scheduler_skipped", reason="disabled in config")
+
+    # --- Config hot-reload watcher ---
+    # Re-wire callbacks capture the mutable references from above.
+    def _wire_claude(iid: str, strats: list[SignalStrategy]) -> None:
+        q = claude_queues.get(iid)
+        if q is None:
+            return
+        for s in strats:
+            if isinstance(s, ClaudeMarketAnalysisStrategy):
+                s.set_queue(q)
+
+    def _wire_heatmap(iid: str, strats: list[SignalStrategy]) -> None:
+        for s in strats:
+            if isinstance(s, LiquidationCascadeStrategy):
+                s.set_heatmap_store(latest_heatmaps)
+
+    asyncio.create_task(
+        run_config_watcher(
+            instrument_ids=instrument_ids,
+            strategies_by_instrument=strategies_by_instrument,
+            build_fn=build_strategies_for_instrument,
+            wire_claude_fn=_wire_claude,
+            wire_heatmap_fn=_wire_heatmap,
+        ),
+        name="config_watcher",
+    )
+    logger.info("config_watcher_task_launched")
 
     await consumer.subscribe(
         channels=[Channel.MARKET_SNAPSHOTS],
