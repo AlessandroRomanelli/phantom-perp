@@ -666,6 +666,24 @@ class TestFundingRateIntegration:
         assert "windows_agreed" in signals[0].metadata
 
 
+class TestConfigLoading:
+    """Tests proving CorrelationStrategy loads stop/TP ATR mults from config dict."""
+
+    def test_config_loads_stop_tp_atr_mult(self) -> None:
+        """Config dict values for stop_loss_atr_mult and take_profit_atr_mult are respected."""
+        config = {"parameters": {"stop_loss_atr_mult": 4.0, "take_profit_atr_mult": 6.0}}
+        strategy = CorrelationStrategy(config=config)
+        assert strategy._params.stop_loss_atr_mult == 4.0
+        assert strategy._params.take_profit_atr_mult == 6.0
+
+    def test_config_defaults_when_not_specified(self) -> None:
+        """When config omits stop/TP fields the dataclass defaults (2.0/3.0) are used."""
+        config = {"parameters": {"min_conviction": 0.3}}
+        strategy = CorrelationStrategy(config=config)
+        assert strategy._params.stop_loss_atr_mult == 2.0
+        assert strategy._params.take_profit_atr_mult == 3.0
+
+
 class TestPortfolioARouting:
     """Tests for Portfolio A routing (CORR-03)."""
 

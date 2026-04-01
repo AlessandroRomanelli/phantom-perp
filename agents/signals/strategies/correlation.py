@@ -371,10 +371,10 @@ class CorrelationStrategy(SignalStrategy):
         # If opposite: divergence (sign indicates bullish/bearish)
         if price_pct > 0 and oi_pct < 0:
             # Price up, OI down -> bearish divergence (distribution)
-            return -(abs(price_pct) + abs(oi_pct)) / 2
+            return float(-(abs(price_pct) + abs(oi_pct)) / 2)
         elif price_pct < 0 and oi_pct > 0:
             # Price down, OI up -> bullish divergence (accumulation)
-            return (abs(price_pct) + abs(oi_pct)) / 2
+            return float((abs(price_pct) + abs(oi_pct)) / 2)
         else:
             return 0.0
 
