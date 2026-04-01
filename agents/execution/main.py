@@ -711,12 +711,13 @@ async def run_agent() -> None:
                 # -----------------------------------------------------------
                 # 4. Select execution algorithm
                 # -----------------------------------------------------------
+                resolved_bps = exec_config.resolve_limit_offset_bps(instrument)
                 plan = select_algo(
                     side=side,
                     requested_type=order_type,
                     best_bid=market.best_bid,
                     best_ask=market.best_ask,
-                    limit_offset_bps=exec_config.limit_offset_bps,
+                    limit_offset_bps=resolved_bps,
                     prefer_maker=exec_config.prefer_maker,
                     explicit_limit_price=limit_price,
                 )
@@ -729,6 +730,7 @@ async def run_agent() -> None:
                     is_maker=plan.is_maker,
                     market_bid=str(market.best_bid),
                     market_ask=str(market.best_ask),
+                    limit_offset_bps=resolved_bps,
                 )
 
                 # -----------------------------------------------------------
