@@ -116,10 +116,15 @@ async def run_agent() -> None:
     router = RouteRouter(config=routing_config)
     regime_detector = RegimeDetector()
     scorecard = StrategyScorecard()
+    alpha_config = config.get("alpha", {})
+    exempt_sources_raw = alpha_config.get("exempt_sources", [])
+    exempt_sources = {SignalSource(s) for s in exempt_sources_raw} if exempt_sources_raw else None
     combiner = AlphaCombiner(
         router=router,
         regime_detector=regime_detector,
         scorecard=scorecard,
+        min_agreeing_sources=alpha_config.get("min_agreeing_sources", 1),
+        exempt_sources=exempt_sources,
     )
 
     logger.info("alpha_starting")

@@ -12,13 +12,14 @@ and a separate flip interval prevents direction reversals that churn fees.
 
 from __future__ import annotations
 
+import structlog
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import cast
 
-from libs.common.models.enums import PositionSide
+from libs.common.models.enums import PositionSide, SignalSource
 from libs.common.models.signal import StandardSignal
 from libs.common.models.trade_idea import RankedTradeIdea
 from libs.common.utils import generate_id, utc_now
@@ -27,6 +28,8 @@ from libs.portfolio.router import RouteRouter
 from agents.alpha.conflict_resolver import resolve_conflicts
 from agents.alpha.regime_detector import RegimeDetector
 from agents.alpha.scorecard import StrategyScorecard
+
+logger = structlog.get_logger("alpha.combiner")
 
 
 @dataclass(slots=True)
@@ -58,6 +61,8 @@ class AlphaCombiner:
         combination_window: timedelta = timedelta(seconds=60),
         cooldown: timedelta = timedelta(seconds=30),
         min_flip_interval: timedelta = timedelta(seconds=180),
+        min_agreeing_sources: int = 1,
+        exempt_sources: set[SignalSource] | None = None,
     ) -> None:
         self._router = router
         self._regime = regime_detector
@@ -65,6 +70,8 @@ class AlphaCombiner:
         self._window = combination_window
         self._cooldown = cooldown
         self._min_flip_interval = min_flip_interval
+        self._min_agreeing_sources = min_agreeing_sources
+        self._exempt_sources = exempt_sources
         self._buffer: deque[_BufferedSignal] = deque(maxlen=200)
         self._recent_ideas: deque[tuple[datetime, PositionSide, str]] = deque(maxlen=50)
 
@@ -118,6 +125,22 @@ class AlphaCombiner:
             if b.signal.direction == resolved.direction
             and b.signal.instrument == signal.instrument
         ]
+
+        # Cross-strategy agreement filter
+        if self._exempt_sources and signal.source in self._exempt_sources:
+            pass  # exempt — skip agreement check
+        else:
+            unique_sources = {s.source for s in contributing}
+            if len(unique_sources) < self._min_agreeing_sources:
+                logger.info(
+                    "signal_filtered_min_agreement",
+                    instrument=signal.instrument,
+                    source=signal.source.value,
+                    conviction=resolved.conviction,
+                    agreeing_sources=len(unique_sources),
+                    min_required=self._min_agreeing_sources,
+                )
+                return []
 
         # Use the best entry/SL/TP and median horizon from contributors
         entry_price = self._best_price(contributing, "entry_price")

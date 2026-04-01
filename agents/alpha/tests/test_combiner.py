@@ -301,3 +301,93 @@ class TestIdeaMetadata:
         sig = _sig(time_horizon=timedelta(hours=6))
         ideas = combiner.add_signal(sig, now=T0)
         assert ideas[0].time_horizon == timedelta(hours=6)
+
+
+class TestMinAgreementFilter:
+    """Tests for the cross-strategy agreement filter."""
+
+    def _build_filtered(
+        self,
+        min_agreeing: int = 2,
+        exempt: set[SignalSource] | None = None,
+    ) -> AlphaCombiner:
+        return AlphaCombiner(
+            router=RouteRouter(),
+            regime_detector=RegimeDetector(),
+            scorecard=StrategyScorecard(),
+            combination_window=timedelta(seconds=60),
+            cooldown=timedelta(seconds=0),
+            min_flip_interval=timedelta(seconds=0),
+            min_agreeing_sources=min_agreeing,
+            exempt_sources=exempt,
+        )
+
+    def test_single_source_blocked_when_min_is_2(self) -> None:
+        combiner = self._build_filtered(min_agreeing=2)
+        ideas = combiner.add_signal(_sig(source=SignalSource.MOMENTUM), now=T0)
+        assert ideas == []
+
+    def test_two_distinct_sources_pass_filter(self) -> None:
+        combiner = self._build_filtered(min_agreeing=2)
+        s1 = _sig(source=SignalSource.MOMENTUM, signal_id="s1")
+        s2 = _sig(source=SignalSource.MEAN_REVERSION, signal_id="s2")
+        combiner.add_signal(s1, now=T0)
+        # s1 was consumed — but filter blocked it, so s1 should still be in buffer
+        # Actually with min=2, s1 is NOT consumed (filter returns early before consume)
+        # s2 arrives: active = [s1, s2] → 2 distinct sources → passes
+        ideas = combiner.add_signal(s2, now=T0 + timedelta(seconds=1))
+        assert len(ideas) == 1
+
+    def test_same_source_twice_still_blocked(self) -> None:
+        combiner = self._build_filtered(min_agreeing=2)
+        s1 = _sig(source=SignalSource.MOMENTUM, signal_id="s1")
+        s2 = _sig(source=SignalSource.MOMENTUM, signal_id="s2")
+        combiner.add_signal(s1, now=T0)
+        ideas = combiner.add_signal(s2, now=T0 + timedelta(seconds=1))
+        # Only 1 unique source despite 2 signals
+        assert ideas == []
+
+    def test_default_min_1_allows_single_source(self) -> None:
+        """Default of min_agreeing_sources=1 preserves existing behavior."""
+        combiner = AlphaCombiner(
+            router=RouteRouter(),
+            regime_detector=RegimeDetector(),
+            scorecard=StrategyScorecard(),
+            combination_window=timedelta(seconds=60),
+            cooldown=timedelta(seconds=0),
+        )
+        ideas = combiner.add_signal(_sig(source=SignalSource.MOMENTUM), now=T0)
+        assert len(ideas) == 1
+
+    def test_exempt_source_bypasses_filter(self) -> None:
+        combiner = self._build_filtered(
+            min_agreeing=2,
+            exempt={SignalSource.CLAUDE_MARKET_ANALYSIS},
+        )
+        sig = _sig(source=SignalSource.CLAUDE_MARKET_ANALYSIS)
+        ideas = combiner.add_signal(sig, now=T0)
+        assert len(ideas) == 1
+
+    def test_non_exempt_source_still_blocked(self) -> None:
+        combiner = self._build_filtered(
+            min_agreeing=2,
+            exempt={SignalSource.CLAUDE_MARKET_ANALYSIS},
+        )
+        sig = _sig(source=SignalSource.MOMENTUM)
+        ideas = combiner.add_signal(sig, now=T0)
+        assert ideas == []
+
+    def test_blocked_signals_remain_in_buffer(self) -> None:
+        """Blocked signals must NOT be consumed — they should combine later."""
+        combiner = self._build_filtered(min_agreeing=2)
+        s1 = _sig(source=SignalSource.MOMENTUM, signal_id="s1")
+        # s1 is blocked (only 1 source)
+        ideas1 = combiner.add_signal(s1, now=T0)
+        assert ideas1 == []
+        # Now a second distinct source arrives — s1 should still be in buffer
+        s2 = _sig(source=SignalSource.MEAN_REVERSION, signal_id="s2")
+        ideas2 = combiner.add_signal(s2, now=T0 + timedelta(seconds=2))
+        assert len(ideas2) == 1
+        sources = {s.value for s in ideas2[0].sources}
+        assert "momentum" in sources
+        assert "mean_reversion" in sources

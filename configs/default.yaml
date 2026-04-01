@@ -45,6 +45,11 @@ portfolio:
       - condition: "default"
         target: "B"
 
+alpha:
+  min_agreeing_sources: 2
+  exempt_sources:
+    - claude_market_analysis
+
 risk:
   route_a:
     max_leverage: 5.0
