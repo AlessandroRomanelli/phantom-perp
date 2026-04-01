@@ -96,10 +96,16 @@ def _make_tool_use_block(raw: dict[str, Any]) -> SimpleNamespace:
     return block
 
 
-def _make_claude_response(decisions: list[dict[str, Any]], summary: str = "ok") -> SimpleNamespace:
+def _make_claude_response(
+    decisions: list[dict[str, Any]],
+    summary: str = "ok",
+    input_tokens: int = 150,
+    output_tokens: int = 80,
+) -> SimpleNamespace:
     """Wrap decisions in a mock Anthropic message response."""
     resp = SimpleNamespace()
     resp.content = [_make_tool_use_block({"decisions": decisions, "summary": summary})]
+    resp.usage = SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens)
     return resp
 
 
@@ -625,7 +631,7 @@ class TestOrchestratorParams:
     def test_defaults(self) -> None:
         p = OrchestratorParams()
         assert p.enabled is True
-        assert p.update_interval_seconds == 14400
+        assert p.update_interval_seconds == 7200
         assert p.min_interval_seconds == 3600
         assert p.max_tokens == 1024
 
@@ -665,6 +671,168 @@ class TestOrchestratorParams:
         )
 
         assert p.enabled is True
-        assert p.update_interval_seconds == 14400
+        assert p.update_interval_seconds == 7200
         assert p.min_interval_seconds == 3600
         assert p.max_tokens == 1024
+
+
+# ---------------------------------------------------------------------------
+# T02 additions: confidence schema, token logging, param defaults, validate pass-through
+# ---------------------------------------------------------------------------
+
+
+class TestOrchestratorToolConfidenceSchema:
+    """T02: Verify confidence field in ORCHESTRATOR_TOOL schema."""
+
+    def test_confidence_property_present(self) -> None:
+        """ORCHESTRATOR_TOOL schema has confidence property in decision items."""
+        item_props = ORCHESTRATOR_TOOL["input_schema"]["properties"]["decisions"]["items"]["properties"]
+        assert "confidence" in item_props
+
+    def test_confidence_type_is_number(self) -> None:
+        """confidence schema property has type: number."""
+        item_props = ORCHESTRATOR_TOOL["input_schema"]["properties"]["decisions"]["items"]["properties"]
+        assert item_props["confidence"]["type"] == "number"
+
+    def test_confidence_not_in_required(self) -> None:
+        """confidence is optional — not in required list (backward compatible)."""
+        item_required = ORCHESTRATOR_TOOL["input_schema"]["properties"]["decisions"]["items"]["required"]
+        assert "confidence" not in item_required
+
+
+class TestOrchestratorParamsT02:
+    """T02: OrchestratorParams defaults and custom value for min_confidence_threshold."""
+
+    def test_default_update_interval_is_7200(self) -> None:
+        """OrchestratorParams() default update_interval_seconds is 7200 (2h)."""
+        p = OrchestratorParams()
+        assert p.update_interval_seconds == 7200
+
+    def test_default_min_confidence_threshold_is_0_7(self) -> None:
+        """OrchestratorParams() default min_confidence_threshold is 0.7."""
+        p = OrchestratorParams()
+        assert p.min_confidence_threshold == pytest.approx(0.7)
+
+    def test_custom_min_confidence_threshold_accepted(self) -> None:
+        """OrchestratorParams accepts custom min_confidence_threshold."""
+        p = OrchestratorParams(min_confidence_threshold=0.5)
+        assert p.min_confidence_threshold == pytest.approx(0.5)
+
+    def test_all_new_defaults_combined(self) -> None:
+        """All T01 new defaults are set correctly together."""
+        p = OrchestratorParams()
+        assert p.update_interval_seconds == 7200
+        assert p.min_confidence_threshold == pytest.approx(0.7)
+        assert p.enabled is True
+        assert p.min_interval_seconds == 3600
+        assert p.max_tokens == 1024
+
+
+class TestCallClaudeOrchestratorTokenLogging:
+    """T02: Verify input_tokens and output_tokens appear in log event."""
+
+    def test_token_counts_logged_on_success(self) -> None:
+        """call_claude_orchestrator logs input_tokens and output_tokens."""
+        import structlog.testing
+
+        decisions = [
+            {
+                "instrument": "ETH-PERP",
+                "strategy": "momentum",
+                "enabled": True,
+                "reasoning": "trending",
+                "param_adjustments": {},
+            }
+        ]
+        mock_resp = _make_claude_response(decisions, input_tokens=250, output_tokens=95)
+
+        with structlog.testing.capture_logs() as cap_logs:
+            with patch("agents.signals.orch_client.anthropic.AsyncAnthropic") as mock_cls:
+                mock_client = AsyncMock()
+                mock_cls.return_value = mock_client
+                mock_client.messages.create = AsyncMock(return_value=mock_resp)
+
+                with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
+                    asyncio.new_event_loop().run_until_complete(
+                        call_claude_orchestrator("context", OrchestratorParams())
+                    )
+
+        decision_logs = [e for e in cap_logs if e.get("event") == "orchestrator_decisions_received"]
+        assert len(decision_logs) == 1
+        log_entry = decision_logs[0]
+        assert log_entry["input_tokens"] == 250
+        assert log_entry["output_tokens"] == 95
+
+
+class TestValidateOrchestratorResponseT02:
+    """T02: confidence field pass-through in validate_orchestrator_response."""
+
+    def test_confidence_passed_through_when_present(self) -> None:
+        """validate_orchestrator_response preserves confidence from decision dict."""
+        decisions = [
+            {
+                "instrument": "ETH-PERP",
+                "strategy": "momentum",
+                "enabled": True,
+                "reasoning": "trending",
+                "param_adjustments": {},
+                "confidence": 0.85,
+            }
+        ]
+
+        result = validate_orchestrator_response(decisions, _BOUNDS_PATH)
+
+        assert len(result) == 1
+        assert result[0]["confidence"] == pytest.approx(0.85)
+
+    def test_confidence_defaults_to_1_0_when_absent(self) -> None:
+        """validate_orchestrator_response defaults confidence to 1.0 when missing."""
+        decisions = [
+            {
+                "instrument": "ETH-PERP",
+                "strategy": "momentum",
+                "enabled": True,
+                "reasoning": "test",
+                "param_adjustments": {},
+                # No confidence key
+            }
+        ]
+
+        result = validate_orchestrator_response(decisions, _BOUNDS_PATH)
+
+        assert len(result) == 1
+        assert result[0]["confidence"] == pytest.approx(1.0)
+
+    def test_confidence_zero_preserved(self) -> None:
+        """confidence=0.0 (minimum) is preserved correctly."""
+        decisions = [
+            {
+                "instrument": "BTC-PERP",
+                "strategy": "mean_reversion",
+                "enabled": False,
+                "reasoning": "uncertain",
+                "param_adjustments": {},
+                "confidence": 0.0,
+            }
+        ]
+
+        result = validate_orchestrator_response(decisions, _BOUNDS_PATH)
+
+        assert result[0]["confidence"] == pytest.approx(0.0)
+
+    def test_confidence_one_preserved(self) -> None:
+        """confidence=1.0 (maximum) is preserved correctly."""
+        decisions = [
+            {
+                "instrument": "SOL-PERP",
+                "strategy": "momentum",
+                "enabled": True,
+                "reasoning": "strong signal",
+                "param_adjustments": {},
+                "confidence": 1.0,
+            }
+        ]
+
+        result = validate_orchestrator_response(decisions, _BOUNDS_PATH)
+
+        assert result[0]["confidence"] == pytest.approx(1.0)

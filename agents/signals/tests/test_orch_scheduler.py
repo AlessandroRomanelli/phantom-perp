@@ -619,3 +619,196 @@ class TestModuleConstants:
         """Public API is importable from the module."""
         from agents.signals.orch_scheduler import run_orchestrator_scheduler  # noqa: PLC0415
         assert callable(run_orchestrator_scheduler)
+
+
+# ---------------------------------------------------------------------------
+# T02 additions: confidence threshold filtering in _run_tick
+# ---------------------------------------------------------------------------
+
+
+def _make_decision_with_confidence(
+    instrument: str = _INSTRUMENT,
+    strategy: str = _STRATEGY,
+    enabled: bool = True,
+    confidence: float | None = None,
+    param_adjustments: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a decision dict optionally including a confidence value."""
+    d: dict[str, Any] = {
+        "instrument": instrument,
+        "strategy": strategy,
+        "enabled": enabled,
+        "reasoning": "test",
+        "param_adjustments": param_adjustments or {},
+    }
+    if confidence is not None:
+        d["confidence"] = confidence
+    return d
+
+
+class TestConfidenceThresholdFiltering:
+    """T02: Decisions are filtered by min_confidence_threshold before gate_map updates."""
+
+    @pytest.mark.asyncio
+    async def test_decision_above_threshold_is_applied(self) -> None:
+        """Decision with confidence > min_confidence_threshold is applied to gate_map."""
+        gate_map: dict[tuple[str, str], bool] = {}
+        threshold = 0.7
+        decision = _make_decision_with_confidence(confidence=0.9)
+        validated = [dict(decision)]  # simulate validate_orchestrator_response output
+
+        with (
+            patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=[decision])),
+            patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=validated),
+            patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+        ):
+            await _run_tick(
+                instrument_ids=[_INSTRUMENT],
+                slow_stores={},
+                latest_snapshots={},
+                regime_detector=MagicMock(),
+                redis_client=_make_redis(),
+                gate_map=gate_map,
+                param_adjustments={},
+                params=OrchestratorParams(min_confidence_threshold=threshold),
+                last_run_time=0.0,
+            )
+
+        assert (_INSTRUMENT, _STRATEGY) in gate_map
+
+    @pytest.mark.asyncio
+    async def test_decision_below_threshold_is_skipped(self) -> None:
+        """Decision with confidence < min_confidence_threshold is NOT applied to gate_map."""
+        gate_map: dict[tuple[str, str], bool] = {}
+        threshold = 0.7
+        decision = _make_decision_with_confidence(confidence=0.5)
+        validated = [dict(decision)]
+
+        with (
+            patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=[decision])),
+            patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=validated),
+            patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+        ):
+            await _run_tick(
+                instrument_ids=[_INSTRUMENT],
+                slow_stores={},
+                latest_snapshots={},
+                regime_detector=MagicMock(),
+                redis_client=_make_redis(),
+                gate_map=gate_map,
+                param_adjustments={},
+                params=OrchestratorParams(min_confidence_threshold=threshold),
+                last_run_time=0.0,
+            )
+
+        assert (_INSTRUMENT, _STRATEGY) not in gate_map
+
+    @pytest.mark.asyncio
+    async def test_decision_at_exact_threshold_is_applied(self) -> None:
+        """Decision with confidence == min_confidence_threshold is applied (>= not >)."""
+        gate_map: dict[tuple[str, str], bool] = {}
+        threshold = 0.7
+        decision = _make_decision_with_confidence(confidence=0.7)
+        validated = [dict(decision)]
+
+        with (
+            patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=[decision])),
+            patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=validated),
+            patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+        ):
+            await _run_tick(
+                instrument_ids=[_INSTRUMENT],
+                slow_stores={},
+                latest_snapshots={},
+                regime_detector=MagicMock(),
+                redis_client=_make_redis(),
+                gate_map=gate_map,
+                param_adjustments={},
+                params=OrchestratorParams(min_confidence_threshold=threshold),
+                last_run_time=0.0,
+            )
+
+        assert (_INSTRUMENT, _STRATEGY) in gate_map
+
+    @pytest.mark.asyncio
+    async def test_decision_without_confidence_defaults_to_1_0_and_is_applied(self) -> None:
+        """Decision missing confidence field defaults to 1.0 and is always applied."""
+        gate_map: dict[tuple[str, str], bool] = {}
+        # No confidence key in the decision
+        decision = _make_decision_with_confidence(confidence=None)
+        # Simulate validate_orchestrator_response adding confidence=1.0 as default
+        validated = [{**decision, "confidence": 1.0}]
+
+        with (
+            patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=[decision])),
+            patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=validated),
+            patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+        ):
+            await _run_tick(
+                instrument_ids=[_INSTRUMENT],
+                slow_stores={},
+                latest_snapshots={},
+                regime_detector=MagicMock(),
+                redis_client=_make_redis(),
+                gate_map=gate_map,
+                param_adjustments={},
+                params=OrchestratorParams(min_confidence_threshold=0.7),
+                last_run_time=0.0,
+            )
+
+        assert (_INSTRUMENT, _STRATEGY) in gate_map
+
+    @pytest.mark.asyncio
+    async def test_skipped_decisions_logged_at_debug(self) -> None:
+        """When decisions are skipped, a DEBUG log entry is emitted with the count."""
+        import structlog.testing
+
+        gate_map: dict[tuple[str, str], bool] = {}
+        threshold = 0.7
+        # One above, one below threshold
+        decision_high = _make_decision_with_confidence(
+            instrument="ETH-PERP", strategy="momentum", confidence=0.9
+        )
+        decision_low = _make_decision_with_confidence(
+            instrument="BTC-PERP", strategy="mean_reversion", confidence=0.3
+        )
+        validated = [
+            {**decision_high, "confidence": 0.9},
+            {**decision_low, "confidence": 0.3},
+        ]
+
+        with structlog.testing.capture_logs() as cap_logs:
+            with (
+                patch(
+                    "agents.signals.orch_scheduler.call_claude_orchestrator",
+                    new=AsyncMock(return_value=[decision_high, decision_low]),
+                ),
+                patch(
+                    "agents.signals.orch_scheduler.validate_orchestrator_response",
+                    return_value=validated,
+                ),
+                patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+            ):
+                await _run_tick(
+                    instrument_ids=["ETH-PERP", "BTC-PERP"],
+                    slow_stores={},
+                    latest_snapshots={},
+                    regime_detector=MagicMock(),
+                    redis_client=_make_redis(),
+                    gate_map=gate_map,
+                    param_adjustments={},
+                    params=OrchestratorParams(min_confidence_threshold=threshold),
+                    last_run_time=0.0,
+                )
+
+        # Only ETH-PERP/momentum (0.9) applied; BTC-PERP/mean_reversion (0.3) skipped
+        assert ("ETH-PERP", "momentum") in gate_map
+        assert ("BTC-PERP", "mean_reversion") not in gate_map
+
+        # Debug log should mention the skipped count
+        filter_logs = [
+            e for e in cap_logs if e.get("event") == "orchestrator_decisions_filtered"
+        ]
+        assert len(filter_logs) == 1
+        assert filter_logs[0]["skipped"] == 1
+        assert filter_logs[0]["log_level"] == "debug"
