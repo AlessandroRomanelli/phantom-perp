@@ -19,7 +19,7 @@ import asyncio
 import signal
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -46,7 +46,7 @@ from libs.common.models.order import ApprovedOrder, Fill, ProposedOrder
 from libs.common.utils import utc_now
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
-from libs.storage.models import FillRecord
+from libs.storage.models import FillRecord, OrderSignalRecord
 from libs.storage.relational import RelationalStore, init_db
 from libs.storage.repository import TunerRepository
 
@@ -454,6 +454,9 @@ async def _execute_with_retry(
 async def _place_protective_orders(
     *,
     order_id: str,
+    signal_id: str,
+    conviction: float,
+    primary_source: str,
     route: Route,
     instrument: str,
     fill_side: OrderSide,
@@ -464,6 +467,7 @@ async def _place_protective_orders(
     is_paper: bool,
     paper_broker: PaperBroker | None,
     last_price: Decimal | None,
+    repo: TunerRepository,
     client_pool: CoinbaseClientPool | None = None,
 ) -> None:
     """Place stop-loss and take-profit orders after a primary fill."""
@@ -498,6 +502,23 @@ async def _place_protective_orders(
                 order_id=order_id,
                 stop_price=str(sl.stop_price),
             )
+            # Attribute SL fill back to the originating signal for tuner
+            try:
+                await repo.write_order_signal(OrderSignalRecord(
+                    order_id=f"sl-{order_id}",
+                    signal_id=signal_id,
+                    portfolio_target=route.value,
+                    instrument=instrument,
+                    conviction=conviction,
+                    primary_source=primary_source,
+                    proposed_at=datetime.now(UTC),
+                ))
+            except Exception as attr_exc:
+                logger.warning(
+                    "sl_attribution_failed",
+                    order_id=order_id,
+                    error=str(attr_exc),
+                )
         except Exception as e:
             logger.error(
                 "stop_loss_placement_failed",
@@ -528,6 +549,23 @@ async def _place_protective_orders(
                 order_id=order_id,
                 target_price=str(tp.limit_price),
             )
+            # Attribute TP fill back to the originating signal for tuner
+            try:
+                await repo.write_order_signal(OrderSignalRecord(
+                    order_id=f"tp-{order_id}",
+                    signal_id=signal_id,
+                    portfolio_target=route.value,
+                    instrument=instrument,
+                    conviction=conviction,
+                    primary_source=primary_source,
+                    proposed_at=datetime.now(UTC),
+                ))
+            except Exception as attr_exc:
+                logger.warning(
+                    "tp_attribution_failed",
+                    order_id=order_id,
+                    error=str(attr_exc),
+                )
         except Exception as e:
             logger.error(
                 "take_profit_placement_failed",
@@ -648,6 +686,9 @@ async def run_agent() -> None:
                     reduce_only = proposed.reduce_only
                     leverage = proposed.leverage
                     source_label = "risk_agent"
+                    order_signal_id: str = proposed.signal_id
+                    order_conviction: float = proposed.conviction
+                    order_sources: str = ",".join(s.value for s in proposed.sources)
                 elif channel == channel_b:
                     approved = deserialize_approved_order(payload)
                     order_id = approved.order_id
@@ -662,6 +703,9 @@ async def run_agent() -> None:
                     reduce_only = approved.reduce_only
                     leverage = approved.leverage
                     source_label = "confirmation_agent"
+                    order_signal_id = approved.order_id  # no signal_id on ApprovedOrder — use order_id as fallback
+                    order_conviction = 0.0
+                    order_sources = ""
                 else:
                     await consumer.ack(channel, "execution_agent", msg_id)
                     continue
@@ -880,6 +924,9 @@ async def run_agent() -> None:
                     if has_sl or take_profit is not None:
                         await _place_protective_orders(
                             order_id=order_id,
+                            signal_id=order_signal_id,
+                            conviction=order_conviction,
+                            primary_source=order_sources.split(",")[0] if order_sources else "",
                             route=route,
                             instrument=instrument,
                             fill_side=side,
@@ -890,6 +937,7 @@ async def run_agent() -> None:
                             is_paper=is_paper,
                             paper_broker=paper_broker,
                             last_price=market.last_price,
+                            repo=repo,
                             client_pool=client_pool,
                         )
                 else:
