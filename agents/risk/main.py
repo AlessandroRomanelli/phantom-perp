@@ -16,6 +16,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+import orjson
+import redis.asyncio as aioredis
 from sqlalchemy.exc import SQLAlchemyError
 
 from libs.coinbase.auth import CoinbaseAuth
@@ -28,11 +30,11 @@ from libs.common.constants import (
 from libs.common.instruments import get_instrument
 from libs.common.logging import setup_logging
 from libs.common.models.enums import (
+    MarketRegime,
     OrderSide,
-    OrderStatus,
     OrderType,
-    Route,
     PositionSide,
+    Route,
     SignalSource,
 )
 from libs.common.models.order import ProposedOrder
@@ -41,6 +43,7 @@ from libs.common.models.trade_idea import RankedTradeIdea
 from libs.common.utils import generate_id, round_to_tick, utc_now
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
+from agents.risk.dynamic_leverage import compute_effective_leverage_cap
 from agents.risk.fee_calculator import estimate_fee
 from agents.risk.funding_cost_estimator import estimate_funding_cost
 from agents.risk.limits import RiskLimits, limits_for_route
@@ -52,9 +55,6 @@ from agents.risk.margin_calculator import (
     compute_maintenance_margin,
 )
 from agents.risk.portfolio_state_fetcher import PortfolioStateFetcher
-
-import orjson
-import redis.asyncio as aioredis
 
 
 class PaperPortfolioStateFetcher:
@@ -179,6 +179,7 @@ class RiskEngine:
         market_price: Decimal,
         market_timestamp: datetime,
         funding_rate: Decimal,
+        effective_leverage_cap: Decimal | None = None,
     ) -> RiskCheckResult:
         """Run all risk checks on a trade idea.
 
@@ -188,12 +189,17 @@ class RiskEngine:
             market_price: Latest mark price for the instrument.
             market_timestamp: When market_price was observed.
             funding_rate: Current hourly funding rate (signed).
+            effective_leverage_cap: Dynamic leverage ceiling from regime and stop
+                distance.  When None, falls back to limits.max_leverage (backward-
+                compatible).
 
         Returns:
             RiskCheckResult with approval/rejection and optional ProposedOrder.
         """
         target = idea.route
         limits = self._limits[target]
+        # Use dynamic cap when provided; otherwise fall back to static limit.
+        lev_cap = effective_leverage_cap if effective_leverage_cap is not None else limits.max_leverage
 
         # ------------------------------------------------------------------
         # 1. Stale data halt
@@ -311,6 +317,7 @@ class RiskEngine:
             existing_positions=open_positions,
             limits=limits,
             min_order_size=inst.min_order_size,
+            effective_leverage=lev_cap,
         )
         if size < inst.min_order_size:
             return RiskCheckResult(
@@ -330,19 +337,19 @@ class RiskEngine:
         total_notional = existing_notional + notional
         effective_leverage = total_notional / portfolio_state.equity_usdc
 
-        if effective_leverage > limits.max_leverage:
+        if effective_leverage > lev_cap:
             return RiskCheckResult(
                 approved=False,
                 rejection_reason=(
                     f"Leverage {effective_leverage:.2f}x "
-                    f"> limit {limits.max_leverage}x"
+                    f"> limit {lev_cap}x"
                 ),
             )
 
         # ------------------------------------------------------------------
         # 9. Margin utilization check
         # ------------------------------------------------------------------
-        new_margin = compute_initial_margin(size, entry_price, limits.max_leverage)
+        new_margin = compute_initial_margin(size, entry_price, lev_cap)
         projected_margin_util = (
             (portfolio_state.used_margin_usdc + new_margin)
             / portfolio_state.equity_usdc
@@ -361,7 +368,7 @@ class RiskEngine:
         # 10. Liquidation distance check
         # ------------------------------------------------------------------
         liq_price = compute_liquidation_price(
-            entry_price, limits.max_leverage, idea.direction,
+            entry_price, lev_cap, idea.direction,
         )
         liq_distance = compute_liquidation_distance_pct(
             entry_price, liq_price, idea.direction,
@@ -446,6 +453,7 @@ class RiskEngine:
                 "liq_distance_pct": float(liq_distance),
                 "projected_daily_funding_usdc": float(funding_est.daily_cost_usdc),
                 "margin_utilization_pct": float(projected_margin_util),
+                "effective_leverage_cap": str(lev_cap),
             },
         )
 
@@ -548,6 +556,9 @@ async def run_agent() -> None:
 
     consumer = RedisConsumer(redis_url=settings.infra.redis_url)
     publisher = RedisPublisher(redis_url=settings.infra.redis_url)
+    regime_redis: aioredis.Redis = aioredis.from_url(  # type: ignore[no-untyped-call]
+        settings.infra.redis_url, decode_responses=True,
+    )
 
     channel_a = Channel.ranked_ideas(Route.A)
     channel_b = Channel.ranked_ideas(Route.B)
@@ -621,6 +632,29 @@ async def run_agent() -> None:
                     await consumer.ack(channel, "risk_agent", msg_id)
                     continue
 
+                # Read current market regime from Redis for dynamic leverage
+                entry_price_for_lev = idea.entry_price or market_price
+                regime = MarketRegime.RANGING  # safe default
+                try:
+                    regime_raw = await regime_redis.hget("phantom:regime", idea.instrument)
+                    if regime_raw:
+                        regime = MarketRegime(regime_raw)
+                except (ConnectionError, Exception) as exc:
+                    log.warning(
+                        "regime_read_failed",
+                        instrument=idea.instrument,
+                        error=str(exc),
+                        exc_type=type(exc).__name__,
+                    )
+
+                eff_lev_cap = compute_effective_leverage_cap(
+                    entry_price=entry_price_for_lev,
+                    stop_loss=idea.stop_loss,
+                    regime=regime,
+                    route=idea.route,
+                    config=config,
+                )
+
                 # Run risk evaluation
                 result = engine.evaluate(
                     idea=idea,
@@ -628,6 +662,7 @@ async def run_agent() -> None:
                     market_price=market_price,
                     market_timestamp=market_ts,
                     funding_rate=funding_rate,
+                    effective_leverage_cap=eff_lev_cap,
                 )
 
                 if result.critical:
@@ -694,6 +729,13 @@ async def run_agent() -> None:
                         size=str(result.proposed_order.size),
                         side=result.proposed_order.side.value,
                     )
+                    log.info(
+                        "dynamic_leverage_applied",
+                        instrument=idea.instrument,
+                        regime=regime.value,
+                        eff_lev_cap=str(eff_lev_cap),
+                        actual_lev=str(result.proposed_order.leverage),
+                    )
                 else:
                     log.info(
                         "idea_rejected",
@@ -710,6 +752,7 @@ async def run_agent() -> None:
     finally:
         await consumer.close()
         await publisher.close()
+        await regime_redis.aclose()
         await db_store.close()
         if client_pool is not None:
             await client_pool.close()

@@ -365,3 +365,247 @@ class TestComputeEffectiveLeverageCap:
                 config=REGIME_LEVERAGE_CONFIG,
             )
             assert result <= MAX_LEVERAGE_ROUTE_B, f"Exceeded hard cap for {regime}"
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: compute_position_size with effective_leverage
+# ---------------------------------------------------------------------------
+
+from datetime import datetime, timedelta, UTC
+
+from agents.risk.limits import RiskLimits
+from agents.risk.position_sizer import compute_position_size
+from libs.common.config import load_yaml_config
+from libs.common.instruments import load_instruments
+
+# Populate the instrument registry so get_instrument("ETH-PERP") works.
+load_instruments(load_yaml_config("default"))
+
+
+def _make_limits(max_leverage: Decimal = Decimal("5.0")) -> RiskLimits:
+    """Build a minimal RiskLimits suitable for position-sizer tests."""
+    return RiskLimits(
+        max_leverage=max_leverage,
+        max_position_notional_usdc=Decimal("100000"),
+        max_position_pct_equity=Decimal("40"),
+        max_margin_utilization_pct=Decimal("80"),
+        min_liquidation_distance_pct=Decimal("8"),
+        max_daily_loss_pct=Decimal("10"),
+        max_drawdown_pct=Decimal("25"),
+        stop_loss_required=False,
+        max_concurrent_positions=5,
+        max_funding_cost_per_day_usdc=Decimal("50"),
+    )
+
+
+class TestPositionSizerEffectiveLeverage:
+    """Integration tests for compute_position_size with effective_leverage."""
+
+    def test_effective_leverage_overrides_limits_max_leverage(self) -> None:
+        """When effective_leverage < limits.max_leverage, size is smaller."""
+        limits = _make_limits(max_leverage=Decimal("5.0"))
+        entry = Decimal("2000")
+        equity = Decimal("10000")
+
+        size_default = compute_position_size(
+            entry_price=entry,
+            conviction=1.0,
+            equity=equity,
+            used_margin=Decimal("0"),
+            existing_positions=[],
+            limits=limits,
+        )
+        size_with_cap = compute_position_size(
+            entry_price=entry,
+            conviction=1.0,
+            equity=equity,
+            used_margin=Decimal("0"),
+            existing_positions=[],
+            limits=limits,
+            effective_leverage=Decimal("2.0"),
+        )
+        # Lower leverage cap should produce a smaller or equal position
+        assert size_with_cap <= size_default
+
+    def test_effective_leverage_none_uses_limits_max_leverage(self) -> None:
+        """effective_leverage=None is backward-compatible: result equals None-less call."""
+        limits = _make_limits(max_leverage=Decimal("4.0"))
+        entry = Decimal("1500")
+        equity = Decimal("8000")
+
+        size_explicit_none = compute_position_size(
+            entry_price=entry,
+            conviction=0.8,
+            equity=equity,
+            used_margin=Decimal("0"),
+            existing_positions=[],
+            limits=limits,
+            effective_leverage=None,
+        )
+        size_no_param = compute_position_size(
+            entry_price=entry,
+            conviction=0.8,
+            equity=equity,
+            used_margin=Decimal("0"),
+            existing_positions=[],
+            limits=limits,
+        )
+        assert size_explicit_none == size_no_param
+
+    def test_higher_effective_leverage_allows_larger_size(self) -> None:
+        """Higher effective_leverage cap allows larger positions up to notional limit."""
+        limits = _make_limits(max_leverage=Decimal("2.0"))
+        entry = Decimal("2000")
+        equity = Decimal("10000")
+
+        size_low_lev = compute_position_size(
+            entry_price=entry,
+            conviction=1.0,
+            equity=equity,
+            used_margin=Decimal("0"),
+            existing_positions=[],
+            limits=limits,
+            effective_leverage=Decimal("2.0"),
+        )
+        size_high_lev = compute_position_size(
+            entry_price=entry,
+            conviction=1.0,
+            equity=equity,
+            used_margin=Decimal("0"),
+            existing_positions=[],
+            limits=limits,
+            effective_leverage=Decimal("8.0"),
+        )
+        assert size_high_lev >= size_low_lev
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: RiskEngine.evaluate() with effective_leverage_cap
+# ---------------------------------------------------------------------------
+
+from agents.risk.main import RiskEngine
+from libs.common.models.enums import PositionSide, SignalSource
+from libs.common.models.portfolio import PortfolioSnapshot
+from libs.common.models.trade_idea import RankedTradeIdea
+
+
+def _make_portfolio(equity: Decimal = Decimal("10000")) -> PortfolioSnapshot:
+    return PortfolioSnapshot(
+        timestamp=datetime.now(UTC),
+        route=Route.A,
+        equity_usdc=equity,
+        used_margin_usdc=Decimal("0"),
+        available_margin_usdc=equity,
+        margin_utilization_pct=0.0,
+        positions=[],
+        unrealized_pnl_usdc=Decimal("0"),
+        realized_pnl_today_usdc=Decimal("0"),
+        funding_pnl_today_usdc=Decimal("0"),
+        fees_paid_today_usdc=Decimal("0"),
+    )
+
+
+def _make_idea(
+    route: Route = Route.A,
+    entry_price: Decimal = Decimal("2000"),
+    stop_loss: Decimal | None = Decimal("1900"),
+) -> RankedTradeIdea:
+    return RankedTradeIdea(
+        idea_id="test-idea-001",
+        timestamp=datetime.now(UTC),
+        instrument="ETH-PERP",
+        route=route,
+        direction=PositionSide.LONG,
+        conviction=0.8,
+        sources=[SignalSource.MOMENTUM],
+        time_horizon=timedelta(hours=4),
+        entry_price=entry_price,
+        stop_loss=stop_loss,
+        take_profit=Decimal("2200"),
+        reasoning="test",
+    )
+
+
+class TestRiskEngineEffectiveLeverageCap:
+    """Integration tests for RiskEngine.evaluate() with dynamic leverage."""
+
+    def _engine(
+        self,
+        max_leverage_a: Decimal = Decimal("5.0"),
+        max_leverage_b: Decimal = Decimal("3.0"),
+    ) -> RiskEngine:
+        limits_a = _make_limits(max_leverage=max_leverage_a)
+        limits_b = _make_limits(max_leverage=max_leverage_b)
+        return RiskEngine(limits_a, limits_b)
+
+    def test_no_effective_leverage_cap_is_backward_compatible(self) -> None:
+        """evaluate() without effective_leverage_cap uses limits.max_leverage."""
+        engine = self._engine()
+        idea = _make_idea()
+        portfolio = _make_portfolio()
+        result = engine.evaluate(
+            idea=idea,
+            portfolio_state=portfolio,
+            market_price=Decimal("2000"),
+            market_timestamp=datetime.now(UTC),
+            funding_rate=Decimal("0.0001"),
+        )
+        assert result.approved
+        assert result.proposed_order is not None
+
+    def test_low_effective_leverage_cap_increases_liq_distance(self) -> None:
+        """Lower effective_leverage_cap produces a larger liquidation distance (safer)."""
+        engine = self._engine(max_leverage_a=Decimal("8.0"))
+        idea = _make_idea()
+        portfolio = _make_portfolio()
+        ts = datetime.now(UTC)
+
+        result_high = engine.evaluate(
+            idea=idea,
+            portfolio_state=portfolio,
+            market_price=Decimal("2000"),
+            market_timestamp=ts,
+            funding_rate=Decimal("0.0001"),
+            effective_leverage_cap=Decimal("8.0"),
+        )
+        result_low = engine.evaluate(
+            idea=idea,
+            portfolio_state=portfolio,
+            market_price=Decimal("2000"),
+            market_timestamp=ts,
+            funding_rate=Decimal("0.0001"),
+            effective_leverage_cap=Decimal("2.0"),
+        )
+        # Both approved
+        assert result_high.approved
+        assert result_low.approved
+        # Lower leverage cap → liquidation is farther away (larger liq_distance_pct)
+        if result_low.proposed_order and result_high.proposed_order:
+            liq_dist_low = result_low.proposed_order.metadata.get("liq_distance_pct", 0)
+            liq_dist_high = result_high.proposed_order.metadata.get("liq_distance_pct", 0)
+            assert liq_dist_low >= liq_dist_high, (
+                f"Expected lower cap to yield larger liq distance, "
+                f"got {liq_dist_low} vs {liq_dist_high}"
+            )
+
+    def test_none_effective_leverage_cap_matches_no_param(self) -> None:
+        """effective_leverage_cap=None gives identical result to omitting it."""
+        engine = self._engine()
+        idea = _make_idea()
+        portfolio = _make_portfolio()
+        ts = datetime.now(UTC)
+        kwargs = dict(
+            idea=idea,
+            portfolio_state=portfolio,
+            market_price=Decimal("2000"),
+            market_timestamp=ts,
+            funding_rate=Decimal("0.0001"),
+        )
+        result_default = engine.evaluate(**kwargs)  # type: ignore[arg-type]
+        result_none = engine.evaluate(**kwargs, effective_leverage_cap=None)  # type: ignore[arg-type]
+        assert result_default.approved == result_none.approved
+        if result_default.proposed_order and result_none.proposed_order:
+            assert (
+                result_default.proposed_order.estimated_margin_required_usdc
+                == result_none.proposed_order.estimated_margin_required_usdc
+            )
