@@ -9,7 +9,7 @@ parameters:
   vol_spike_mult: 1.5
   atr_period: 14
   min_conviction: 0.45
-  cooldown_bars: 24
+  cooldown_bars: 12
 
   # Portfolio A routing — require high conviction for autonomous execution
   route_a_min_conviction: 0.85
@@ -46,7 +46,7 @@ instruments:
       imbalance_threshold: 0.25
       vol_spike_mult: 1.3
       min_conviction: 0.40
-      cooldown_bars: 20
+      cooldown_bars: 10
 
   BTC-PERP:
     parameters:
@@ -56,7 +56,7 @@ instruments:
       imbalance_threshold: 0.25
       vol_spike_mult: 1.4
       min_conviction: 0.40
-      cooldown_bars: 24
+      cooldown_bars: 12
       # BTC has large absolute liquidation walls — raise min notional threshold
       cluster_min_notional_usd: 5000000
 
@@ -74,7 +74,7 @@ instruments:
       tier3_stop_atr_mult: 3.5
       tier3_tp_atr_mult: 5.0
       min_conviction: 0.35
-      cooldown_bars: 16
+      cooldown_bars: 8
       # SOL has smaller per-liquidation notional — lower threshold to capture walls
       cluster_min_notional_usd: 200000
 

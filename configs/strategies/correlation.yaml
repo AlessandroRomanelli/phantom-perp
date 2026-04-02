@@ -13,7 +13,7 @@ parameters:
   stop_loss_atr_mult: 3.0
   take_profit_atr_mult: 4.0
   min_conviction: 0.35
-  cooldown_bars: 24
+  cooldown_bars: 12
   funding_rate_boost: 0.1
   route_a_min_conviction: 0.7
 instruments:

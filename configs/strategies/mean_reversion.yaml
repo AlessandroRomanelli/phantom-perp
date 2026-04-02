@@ -13,7 +13,7 @@ parameters:
   atr_period: 14
   stop_loss_atr_mult: 2.5
   min_conviction: 0.35
-  cooldown_bars: 16
+  cooldown_bars: 8
   trend_reject_threshold: 0.6
   extended_deviation_threshold: 0.5
   route_a_min_conviction: 0.65
@@ -26,7 +26,7 @@ instruments:
       rsi_overbought: 68
       adx_max: 35.0
       min_conviction: 0.3
-      cooldown_bars: 12
+      cooldown_bars: 6
       trend_reject_threshold: 0.6
       extended_deviation_threshold: 0.5
       funding_rate_boost: 0.08
@@ -38,7 +38,7 @@ instruments:
       rsi_overbought: 67
       adx_max: 35.0
       min_conviction: 0.3
-      cooldown_bars: 24
+      cooldown_bars: 12
       trend_reject_threshold: 0.7
       extended_deviation_threshold: 0.55
       funding_rate_boost: 0.06
@@ -50,7 +50,7 @@ instruments:
       adx_max: 45.0
       stop_loss_atr_mult: 3.0
       min_conviction: 0.25
-      cooldown_bars: 10
+      cooldown_bars: 5
       trend_reject_threshold: 0.55
       extended_deviation_threshold: 0.45
       funding_rate_boost: 0.1
@@ -62,7 +62,7 @@ instruments:
       rsi_overbought: 65
       adx_max: 30.0
       min_conviction: 0.3
-      cooldown_bars: 24
+      cooldown_bars: 12
       trend_reject_threshold: 0.65
       extended_deviation_threshold: 0.5
       funding_rate_boost: 0.05
@@ -74,7 +74,7 @@ instruments:
       rsi_overbought: 65
       adx_max: 28.0
       min_conviction: 0.3
-      cooldown_bars: 30
+      cooldown_bars: 15
       trend_reject_threshold: 0.65
       extended_deviation_threshold: 0.5
       funding_rate_boost: 0.04

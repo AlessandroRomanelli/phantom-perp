@@ -14,7 +14,7 @@ parameters:
   stop_loss_atr_mult: 3.0
   take_profit_atr_mult: 4.5
   min_conviction: 0.4
-  cooldown_bars: 10
+  cooldown_bars: 5
   vol_lookback: 10
   vol_min_ratio: 0.5
   route_a_min_conviction: 0.7
@@ -27,7 +27,7 @@ instruments:
   ETH-PERP:
     parameters:
       min_conviction: 0.35
-      cooldown_bars: 8
+      cooldown_bars: 4
       vol_lookback: 10
       vol_min_ratio: 0.4
       swing_lookback: 20
@@ -37,7 +37,7 @@ instruments:
   BTC-PERP:
     parameters:
       min_conviction: 0.35
-      cooldown_bars: 16
+      cooldown_bars: 8
       vol_lookback: 15
       vol_min_ratio: 0.6
       swing_lookback: 30
@@ -47,7 +47,7 @@ instruments:
   SOL-PERP:
     parameters:
       min_conviction: 0.3
-      cooldown_bars: 6
+      cooldown_bars: 4
       vol_lookback: 8
       vol_min_ratio: 0.35
       swing_lookback: 15
@@ -59,7 +59,7 @@ instruments:
   QQQ-PERP:
     parameters:
       min_conviction: 0.35
-      cooldown_bars: 20
+      cooldown_bars: 10
       vol_lookback: 12
       vol_min_ratio: 0.5
       swing_lookback: 25
@@ -69,7 +69,7 @@ instruments:
   SPY-PERP:
     parameters:
       min_conviction: 0.35
-      cooldown_bars: 24
+      cooldown_bars: 12
       vol_lookback: 15
       vol_min_ratio: 0.55
       swing_lookback: 25
