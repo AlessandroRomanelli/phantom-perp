@@ -9,8 +9,8 @@ FEE_TAKER = Decimal("0.000250")  # 0.0250%
 
 # ── Safety Guardrails (non-negotiable, code-level constants) ────────────
 
-MAX_LEVERAGE_GLOBAL = Decimal("5.0")
-MAX_LEVERAGE_ROUTE_B = Decimal("3.0")
+MAX_LEVERAGE_GLOBAL = Decimal("10.0")
+MAX_LEVERAGE_ROUTE_B = Decimal("5.0")
 
 STALE_DATA_HALT_SECONDS = 30
 REST_CANDLE_STALE_SECONDS = 600    # 10 min -- candle pollers poll every 60-1800s

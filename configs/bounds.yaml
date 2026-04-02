@@ -41,3 +41,18 @@ adx_threshold:
   min: 10.0
   max: 40.0
   type: float
+
+regime_leverage_trending:
+  min: 1.0
+  max: 10.0
+  type: float
+
+regime_leverage_ranging:
+  min: 1.0
+  max: 6.0
+  type: float
+
+regime_leverage_high_vol:
+  min: 1.0
+  max: 4.0
+  type: float
