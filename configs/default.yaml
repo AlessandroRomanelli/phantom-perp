@@ -54,7 +54,7 @@ alpha:
 risk:
   route_a:
     max_leverage: 10.0
-    max_position_notional_usdc: 6000
+    max_position_notional_usdc: 12000
     max_position_pct_equity: 40.0
     max_margin_utilization_pct: 70.0
     min_liquidation_distance_pct: 8.0
@@ -66,7 +66,7 @@ risk:
 
   route_b:
     max_leverage: 5.0
-    max_position_notional_usdc: 16000
+    max_position_notional_usdc: 32000
     max_position_pct_equity: 25.0
     max_margin_utilization_pct: 50.0
     min_liquidation_distance_pct: 15.0

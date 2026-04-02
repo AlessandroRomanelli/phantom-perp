@@ -324,6 +324,7 @@ class CoinbaseRESTClient:
         stop_price: Decimal | None = None,
         client_order_id: str = "",
         reduce_only: bool = False,
+        leverage: Decimal | None = None,
     ) -> OrderResponse:
         """Place a new order.
 
@@ -336,6 +337,9 @@ class CoinbaseRESTClient:
             stop_price: Required for STOP_LIMIT orders.
             client_order_id: Client-generated order ID (required by Advanced Trade).
             reduce_only: If True, order can only reduce an existing position.
+            leverage: Leverage multiplier to request from the exchange (e.g. Decimal("4")).
+                When None, the account default is used. For reduce-only (SL/TP) orders,
+                always sent as "1" regardless of this value.
         """
         import uuid as uuid_mod
 
@@ -377,7 +381,10 @@ class CoinbaseRESTClient:
             "order_configuration": order_config,
         }
         if reduce_only:
-            body["leverage"] = "1"  # Advanced Trade reduce-only via leverage
+            body["leverage"] = "1"  # SL/TP orders always use 1x — size determines exposure
+        elif leverage is not None:
+            # Clamp to integer for the API — Coinbase accepts integer leverage values.
+            body["leverage"] = str(int(leverage.to_integral_value()))
 
         data = await self._request("POST", "/api/v3/brokerage/orders", body=body)
 

@@ -312,6 +312,7 @@ async def _place_order(
     client_order_id: str,
     reduce_only: bool,
     last_price: Decimal | None,
+    leverage: Decimal | None = None,
     client_pool: CoinbaseClientPool | None = None,
 ) -> OrderResponse:
     """Route order placement to the correct broker."""
@@ -341,6 +342,7 @@ async def _place_order(
         stop_price=stop_price,
         client_order_id=client_order_id,
         reduce_only=reduce_only,
+        leverage=leverage,
     )
 
 
@@ -383,6 +385,7 @@ async def _execute_with_retry(
     exec_plan_order_type: OrderType,
     is_maker: bool,
     config: ExecutionConfig,
+    leverage: Decimal | None = None,
     is_paper: bool,
     paper_broker: PaperBroker | None,
     last_price: Decimal | None,
@@ -416,6 +419,7 @@ async def _execute_with_retry(
                 client_order_id=order_id,
                 reduce_only=reduce_only,
                 last_price=last_price,
+                leverage=leverage,
                 client_pool=client_pool,
             )
             return response, current_plan.is_maker
@@ -642,6 +646,7 @@ async def run_agent() -> None:
                     stop_loss = proposed.stop_loss
                     take_profit = proposed.take_profit
                     reduce_only = proposed.reduce_only
+                    leverage = proposed.leverage
                     source_label = "risk_agent"
                 elif channel == channel_b:
                     approved = deserialize_approved_order(payload)
@@ -655,6 +660,7 @@ async def run_agent() -> None:
                     stop_loss = approved.stop_loss
                     take_profit = approved.take_profit
                     reduce_only = approved.reduce_only
+                    leverage = approved.leverage
                     source_label = "confirmation_agent"
                 else:
                     await consumer.ack(channel, "execution_agent", msg_id)
@@ -750,6 +756,7 @@ async def run_agent() -> None:
                     exec_plan_order_type=plan.order_type,
                     is_maker=plan.is_maker,
                     config=exec_config,
+                    leverage=leverage,
                     is_paper=is_paper,
                     paper_broker=paper_broker,
                     last_price=market.last_price,

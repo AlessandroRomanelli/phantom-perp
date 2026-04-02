@@ -263,11 +263,12 @@ class TestPositionSizer:
         assert size <= Decimal("2")  # 4000 / 2000
 
     def test_respects_max_pct_equity(self) -> None:
-        """Position notional is capped at max_position_pct_equity of equity."""
+        """Position margin is capped at max_position_pct_equity of equity, notional scales with leverage."""
         limits = _default_limits(
             max_position_pct_equity=Decimal("10"),
             max_position_notional_usdc=Decimal("200000"),  # Not binding
         )
+        # max_leverage default is 5x; max margin = 10% of 10000 = 1000; max notional = 1000 * 5 = 5000
         size = compute_position_size(
             entry_price=Decimal("2000"),
             conviction=1.0,
@@ -276,7 +277,10 @@ class TestPositionSizer:
             existing_positions=[],
             limits=limits,
         )
-        assert size * Decimal("2000") <= Decimal("1000")  # 10% of 10000
+        # Notional = size * price; margin = notional / leverage
+        notional = size * Decimal("2000")
+        margin = notional / limits.max_leverage
+        assert margin <= Decimal("1000")  # margin ≤ 10% of equity
 
     def test_existing_positions_reduce_available(self) -> None:
         """Existing positions consume leverage budget, reducing available size."""

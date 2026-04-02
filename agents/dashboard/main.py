@@ -9,16 +9,51 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 import orjson
 import redis.asyncio as aioredis
+import yaml
 from aiohttp import web
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 REFRESH_INTERVAL = float(os.environ.get("DASHBOARD_REFRESH", "2"))
 PORT = int(os.environ.get("DASHBOARD_PORT", "8080"))
+CONFIG_PATH = Path(__file__).parent.parent.parent / "configs" / "default.yaml"
+
+HARD_CAP_ROUTE_A = Decimal("10")
+HARD_CAP_ROUTE_B = Decimal("5")
+
+# Cached regime leverage caps loaded from default.yaml at startup
+_regime_caps: dict[str, dict[str, Decimal]] = {}
+
+
+def _load_regime_caps() -> dict[str, dict[str, Decimal]]:
+    """Load regime_leverage caps from configs/default.yaml.
+
+    Returns a dict keyed by route ("route_a", "route_b"), each mapping
+    regime name → Decimal cap.  Falls back to empty dict on any error.
+    """
+    try:
+        raw = yaml.safe_load(CONFIG_PATH.read_text())
+        caps: dict[str, dict[str, Decimal]] = {}
+        for route_key in ("route_a", "route_b"):
+            tiers = raw.get("risk", {}).get("regime_leverage", {}).get(route_key, {})
+            caps[route_key] = {k: Decimal(str(v)) for k, v in tiers.items()}
+        return caps
+    except Exception:
+        return {}
+
+
+def _effective_lev_cap(regime: str, route_key: str) -> str:
+    """Return the effective leverage cap string for a regime + route."""
+    hard_cap = HARD_CAP_ROUTE_A if route_key == "route_a" else HARD_CAP_ROUTE_B
+    cap = _regime_caps.get(route_key, {}).get(regime)
+    if cap is None:
+        return str(int(hard_cap))
+    return str(int(min(cap, hard_cap).to_integral_value()))
 
 STREAMS = [
     "stream:market_snapshots",
@@ -175,6 +210,36 @@ async def _collect_state(r: aioredis.Redis) -> dict[str, Any]:
     except Exception:
         pass
 
+    # Current regimes per instrument from alpha agent
+    regime_map: dict[str, str] = {}
+    try:
+        data = await r.hgetall("phantom:regime")
+        for k, v in data.items():
+            inst = k.decode() if isinstance(k, bytes) else k
+            reg = v.decode() if isinstance(v, bytes) else v
+            regime_map[inst] = reg
+    except Exception:
+        pass
+
+    # Open positions from latest portfolio state — annotated with effective lev cap
+    positions: list[dict[str, Any]] = []
+    for route_key, stream_suffix in (("route_a", "a"), ("route_b", "b")):
+        try:
+            entries = await r.xrevrange(
+                f"stream:portfolio_state:{stream_suffix}", "+", "-", count=1,
+            )
+            if entries:
+                parsed = _parse_entry(entries[0][1])
+                if parsed:
+                    for pos in parsed.get("positions", []):
+                        instrument = pos.get("instrument", "")
+                        regime = regime_map.get(instrument, "ranging")
+                        pos["regime"] = regime
+                        pos["effective_lev_cap"] = _effective_lev_cap(regime, route_key)
+                        positions.append(pos)
+        except Exception:
+            pass
+
     return {
         "streams": streams_info,
         "instruments": per_instrument,
@@ -183,6 +248,7 @@ async def _collect_state(r: aioredis.Redis) -> dict[str, Any]:
         "fills": recent_fills[:20],
         "claude_state": claude_state,
         "gate_map": gate_map,
+        "positions": positions,
     }
 
 
@@ -232,6 +298,8 @@ async def index_handler(request: web.Request) -> web.FileResponse:
 # ---- App lifecycle ----
 
 async def on_startup(app: web.Application) -> None:
+    global _regime_caps
+    _regime_caps = _load_regime_caps()
     app["redis"] = aioredis.from_url(REDIS_URL, decode_responses=False)
     app["broadcast_task"] = asyncio.create_task(broadcast_loop(app))
 

@@ -52,9 +52,10 @@ def compute_position_size(
     # 1. Absolute max from notional cap (instrument-agnostic)
     max_from_notional = limits.max_position_notional_usdc / entry_price
 
-    # 2. Max from equity percentage
-    max_notional = equity * limits.max_position_pct_equity / Decimal("100")
-    max_from_equity = max_notional / entry_price
+    # 2. Max from equity percentage — interpreted as a margin budget, scaled by leverage.
+    # e.g. 40% equity at 2x lev → max notional = 80% of equity (40% deployed as margin).
+    max_margin_budget = equity * limits.max_position_pct_equity / Decimal("100")
+    max_from_equity = max_margin_budget * lev / entry_price
 
     # 3. Max from leverage constraint (total portfolio leverage)
     existing_notional = sum(

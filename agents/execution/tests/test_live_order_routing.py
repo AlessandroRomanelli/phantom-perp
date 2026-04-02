@@ -143,6 +143,7 @@ class TestPlaceOrderLive:
             stop_price=None,
             client_order_id="test-limit-a",
             reduce_only=False,
+            leverage=None,
         )
 
     @pytest.mark.asyncio
@@ -185,6 +186,7 @@ class TestPlaceOrderLive:
             stop_price=None,
             client_order_id="test-limit-b",
             reduce_only=False,
+            leverage=None,
         )
 
     @pytest.mark.asyncio

@@ -489,7 +489,7 @@ function renderClaudeState(claudeState) {
   el.innerHTML = instruments.map(id => buildClaudeCard(id, claudeState[id] || null)).join('');
 }
 
-function renderUnifiedPortfolio(streams) {
+function renderUnifiedPortfolio(streams, topLevelPositions) {
   const el = document.getElementById('unified-portfolio');
   // Both route streams show the same underlying portfolio — read from A
   const snap = streams['stream:portfolio_state:a']?.latest;
@@ -507,7 +507,8 @@ function renderUnifiedPortfolio(streams) {
   const realized = snap.realized_pnl_today_usdc || '0';
   const funding = snap.funding_pnl_today_usdc || '0';
   const fees = snap.fees_paid_today_usdc || '0';
-  const positions = snap.positions || [];
+  // Use annotated positions from top-level (includes regime + effective_lev_cap)
+  const positions = topLevelPositions || snap.positions || [];
 
   const net = parseFloat(realized) + parseFloat(unrealized) + parseFloat(funding) - parseFloat(fees);
   const muPct = Math.min(parseFloat(marginUtil), 100);
@@ -524,12 +525,17 @@ function renderUnifiedPortfolio(streams) {
         <th class="text-right py-1">Entry</th>
         <th class="text-right py-1">Mark</th>
         <th class="text-right py-1">P&L</th>
-        <th class="text-right py-1">Lev</th>
+        <th class="text-right py-1">Lev (paper)</th>
+        <th class="text-right py-1">Lev cap (live)</th>
+        <th class="text-right py-1">Regime</th>
         <th class="text-right py-1">Liq</th>
       </tr></thead>
       <tbody>${positions.map(p => {
         const sideCls = p.side === 'LONG' ? 'text-accent-green' : 'text-accent-red';
         const notional = (parseFloat(p.size) * parseFloat(p.mark_price)).toFixed(2);
+        const regimeCls = p.regime === 'trending_up' || p.regime === 'trending_down' ? 'text-accent-green'
+          : p.regime === 'high_volatility' ? 'text-accent-red'
+          : 'text-gray-400';
         return `<tr class="border-t border-gray-800/20">
           <td class="py-1.5 text-white">${p.instrument}</td>
           <td class="py-1.5 ${sideCls} font-semibold">${p.side}</td>
@@ -539,6 +545,8 @@ function renderUnifiedPortfolio(streams) {
           <td class="py-1.5 text-right text-white">$${p.mark_price}</td>
           <td class="py-1.5 text-right ${pnlColor(p.unrealized_pnl_usdc)}">${fmtPnl(p.unrealized_pnl_usdc)}</td>
           <td class="py-1.5 text-right text-gray-400">${parseFloat(p.leverage).toFixed(1)}x</td>
+          <td class="py-1.5 text-right text-yellow-400 font-semibold">${p.effective_lev_cap || '—'}x</td>
+          <td class="py-1.5 text-right ${regimeCls} text-xs">${(p.regime || '—').replace('_', ' ')}</td>
           <td class="py-1.5 text-right text-gray-500">$${p.liquidation_price}</td>
         </tr>`;
       }).join('')}</tbody>
@@ -828,7 +836,7 @@ function connect() {
       const data = JSON.parse(new TextDecoder().decode(e.data));
       renderInstruments(data.instruments || {}, data.gate_map || {});
       renderClaudeState(data.claude_state || {});
-      renderUnifiedPortfolio(data.streams || {});
+      renderUnifiedPortfolio(data.streams || {}, data.positions || []);
       renderRoute('route-a', 'A (Autonomous)', data.streams || {});
       renderRoute('route-b', 'B (User-Confirmed)', data.streams || {});
       renderFills(data.fills || []);
