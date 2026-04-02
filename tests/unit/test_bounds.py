@@ -1,7 +1,7 @@
 """Unit tests for libs/tuner/bounds.py.
 
 Coverage:
-- Loading bounds.yaml returns 8 BoundsEntry values
+- Loading bounds.yaml returns 11 BoundsEntry values (8 base + 3 regime_leverage)
 - BoundsEntry fields (min_value, max_value, value_type)
 - Integer-typed bounds entries
 - validate_value: in-range, boundary, below min, above max, unregistered param
@@ -9,16 +9,20 @@ Coverage:
 - BoundsEntry is a frozen dataclass (FrozenInstanceError)
 - load_bounds_registry raises FileNotFoundError for missing file
 - clip_value: clips below min, clips above max, passes through in-range, unregistered param raises
+- regime_leverage entries: all three tiers load with correct bounds
+- validate_recommendation / clip_value for regime_leverage params (tuner dry-run validation)
 """
 
 from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from libs.tuner.bounds import BoundsEntry, clip_value, load_bounds_registry, validate_value
+from libs.tuner.recommender import validate_recommendation
 
 
 BOUNDS_YAML = Path(__file__).resolve().parent.parent.parent / "configs" / "bounds.yaml"
@@ -31,8 +35,8 @@ def registry() -> dict[str, BoundsEntry]:
 
 
 def test_load_bounds_registry_returns_all_entries(registry: dict[str, BoundsEntry]) -> None:
-    """Loading configs/bounds.yaml should return exactly 8 entries."""
-    assert len(registry) == 8
+    """Loading configs/bounds.yaml should return exactly 11 entries (8 base + 3 regime_leverage)."""
+    assert len(registry) == 11
 
 
 def test_load_bounds_registry_contains_min_conviction(registry: dict[str, BoundsEntry]) -> None:
@@ -143,3 +147,62 @@ def test_clip_unregistered_param(registry: dict[str, BoundsEntry]) -> None:
     """clip_value should raise ValueError for an unregistered param."""
     with pytest.raises(ValueError):
         clip_value("fast_ema_period", 12.0, registry)
+
+
+# --- regime_leverage entries: presence and correct bounds -----------------------
+
+
+def test_regime_leverage_trending_in_registry(registry: dict[str, BoundsEntry]) -> None:
+    """bounds.yaml must contain regime_leverage_trending with correct bounds."""
+    assert "regime_leverage_trending" in registry
+    entry = registry["regime_leverage_trending"]
+    assert entry.min_value == 1.0
+    assert entry.max_value == 10.0
+    assert entry.value_type == "float"
+
+
+def test_regime_leverage_ranging_in_registry(registry: dict[str, BoundsEntry]) -> None:
+    """bounds.yaml must contain regime_leverage_ranging with correct bounds."""
+    assert "regime_leverage_ranging" in registry
+    entry = registry["regime_leverage_ranging"]
+    assert entry.min_value == 1.0
+    assert entry.max_value == 6.0
+    assert entry.value_type == "float"
+
+
+def test_regime_leverage_high_vol_in_registry(registry: dict[str, BoundsEntry]) -> None:
+    """bounds.yaml must contain regime_leverage_high_vol with correct bounds."""
+    assert "regime_leverage_high_vol" in registry
+    entry = registry["regime_leverage_high_vol"]
+    assert entry.min_value == 1.0
+    assert entry.max_value == 4.0
+    assert entry.value_type == "float"
+
+
+# --- tuner dry-run: validate_recommendation / clip_value for regime_leverage ---
+
+
+def test_validate_recommendation_regime_leverage_in_range(registry: dict[str, BoundsEntry]) -> None:
+    """validate_recommendation returns the value as-is when it is within bounds."""
+    rec: dict[str, Any] = {"param": "regime_leverage_trending", "value": 3.0, "strategy": "any"}
+    result = validate_recommendation(rec, registry)
+    assert result == 3.0
+
+
+def test_validate_recommendation_regime_leverage_clips_above_max(
+    registry: dict[str, BoundsEntry],
+) -> None:
+    """validate_recommendation clips a value above the max to max_value."""
+    rec: dict[str, Any] = {
+        "param": "regime_leverage_high_vol",
+        "value": 99.0,
+        "strategy": "any",
+    }
+    result = validate_recommendation(rec, registry)
+    assert result == 4.0  # max_value for regime_leverage_high_vol
+
+
+def test_clip_value_regime_leverage_below_min(registry: dict[str, BoundsEntry]) -> None:
+    """clip_value clips a value below the min to min_value for regime_leverage_ranging."""
+    result = clip_value("regime_leverage_ranging", 0.5, registry)
+    assert result == 1.0  # min_value
