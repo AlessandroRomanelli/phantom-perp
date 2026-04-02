@@ -177,6 +177,41 @@ async def _run_tick(
         )
         return last_run_time
 
+    # Warmup guard — wait until the regime detector has seen enough live data
+    # for all instruments before calling Claude.  Without this, the first run
+    # fires ~10s after startup before any live snapshots have arrived, so
+    # regime_for() returns the default RANGING for every instrument and Claude
+    # makes bad decisions that persist for the full update_interval_seconds (2h).
+    # latest_snapshots is only populated by live snapshot events, so it is a
+    # reliable proxy for "the regime detector has real data".
+    MIN_SNAPSHOTS_BEFORE_ORCH = 20
+    instruments_ready = [
+        iid for iid in instrument_ids if iid in latest_snapshots
+    ]
+    if len(instruments_ready) < len(instrument_ids):
+        _logger.info(
+            "orchestrator_run_skipped",
+            reason="warmup",
+            waiting_for=[i for i in instrument_ids if i not in latest_snapshots],
+            min_snapshots=MIN_SNAPSHOTS_BEFORE_ORCH,
+        )
+        return last_run_time
+
+    # Also require the regime detector to have processed enough live snapshots
+    # per instrument (RegimeDetector needs ≥10 to classify; use 20 for safety).
+    insufficient_regime = [
+        iid for iid in instrument_ids
+        if regime_detector.snapshot_count_for(iid) < MIN_SNAPSHOTS_BEFORE_ORCH
+    ]
+    if insufficient_regime:
+        _logger.info(
+            "orchestrator_run_skipped",
+            reason="regime_warmup",
+            waiting_for=insufficient_regime,
+            min_samples=MIN_SNAPSHOTS_BEFORE_ORCH,
+        )
+        return last_run_time
+
     # Build context and call Claude
     context_str = build_orchestrator_context(
         instrument_ids=instrument_ids,

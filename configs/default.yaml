@@ -46,7 +46,8 @@ portfolio:
         target: "B"
 
 alpha:
-  min_agreeing_sources: 2
+  min_agreeing_sources: 1
+  combination_window_seconds: 300
   exempt_sources:
     - claude_market_analysis
 

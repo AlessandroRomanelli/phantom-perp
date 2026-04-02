@@ -14,19 +14,18 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+from agents.alpha.combiner import AlphaCombiner
+from agents.alpha.regime_detector import RegimeDetector
+from agents.alpha.scorecard import StrategyScorecard
 from libs.common.config import get_settings, load_yaml_config
 from libs.common.logging import setup_logging
-from libs.common.models.enums import Route, PositionSide, SignalSource
+from libs.common.models.enums import MarketRegime, PositionSide, Route, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal
 from libs.common.models.trade_idea import RankedTradeIdea
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
 from libs.portfolio.router import RouteRouter
-
-from agents.alpha.combiner import AlphaCombiner
-from agents.alpha.regime_detector import RegimeDetector
-from agents.alpha.scorecard import StrategyScorecard
 
 logger = setup_logging("alpha", json_output=False)
 
@@ -104,6 +103,36 @@ def idea_to_dict(idea: RankedTradeIdea) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+async def _mirror_regime_to_redis(
+    regimes: dict[str, MarketRegime],
+    redis_client: Any,
+) -> None:
+    """Write per-instrument regime classifications to Redis as a hash (fire-and-forget).
+
+    Key: ``phantom:regime``
+    Field: instrument ID (e.g. ``ETH-PERP``)
+    Value: regime string (e.g. ``trending_up``)
+
+    Args:
+        regimes: Current per-instrument regime mapping.
+        redis_client: Async Redis client.
+    """
+    if not regimes:
+        return
+
+    mapping: dict[str, str] = {inst: regime.value for inst, regime in regimes.items()}
+
+    try:
+        await redis_client.hset("phantom:regime", mapping=mapping)
+    except Exception as exc:
+        logger.warning(
+            "regime_redis_write_failed",
+            error=str(exc),
+            exc_type=type(exc).__name__,
+        )
+
+
+
 async def run_agent() -> None:
     """Main event loop for the alpha combination agent."""
     settings = get_settings()
@@ -123,6 +152,7 @@ async def run_agent() -> None:
         router=router,
         regime_detector=regime_detector,
         scorecard=scorecard,
+        combination_window=timedelta(seconds=alpha_config.get("combination_window_seconds", 60)),
         min_agreeing_sources=alpha_config.get("min_agreeing_sources", 1),
         exempt_sources=exempt_sources,
     )
@@ -150,6 +180,7 @@ async def run_agent() -> None:
                     continue
                 try:
                     regime_detector.update(snapshot)
+                    await _mirror_regime_to_redis(regime_detector.regimes, publisher._redis)
                 except Exception as e:
                     logger.warning(
                         "regime_update_error",

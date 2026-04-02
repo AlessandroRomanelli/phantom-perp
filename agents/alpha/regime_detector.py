@@ -46,11 +46,20 @@ class RegimeDetector:
         self._squeeze_range = squeeze_range_pct
 
     @property
+    def regimes(self) -> dict[str, MarketRegime]:
+        """All per-instrument regime classifications (copy of internal state)."""
+        return dict(self._regimes)
+
+    @property
     def current_regime(self) -> MarketRegime:
         """The regime for the most recently updated instrument."""
         if self._last_instrument is not None:
             return self._regimes.get(self._last_instrument, MarketRegime.RANGING)
         return MarketRegime.RANGING
+
+    def snapshot_count_for(self, instrument: str) -> int:
+        """Number of price snapshots seen for a specific instrument."""
+        return len(self._prices.get(instrument, []))
 
     def regime_for(self, instrument: str) -> MarketRegime:
         """The detected regime for a specific instrument."""

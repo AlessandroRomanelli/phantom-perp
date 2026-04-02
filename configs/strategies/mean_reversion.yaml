@@ -1,8 +1,7 @@
 strategy:
-  name: "mean_reversion"
+  name: mean_reversion
   enabled: true
   weight: 0.15
-
 parameters:
   bb_period: 20
   bb_std: 2.0
@@ -17,42 +16,34 @@ parameters:
   cooldown_bars: 16
   trend_reject_threshold: 0.6
   extended_deviation_threshold: 0.5
-  route_a_min_conviction: 0.85
+  route_a_min_conviction: 0.65
   vol_lookback: 10
-
 instruments:
   ETH-PERP:
     parameters:
-      # ETH: Mid-vol, good mean reversion. Lower thresholds for more signals (D-04)
       bb_std: 1.8
       rsi_oversold: 32
       rsi_overbought: 68
       adx_max: 35.0
-      min_conviction: 0.30
+      min_conviction: 0.3
       cooldown_bars: 12
-      # Phase 2+4 params: permissive trend reject, moderate funding boost
       trend_reject_threshold: 0.6
       extended_deviation_threshold: 0.5
       funding_rate_boost: 0.08
-
   BTC-PERP:
     parameters:
-      # BTC: Lower vol than ETH, tighter bands work, longer cooldown
       bb_period: 25
       bb_std: 1.8
       rsi_oversold: 33
       rsi_overbought: 67
       adx_max: 35.0
-      min_conviction: 0.30
+      min_conviction: 0.3
       cooldown_bars: 24
-      # Phase 2+4 params: stricter trend reject (BTC trends persist), wider bands
       trend_reject_threshold: 0.7
       extended_deviation_threshold: 0.55
       funding_rate_boost: 0.06
-
   SOL-PERP:
     parameters:
-      # SOL: High vol, wider bands needed, faster cooldown for more activity
       bb_std: 2.2
       rsi_oversold: 28
       rsi_overbought: 72
@@ -60,37 +51,30 @@ instruments:
       stop_loss_atr_mult: 3.0
       min_conviction: 0.25
       cooldown_bars: 10
-      # Phase 2+4 params: most permissive trend reject, SOL reverts fast
       trend_reject_threshold: 0.55
       extended_deviation_threshold: 0.45
-      funding_rate_boost: 0.10
-
+      funding_rate_boost: 0.1
   QQQ-PERP:
     parameters:
-      # QQQ: Equity perp, lower vol, tighter bands. 24/7 active (D-13, D-15)
       bb_period: 25
       bb_std: 1.5
       rsi_oversold: 35
       rsi_overbought: 65
       adx_max: 30.0
-      min_conviction: 0.30
+      min_conviction: 0.3
       cooldown_bars: 24
-      # Phase 2+4 params: moderate trend rejection, conservative funding
       trend_reject_threshold: 0.65
       extended_deviation_threshold: 0.5
       funding_rate_boost: 0.05
-
   SPY-PERP:
     parameters:
-      # SPY: Lowest vol equity perp, tightest bands
       bb_period: 25
       bb_std: 1.5
       rsi_oversold: 35
       rsi_overbought: 65
       adx_max: 28.0
-      min_conviction: 0.30
+      min_conviction: 0.3
       cooldown_bars: 30
-      # Phase 2+4 params: moderate trend rejection, most conservative funding
       trend_reject_threshold: 0.65
       extended_deviation_threshold: 0.5
       funding_rate_boost: 0.04

@@ -189,10 +189,14 @@ async def run_agent() -> None:
     fees = DualFeeTracker()
     health = HealthChecker()
 
-    # Funding settles hourly — use 90min threshold (allows for delays)
+    # Funding settles hourly — but only when there are open positions.
+    # Start as event-only (None = never stale) and arm the 90min threshold
+    # after the first payment is received, so no false-stale alerts when
+    # there are no open positions to charge.
     # Fills are event-driven (only on trade execution) — never flag as stale
+    funding_threshold_armed: set[str] = set()
     for target in Route:
-        health.set_threshold(f"funding:{target.value}", timedelta(minutes=90))
+        health.set_threshold(f"funding:{target.value}", None)  # armed on first payment
         health.set_threshold(f"fills:{target.value}", None)  # event-only
 
     # Track latest portfolio state for alert checks
@@ -362,7 +366,12 @@ async def run_agent() -> None:
                 elif channel in funding_channels:
                     payment = deserialize_funding_payment(payload)
                     target = payment.route
-                    health.record_heartbeat(f"funding:{target.value}", payment.timestamp)
+                    comp_key = f"funding:{target.value}"
+                    # Arm the 90min staleness threshold on first payment received
+                    if comp_key not in funding_threshold_armed:
+                        health.set_threshold(comp_key, timedelta(minutes=90))
+                        funding_threshold_armed.add(comp_key)
+                    health.record_heartbeat(comp_key, payment.timestamp)
 
                     reporter = funding.get_reporter(target)
                     reporter.record_payment(payment)

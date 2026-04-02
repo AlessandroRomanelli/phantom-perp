@@ -1,8 +1,7 @@
 strategy:
-  name: "funding_arb"
+  name: funding_arb
   enabled: true
-  weight: 0.20
-
+  weight: 0.2
 parameters:
   zscore_threshold: 2.0
   lookback_hours: 168
@@ -11,26 +10,22 @@ parameters:
   oi_lookback: 100
   persistence_lookback: 10
   persistence_min_ratio: 0.6
-  min_conviction: 0.55
+  min_conviction: 0.4
   max_holding_hours: 16
   atr_period: 14
   stop_loss_atr_mult: 1.5
   take_profit_atr_mult: 3.0
   cooldown_bars: 24
-  route_a_min_conviction: 0.85
-
+  route_a_min_conviction: 0.7
 instruments:
   ETH-PERP:
-    # ETH funding spikes faster — lower threshold and shorter cooldown
     zscore_threshold: 1.8
     cooldown_bars: 20
   BTC-PERP:
-    # BTC moves slower — require stronger signal and stricter conviction
     zscore_threshold: 2.2
     cooldown_bars: 28
-    min_conviction: 0.60
+    min_conviction: 0.6
   SOL-PERP:
-    # SOL has extreme swings — wider stops to absorb volatility
     zscore_threshold: 1.5
     stop_loss_atr_mult: 2.0
     take_profit_atr_mult: 3.5

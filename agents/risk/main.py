@@ -661,7 +661,7 @@ async def run_agent() -> None:
                         await repo.write_order_signal(OrderSignalRecord(
                             order_id=order.order_id,
                             signal_id=order.signal_id,
-                            route=order.route.value,
+                            portfolio_target=order.route.value,
                             instrument=order.instrument,
                             conviction=order.conviction,
                             primary_source=primary,

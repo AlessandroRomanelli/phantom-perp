@@ -1,8 +1,7 @@
 strategy:
-  name: "oi_divergence"
+  name: oi_divergence
   enabled: true
   weight: 0.15
-
 parameters:
   divergence_lookback: 20
   div_threshold_pct: 2.0
@@ -12,25 +11,21 @@ parameters:
   atr_period: 14
   stop_loss_atr_mult: 2.0
   take_profit_atr_mult: 3.0
-  min_conviction: 0.45
+  min_conviction: 0.35
   cooldown_bars: 24
   max_holding_hours: 8
-  route_a_min_conviction: 0.85
-
+  route_a_min_conviction: 0.7
 instruments:
   ETH-PERP:
-    # ETH OI spikes faster — shorter lookback and lower divergence threshold
     divergence_lookback: 18
     div_threshold_pct: 1.5
     cooldown_bars: 24
   BTC-PERP:
-    # BTC moves slower — longer lookback, require stronger signal and conviction
     divergence_lookback: 24
     div_threshold_pct: 2.0
-    min_conviction: 0.60
+    min_conviction: 0.6
     cooldown_bars: 32
   SOL-PERP:
-    # SOL has extreme OI swings — short lookback, high accel threshold, wider stops
     divergence_lookback: 15
     div_threshold_pct: 2.5
     accel_threshold: 3.0

@@ -807,7 +807,7 @@ async def run_agent() -> None:
                         await repo.write_fill(FillRecord(
                             fill_id=fill.fill_id,
                             order_id=fill.order_id,
-                            route=fill.route.value,
+                            portfolio_target=fill.route.value,
                             instrument=fill.instrument,
                             side=fill.side.value,
                             size=fill.size,
