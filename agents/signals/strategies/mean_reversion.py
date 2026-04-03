@@ -66,6 +66,8 @@ class MeanReversionParams:
     funding_rate_boost: float = 0.08
     funding_z_score_threshold: float = 1.5
     funding_min_samples: int = 10
+    # Phase 5 additions: R:R floor gate
+    min_rr_floor: float = 1.2
 
 
 class MeanReversionStrategy(SignalStrategy):
@@ -120,6 +122,7 @@ class MeanReversionStrategy(SignalStrategy):
                 funding_min_samples=p.get(
                     "funding_min_samples", self._params.funding_min_samples,
                 ),
+                min_rr_floor=p.get("min_rr_floor", self._params.min_rr_floor),
             )
 
         self._enabled = True
@@ -326,6 +329,13 @@ class MeanReversionStrategy(SignalStrategy):
         else:
             stop_loss = round_to_tick(entry + atr_d * Decimal(str(p.stop_loss_atr_mult)), tick_size)
 
+        # R:R gate — reject signals below min reward:risk floor (M007-S01)
+        _risk = abs(entry - stop_loss)
+        _reward = abs(take_profit - entry)
+        if _risk > 0 and (_reward / _risk) < Decimal(str(p.min_rr_floor)):
+            return []
+        rr_ratio = round(float(_reward / _risk), 3) if _risk > 0 else None
+
         # Route A routing (MR-04, D-01, D-03)
         suggested_route = (
             Route.A
@@ -356,6 +366,7 @@ class MeanReversionStrategy(SignalStrategy):
             "adaptive_std": round(adaptive_std, 4),
             "trend_strength": round(trend_strength, 3),
             "partial_target": str(partial_target) if partial_target else None,
+            "rr_ratio": rr_ratio,
         }
         if funding_result.boost > 0:
             metadata["funding_boost"] = funding_result.boost
