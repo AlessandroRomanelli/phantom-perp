@@ -192,6 +192,57 @@ class TunerRepository:
             rows = (await session.execute(stmt)).scalars().all()  # type: ignore[union-attr]
         return list(rows)
 
+    async def get_fills_since(
+        self,
+        source: str,
+        instrument: str,
+        since_dt: datetime,
+        portfolio_target: str = "autonomous",
+    ) -> list[AttributedFill]:
+        """Query fills for a specific source, instrument, and absolute datetime lower bound.
+
+        Useful for post-tuner evidence queries: pass the tuner's deployment datetime as
+        ``since_dt`` to retrieve only fills that occurred after a strategy parameter change.
+
+        Args:
+            source: SignalSource value to filter by (e.g. "orderbook_imbalance").
+            instrument: Instrument symbol to filter by (e.g. "BTC-PERP-INTX").
+            since_dt: Inclusive lower bound on FillRecord.filled_at (timezone-aware UTC).
+            portfolio_target: Route.value to filter by (default "autonomous").
+
+        Returns:
+            List of AttributedFill sorted by filled_at ascending.
+        """
+        stmt = (
+            select(FillRecord, OrderSignalRecord.primary_source, OrderSignalRecord.conviction)
+            .join(OrderSignalRecord, FillRecord.order_id == OrderSignalRecord.order_id)
+            .where(FillRecord.portfolio_target == portfolio_target)
+            .where(FillRecord.instrument == instrument)
+            .where(OrderSignalRecord.primary_source == source)
+            .where(FillRecord.filled_at >= since_dt)
+            .order_by(FillRecord.filled_at)
+        )
+        async with self._store.session() as session:
+            rows = (await session.execute(stmt)).all()  # type: ignore[union-attr]
+        return [
+            AttributedFill(
+                fill_id=row.FillRecord.fill_id,
+                order_id=row.FillRecord.order_id or "",
+                portfolio_target=row.FillRecord.portfolio_target,
+                instrument=row.FillRecord.instrument,
+                side=row.FillRecord.side,
+                size=row.FillRecord.size,
+                price=row.FillRecord.price,
+                fee_usdc=row.FillRecord.fee_usdc,
+                is_maker=row.FillRecord.is_maker,
+                filled_at=row.FillRecord.filled_at,
+                trade_id=row.FillRecord.trade_id,
+                primary_source=row.primary_source,
+                conviction=row.conviction,
+            )
+            for row in rows
+        ]
+
     async def write_fill(self, record: FillRecord) -> None:
         """Persist a fill record to the database.
 

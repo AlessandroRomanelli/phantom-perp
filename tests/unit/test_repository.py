@@ -591,3 +591,125 @@ async def test_per_instrument_query() -> None:
     eth_fills = [r for r in results if r.instrument == "ETH-PERP-INTX"]
     assert len(btc_fills) == 2
     assert len(eth_fills) == 2
+
+
+# ---------------------------------------------------------------------------
+# Tests: get_fills_since() — post-tuner date-filtered attribution queries
+# ---------------------------------------------------------------------------
+
+_TUNER_DEPLOY_DT = _NOW - timedelta(days=3)  # simulated tuner deployment point
+
+
+@pytest.mark.asyncio
+async def test_get_fills_since_returns_matching_fills() -> None:
+    """get_fills_since() returns all fills matching source, instrument, and since_dt."""
+    from libs.storage.repository import TunerRepository
+
+    engine = _make_sync_engine()
+    session_factory = sessionmaker(bind=engine)
+
+    post_dt = _NOW - timedelta(days=2)
+    with session_factory() as session:
+        for i in range(2):
+            session.add(
+                _make_order_signal(f"order-obi-{i}", f"sig-obi-{i}", "BTC-PERP-INTX", "orderbook_imbalance")
+            )
+            session.add(_make_fill(f"fill-obi-{i}", f"order-obi-{i}", "BTC-PERP-INTX", filled_at=post_dt))
+        session.commit()
+
+    with session_factory() as session:
+        store = _make_store_mock(session)
+        repo = TunerRepository(store)
+        results = await repo.get_fills_since(
+            source="orderbook_imbalance",
+            instrument="BTC-PERP-INTX",
+            since_dt=_TUNER_DEPLOY_DT,
+        )
+
+    assert len(results) == 2
+    for r in results:
+        assert r.primary_source == "orderbook_imbalance"
+        assert r.instrument == "BTC-PERP-INTX"
+        # SQLite strips tzinfo on round-trip; verify the count and attribution instead
+        assert r.filled_at is not None
+
+
+@pytest.mark.asyncio
+async def test_get_fills_since_filters_by_source() -> None:
+    """get_fills_since() returns only fills attributed to the requested source."""
+    from libs.storage.repository import TunerRepository
+
+    engine = _make_sync_engine()
+    session_factory = sessionmaker(bind=engine)
+
+    post_dt = _NOW - timedelta(days=2)
+    with session_factory() as session:
+        session.add(_make_order_signal("order-obi-1", "sig-obi-1", "BTC-PERP-INTX", "orderbook_imbalance"))
+        session.add(_make_order_signal("order-mom-1", "sig-mom-1", "BTC-PERP-INTX", "momentum"))
+        session.add(_make_fill("fill-obi-1", "order-obi-1", "BTC-PERP-INTX", filled_at=post_dt))
+        session.add(_make_fill("fill-mom-1", "order-mom-1", "BTC-PERP-INTX", filled_at=post_dt))
+        session.commit()
+
+    with session_factory() as session:
+        store = _make_store_mock(session)
+        repo = TunerRepository(store)
+        results = await repo.get_fills_since(
+            source="orderbook_imbalance",
+            instrument="BTC-PERP-INTX",
+            since_dt=_TUNER_DEPLOY_DT,
+        )
+
+    assert len(results) == 1
+    assert results[0].fill_id == "fill-obi-1"
+    assert results[0].primary_source == "orderbook_imbalance"
+
+
+@pytest.mark.asyncio
+async def test_get_fills_since_filters_by_date() -> None:
+    """get_fills_since() excludes fills with filled_at before since_dt."""
+    from libs.storage.repository import TunerRepository
+
+    engine = _make_sync_engine()
+    session_factory = sessionmaker(bind=engine)
+
+    pre_dt = _NOW - timedelta(days=10)   # before deployment
+    post_dt = _NOW - timedelta(days=2)   # after deployment
+
+    with session_factory() as session:
+        session.add(_make_order_signal("order-pre", "sig-pre", "BTC-PERP-INTX", "orderbook_imbalance", proposed_at=pre_dt))
+        session.add(_make_order_signal("order-post", "sig-post", "BTC-PERP-INTX", "orderbook_imbalance", proposed_at=post_dt))
+        session.add(_make_fill("fill-pre", "order-pre", "BTC-PERP-INTX", filled_at=pre_dt))
+        session.add(_make_fill("fill-post", "order-post", "BTC-PERP-INTX", filled_at=post_dt))
+        session.commit()
+
+    with session_factory() as session:
+        store = _make_store_mock(session)
+        repo = TunerRepository(store)
+        results = await repo.get_fills_since(
+            source="orderbook_imbalance",
+            instrument="BTC-PERP-INTX",
+            since_dt=_TUNER_DEPLOY_DT,
+        )
+
+    assert len(results) == 1
+    assert results[0].fill_id == "fill-post"
+
+
+@pytest.mark.asyncio
+async def test_get_fills_since_empty_result() -> None:
+    """get_fills_since() returns an empty list when no data matches."""
+    from libs.storage.repository import TunerRepository
+
+    engine = _make_sync_engine()
+    session_factory = sessionmaker(bind=engine)
+
+    with session_factory() as session:
+        store = _make_store_mock(session)
+        repo = TunerRepository(store)
+        results = await repo.get_fills_since(
+            source="orderbook_imbalance",
+            instrument="BTC-PERP-INTX",
+            since_dt=_TUNER_DEPLOY_DT,
+        )
+
+    assert results == []
