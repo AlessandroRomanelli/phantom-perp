@@ -26,6 +26,7 @@ from libs.tuner.bounds import clip_value, load_bounds_registry
 if TYPE_CHECKING:
     from agents.alpha.regime_detector import RegimeDetector
     from agents.signals.feature_store import FeatureStore
+    from agents.signals.news_client import CryptoHeadline, EconomicEvent
     from libs.common.models.market_snapshot import MarketSnapshot
 
 _logger = structlog.get_logger(__name__)
@@ -125,9 +126,59 @@ def _build_orchestrator_system_prompt() -> str:
         "6. Be conservative: in HIGH_VOLATILITY regimes, prefer disabling aggressive strategies.\n"
         "7. Include a confidence field (0.0–1.0) for each decision: 1.0 = very confident, "
         "0.0 = highly uncertain.\n"
-        "8. Use the submit_orchestrator_decisions tool to return all your decisions.\n\n"
+        "8. Use the submit_orchestrator_decisions tool to return all your decisions.\n"
+        "9. If high-impact macro events (FOMC, CPI, NFP) are scheduled within 24h, "
+        "prefer disabling momentum and breakout strategies to avoid false breakouts.\n"
+        "10. If crypto headlines contain tail-risk keywords (hack, exploit, regulatory, "
+        "SEC, ban), reduce enabled strategies and lower conviction thresholds.\n\n"
         "Output: one decision entry per (instrument, strategy) combination you wish to change."
     )
+
+
+# ---------------------------------------------------------------------------
+# News context formatter
+# ---------------------------------------------------------------------------
+
+
+def _format_news_context(
+    headlines: list[CryptoHeadline],
+    events: list[EconomicEvent],
+) -> str:
+    """Render a ## News Context block for inclusion in the orchestrator context.
+
+    Limits headlines to the 5 most recent. Lists all provided events.
+
+    Args:
+        headlines: List of CryptoHeadline objects (may be empty).
+        events: List of EconomicEvent objects for the next 48h (may be empty).
+
+    Returns:
+        Formatted multi-line string starting with ``## News Context``.
+    """
+    lines: list[str] = ["## News Context"]
+
+    # Headlines subsection
+    recent = headlines[:5]
+    if recent:
+        lines.append(f"Headlines ({len(recent)} most recent):")
+        for h in recent:
+            currencies_str = ", ".join(h.currencies) if h.currencies else "—"
+            lines.append(f"- {h.title} ({h.source}, {currencies_str})")
+    else:
+        lines.append("Headlines: none available.")
+
+    # Economic events subsection
+    if events:
+        lines.append("Upcoming High-Impact Events (next 48h):")
+        for e in events:
+            time_str = e.event_time.strftime("%Y-%m-%d")
+            est = e.estimate if e.estimate is not None else "N/A"
+            prev = e.previous if e.previous is not None else "N/A"
+            lines.append(f"- {e.event} @ {time_str} (est: {est}, prev: {prev})")
+    else:
+        lines.append("Upcoming High-Impact Events: none in next 48h.")
+
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -140,17 +191,23 @@ def build_orchestrator_context(
     slow_stores: dict[str, FeatureStore],
     latest_snapshots: dict[str, MarketSnapshot],
     regime_detector: RegimeDetector,
+    headlines: list[CryptoHeadline] | None = None,
+    events: list[EconomicEvent] | None = None,
 ) -> str:
     """Assemble a condensed multi-instrument context string for the orchestrator.
 
     Produces a token-efficient summary (~600 chars) covering regime, volatility,
-    funding rate trend, and OI trend for each instrument.
+    funding rate trend, and OI trend for each instrument. Optionally appends a
+    ``## News Context`` section with recent crypto headlines and upcoming high-impact
+    economic events.
 
     Args:
         instrument_ids: List of instrument IDs to include (e.g. ['ETH-PERP', 'BTC-PERP']).
         slow_stores: Dict of FeatureStore instances keyed by instrument ID.
         latest_snapshots: Dict of most recent MarketSnapshot per instrument.
         regime_detector: RegimeDetector with per-instrument regime state.
+        headlines: Optional list of recent CryptoHeadline objects.
+        events: Optional list of upcoming EconomicEvent objects.
 
     Returns:
         Multi-line context string suitable for inclusion in a user message to Claude.
@@ -208,6 +265,9 @@ def build_orchestrator_context(
     lines.append("")
     strategy_names = ", ".join(STRATEGY_CLASSES.keys())
     lines.append(f"Active strategies: {strategy_names}")
+
+    lines.append("")
+    lines.append(_format_news_context(headlines or [], events or []))
 
     return "\n".join(lines)
 

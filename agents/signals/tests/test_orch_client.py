@@ -24,6 +24,7 @@ from agents.signals.orch_client import (
     validate_orchestrator_response,
 )
 from agents.signals.feature_store import FeatureStore
+from agents.signals.news_client import CryptoHeadline, EconomicEvent
 from libs.common.models.enums import MarketRegime
 from libs.common.models.market_snapshot import MarketSnapshot
 
@@ -836,3 +837,126 @@ class TestValidateOrchestratorResponseT02:
         result = validate_orchestrator_response(decisions, _BOUNDS_PATH)
 
         assert result[0]["confidence"] == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# TestBuildOrchestratorContextNewsSection
+# ---------------------------------------------------------------------------
+
+
+class TestBuildOrchestratorContextNewsSection:
+    """Tests for the ## News Context section injected by build_orchestrator_context()."""
+
+    _H1 = CryptoHeadline(
+        title="Bitcoin surges past 100k",
+        published_at=datetime(2025, 6, 15, 10, 0, tzinfo=UTC),
+        source="CoinDesk",
+        currencies=["BTC"],
+    )
+    _H2 = CryptoHeadline(
+        title="Ethereum upgrade scheduled",
+        published_at=datetime(2025, 6, 15, 11, 0, tzinfo=UTC),
+        source="The Block",
+        currencies=["ETH"],
+    )
+    _E1 = EconomicEvent(
+        event="CPI m/m",
+        event_time=datetime(2025, 6, 16, 0, 0, tzinfo=UTC),
+        impact="high",
+        country="US",
+        estimate="0.3%",
+        previous="0.2%",
+    )
+    _E2 = EconomicEvent(
+        event="FOMC Meeting",
+        event_time=datetime(2025, 6, 17, 0, 0, tzinfo=UTC),
+        impact="high",
+        country="US",
+        estimate=None,
+        previous=None,
+    )
+
+    def _ctx(
+        self,
+        headlines: list[CryptoHeadline] | None = None,
+        events: list[EconomicEvent] | None = None,
+    ) -> str:
+        """Build a minimal context string with one instrument."""
+        store = _build_store([2200.0] * 5)
+        snap = _snap()
+        det = _make_regime_detector({"ETH-PERP": "ranging"})
+        return build_orchestrator_context(
+            instrument_ids=["ETH-PERP"],
+            slow_stores={"ETH-PERP": store},
+            latest_snapshots={"ETH-PERP": snap},
+            regime_detector=det,
+            headlines=headlines,
+            events=events,
+        )
+
+    def test_news_context_with_headlines_only(self) -> None:
+        """Headlines present, no events → section shows headline, events says none."""
+        ctx = self._ctx(headlines=[self._H1], events=None)
+        assert "## News Context" in ctx
+        assert "Bitcoin surges past 100k" in ctx
+        assert "CoinDesk" in ctx
+        assert "Upcoming High-Impact Events: none in next 48h." in ctx
+
+    def test_news_context_with_events_only(self) -> None:
+        """Events present, no headlines → section shows event, headlines says none."""
+        ctx = self._ctx(headlines=None, events=[self._E1])
+        assert "## News Context" in ctx
+        assert "Headlines: none available." in ctx
+        assert "CPI m/m" in ctx
+        assert "est: 0.3%" in ctx
+        assert "prev: 0.2%" in ctx
+
+    def test_news_context_with_both(self) -> None:
+        """Both headlines and events present → both subsections populated."""
+        ctx = self._ctx(headlines=[self._H1, self._H2], events=[self._E1, self._E2])
+        assert "## News Context" in ctx
+        assert "Bitcoin surges past 100k" in ctx
+        assert "Ethereum upgrade scheduled" in ctx
+        assert "CPI m/m" in ctx
+        assert "FOMC Meeting" in ctx
+        assert "est: N/A" in ctx  # E2 has no estimate
+
+    def test_news_context_with_none(self) -> None:
+        """Both None → both subsections show 'none available' messages."""
+        ctx = self._ctx(headlines=None, events=None)
+        assert "## News Context" in ctx
+        assert "Headlines: none available." in ctx
+        assert "Upcoming High-Impact Events: none in next 48h." in ctx
+
+    def test_news_context_truncates_headlines_to_5(self) -> None:
+        """8 headlines passed → only 5 appear in the output."""
+        headlines = [
+            CryptoHeadline(
+                title=f"Headline {i}",
+                published_at=datetime(2025, 6, 15, i, 0, tzinfo=UTC),
+                source="Source",
+                currencies=["BTC"],
+            )
+            for i in range(8)
+        ]
+        ctx = self._ctx(headlines=headlines, events=None)
+        # Exactly 5 headlines should be listed
+        assert "Headlines (5 most recent):" in ctx
+        for i in range(5):
+            assert f"Headline {i}" in ctx
+        for i in range(5, 8):
+            assert f"Headline {i}" not in ctx
+
+    def test_system_prompt_contains_macro_rules(self) -> None:
+        """Rules 9 and 10 are present in the system prompt string."""
+        from agents.signals.orch_client import _build_orchestrator_system_prompt
+
+        prompt = _build_orchestrator_system_prompt()
+        assert "FOMC" in prompt
+        assert "CPI" in prompt
+        assert "NFP" in prompt
+        assert "momentum and breakout strategies" in prompt
+        assert "hack" in prompt
+        assert "exploit" in prompt
+        assert "regulatory" in prompt
+        assert "conviction thresholds" in prompt
