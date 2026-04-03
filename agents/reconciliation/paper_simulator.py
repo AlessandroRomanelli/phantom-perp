@@ -195,6 +195,90 @@ class PaperPortfolio:
         self.positions: dict[str, SimulatedPosition] = {}
         self.fill_count = 0
 
+    @classmethod
+    def restore_from_fills(
+        cls,
+        target: Route,
+        fill_records: list[Any],
+    ) -> "PaperPortfolio":
+        """Reconstruct a PaperPortfolio by replaying persisted fill history.
+
+        Replays fills in chronological order (oldest first) to rebuild
+        realized_pnl, fees_paid, fill_count, and open positions.
+        funding_pnl is not recoverable from fills alone and stays at 0.
+
+        Args:
+            target: Route this portfolio belongs to.
+            fill_records: FillRecord ORM rows ordered by filled_at ascending.
+
+        Returns:
+            PaperPortfolio with state matching the end of the fill history.
+        """
+        portfolio = cls(target=target, initial_equity=PAPER_INITIAL_EQUITY)
+        for rec in fill_records:
+            side = OrderSide(rec.side)
+            fee_rate = FEE_MAKER if rec.is_maker else FEE_TAKER
+            fee = rec.fee_usdc  # Already computed — use stored value directly
+            portfolio.fees_paid += fee
+            portfolio.fill_count += 1
+
+            fill_side = PositionSide.LONG if side == OrderSide.BUY else PositionSide.SHORT
+            instrument = rec.instrument
+            size = rec.size
+            fill_price = rec.price
+
+            pos = portfolio.positions.get(instrument)
+
+            if pos is None or pos.size == 0:
+                portfolio.positions[instrument] = SimulatedPosition(
+                    instrument=instrument,
+                    side=fill_side,
+                    size=size,
+                    entry_price=fill_price,
+                    total_fees_usdc=fee,
+                )
+            elif pos.side == fill_side:
+                total_size = pos.size + size
+                avg_entry = (pos.entry_price * pos.size + fill_price * size) / total_size
+                pos.size = total_size
+                pos.entry_price = avg_entry
+                pos.total_fees_usdc += fee
+            else:
+                if size >= pos.size:
+                    close_pnl = pos.unrealized_pnl(fill_price)
+                    portfolio.realized_pnl += close_pnl
+                    portfolio.realized_pnl_per_instrument[instrument] = (
+                        portfolio.realized_pnl_per_instrument.get(instrument, Decimal("0"))
+                        + close_pnl
+                    )
+                    remaining = size - pos.size
+                    if remaining > 0:
+                        portfolio.positions[instrument] = SimulatedPosition(
+                            instrument=instrument,
+                            side=fill_side,
+                            size=remaining,
+                            entry_price=fill_price,
+                            total_fees_usdc=fee,
+                        )
+                    else:
+                        del portfolio.positions[instrument]
+                else:
+                    pnl_per_unit = (
+                        (fill_price - pos.entry_price)
+                        if pos.side == PositionSide.LONG
+                        else (pos.entry_price - fill_price)
+                    )
+                    partial_pnl = pnl_per_unit * size
+                    portfolio.realized_pnl += partial_pnl
+                    portfolio.realized_pnl_per_instrument[instrument] = (
+                        portfolio.realized_pnl_per_instrument.get(instrument, Decimal("0"))
+                        + partial_pnl
+                    )
+                    pos.size -= size
+                    pos.total_fees_usdc += fee
+
+        return portfolio
+
     @property
     def position(self) -> SimulatedPosition | None:
         """Legacy accessor — returns first open position or None.
@@ -478,18 +562,41 @@ async def run_paper_simulator(
             When provided, every fill (entry and SL/TP exit) is written to
             the fills table for historical tracking.
     """
+    # Restore portfolio state from persisted fill history so equity and
+    # positions survive container restarts.  Falls back to a fresh portfolio
+    # on any DB error so a missing or empty DB never blocks startup.
+    async def _build_portfolio(route: Route) -> PaperPortfolio:
+        if repo is not None:
+            try:
+                fill_records = await repo.get_all_fills(route.value)
+                if fill_records:
+                    portfolio = PaperPortfolio.restore_from_fills(route, fill_records)
+                    open_instruments = [
+                        i for i, p in portfolio.positions.items() if p.size > 0
+                    ]
+                    logger.info(
+                        "paper_portfolio_restored",
+                        route=route.value,
+                        fills_replayed=len(fill_records),
+                        realized_pnl=str(portfolio.realized_pnl),
+                        fees_paid=str(portfolio.fees_paid),
+                        open_positions=open_instruments,
+                    )
+                    return portfolio
+            except Exception as exc:
+                logger.warning(
+                    "paper_portfolio_restore_failed",
+                    route=route.value,
+                    error=str(exc),
+                )
+        return PaperPortfolio(target=route, initial_equity=PAPER_INITIAL_EQUITY)
+
     portfolios: dict[Route, PaperPortfolio] = {
-        Route.A: PaperPortfolio(
-            target=Route.A,
-            initial_equity=PAPER_INITIAL_EQUITY,
-        ),
+        Route.A: await _build_portfolio(Route.A),
     }
 
     if include_route_b:
-        portfolios[Route.B] = PaperPortfolio(
-            target=Route.B,
-            initial_equity=PAPER_INITIAL_EQUITY,
-        )
+        portfolios[Route.B] = await _build_portfolio(Route.B)
 
     # Per-instrument market data cache
     mark_prices: dict[str, Decimal] = {}

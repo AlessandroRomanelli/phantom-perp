@@ -1,39 +1,34 @@
 # Scripts
 
-Operational scripts for deploying, monitoring, and inspecting the phantom-perp system.
+Operational scripts for running and monitoring phantom-perp locally.
 
 ## deploy.sh
 
-Build, transfer, and deploy Docker images to the Oracle Cloud production server.
-
-Images are cross-compiled for `linux/amd64` on the local machine (Apple Silicon), saved to a tarball, transferred via SCP, and loaded on the remote. Containers are then recreated via `docker-compose.prod.yml`.
+Build all agent images and start the stack via `docker-compose.yml`.
 
 ```bash
-# Full build + deploy (all 8 agents)
+# Full rebuild + up (all agents in parallel)
 ./scripts/deploy.sh
 
-# Rebuild and deploy only specific agents
-./scripts/deploy.sh risk execution
+# Rebuild and redeploy only specific agents
+./scripts/deploy.sh signals risk
 
-# Build images locally without deploying
+# Build images without starting containers
 ./scripts/deploy.sh --build-only
-
-# Deploy an existing tarball (skip build)
-./scripts/deploy.sh --deploy-only
 
 # Restart containers without rebuilding
 ./scripts/deploy.sh --restart
 
-# Check remote container status
+# Check container status
 ./scripts/deploy.sh --status
 
-# Tail remote logs for a specific agent
-./scripts/deploy.sh --logs risk
+# Tail logs for a specific agent
+./scripts/deploy.sh --logs signals
 ```
 
 ## status.sh
 
-Generate a status report of the deployed system on Oracle Cloud. Connects via SSH and collects host metrics, container health, Redis stream state, market data, and portfolio snapshots.
+Show a live status report of the running stack — containers, resources, Redis streams, pipeline flow, market data, and portfolio state.
 
 ```bash
 # Full report
@@ -54,25 +49,34 @@ Generate a status report of the deployed system on Oracle Cloud. Connects via SS
 
 Report sections:
 - **Host Resources** — uptime, CPU load, memory, swap, disk
-- **Containers** — status, uptime, restart count for all 10 containers
+- **Containers** — status and restart count for all services
 - **Resource Usage** — per-container CPU, memory, network I/O
 - **Redis Streams** — message count, consumer groups, last entry time for all 15 streams
-- **Pipeline Flow** — messages per minute through each stage of the pipeline
-- **Latest Market Data** — ETH-PERP mark/index/last price, spread, funding rate, volatility
-- **Portfolio State** — equity, margin, P&L, and positions for Portfolio A and B
+- **Pipeline Flow** — messages per minute through each pipeline stage
+- **Latest Market Data** — mark price, funding rate, volatility, orderbook imbalance
+- **Portfolio State** — equity, margin, P&L, and open positions
 - **Error Check** — scans recent logs for errors, exceptions, and critical alerts
 
 ## dashboard.py
 
-Live terminal dashboard that polls Redis Streams and displays real-time pipeline state. Requires a direct Redis connection (run locally with port-forwarding, or on the server).
+Live terminal dashboard polling Redis Streams directly.
 
 ```bash
-# Default: connects to redis://localhost:6379
 python scripts/dashboard.py
-
-# Custom Redis URL
-python scripts/dashboard.py --redis redis://redis:6379
-
-# Custom refresh interval (seconds)
+python scripts/dashboard.py --redis redis://localhost:6379
 python scripts/dashboard.py --refresh 3
 ```
+
+## query_obi_btc.py / query_oi_divergence_btc.py
+
+Post-hoc P&L evidence scripts for monitoring strategy performance.
+
+```bash
+# OBI BTC: fills and P&L since tuner's fee-reduction adjustment
+python scripts/query_obi_btc.py --since 2025-01-01
+
+# OI Divergence BTC: fills and P&L
+python scripts/query_oi_divergence_btc.py --since 2025-01-01
+```
+
+Requires `DATABASE_URL` set in environment.

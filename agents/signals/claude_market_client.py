@@ -513,7 +513,13 @@ async def call_claude_analysis(
         response = await client.messages.create(
             model=_MODEL,
             max_tokens=_MAX_TOKENS,
-            system=system_prompt,
+            system=[
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
             tools=[MARKET_ANALYSIS_TOOL],
             tool_choice={"type": "tool", "name": "submit_market_analysis"},
             messages=[{"role": "user", "content": user_message}],
@@ -545,6 +551,10 @@ async def call_claude_analysis(
         instrument=instrument_id,
         direction=raw.get("direction"),
         conviction=raw.get("conviction"),
+        input_tokens=response.usage.input_tokens,
+        output_tokens=response.usage.output_tokens,
+        cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0),
+        cache_creation_tokens=getattr(response.usage, "cache_creation_input_tokens", 0),
     )
 
     validated = validate_claude_response(raw, snapshot, store)

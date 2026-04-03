@@ -5,8 +5,7 @@ set -euo pipefail
 #    rebuild images, and restart everything from scratch.
 #
 # Usage:
-#   ./scripts/reset.sh              # Local dev (docker-compose.yml)
-#   ./scripts/reset.sh --prod       # Production (docker-compose.prod.yml)
+#   ./scripts/reset.sh              # Full reset (rebuild + restart)
 #   ./scripts/reset.sh --no-build   # Skip image rebuild (restart only)
 #   ./scripts/reset.sh --yes        # Skip confirmation prompt
 
@@ -29,13 +28,11 @@ SKIP_CONFIRM=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --prod)       COMPOSE_FILE="docker-compose.prod.yml"; shift ;;
         --no-build)   SKIP_BUILD=true; shift ;;
         --yes|-y)     SKIP_CONFIRM=true; shift ;;
         -h|--help)
-            echo "Usage: $(basename "$0") [--prod] [--no-build] [--yes]"
+            echo "Usage: $(basename "$0") [--no-build] [--yes]"
             echo ""
-            echo "  --prod       Use docker-compose.prod.yml (pre-built images)"
             echo "  --no-build   Skip image rebuild, just restart"
             echo "  --yes, -y    Skip confirmation prompt"
             exit 0
@@ -108,11 +105,9 @@ if docker volume inspect "$STRAT_VOL" &>/dev/null; then
     ok "Removed volume: $STRAT_VOL"
 fi
 
-# ── Step 3: Rebuild images (dev only) ──────────────────────────────────
+# ── Step 3: Rebuild images ─────────────────────────────────────────────
 if [[ "$SKIP_BUILD" == "true" ]]; then
     log "Skipping image rebuild (--no-build)"
-elif [[ "$COMPOSE_FILE" == "docker-compose.prod.yml" ]]; then
-    log "Production mode — skipping build (uses pre-built images)"
 else
     log "Rebuilding all images (this may take a few minutes)..."
     $COMPOSE build --parallel

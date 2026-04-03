@@ -243,6 +243,26 @@ class TunerRepository:
             for row in rows
         ]
 
+    async def get_all_fills(self, portfolio_target: str) -> list[FillRecord]:
+        """Fetch all fill records for a portfolio in chronological order.
+
+        Used at startup to restore PaperPortfolio state from persisted history.
+
+        Args:
+            portfolio_target: Route.value to filter by (e.g. "autonomous").
+
+        Returns:
+            List of FillRecord sorted by filled_at ascending.
+        """
+        stmt = (
+            select(FillRecord)
+            .where(FillRecord.portfolio_target == portfolio_target)
+            .order_by(FillRecord.filled_at)
+        )
+        async with self._store.session() as session:
+            rows = (await session.execute(stmt)).scalars().all()  # type: ignore[union-attr]
+        return list(rows)
+
     async def write_fill(self, record: FillRecord) -> None:
         """Persist a fill record to the database.
 

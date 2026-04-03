@@ -106,6 +106,12 @@ def _make_claude_response(raw: dict[str, Any]) -> SimpleNamespace:
     """Wrap a tool_use block in a mock Anthropic message response."""
     resp = SimpleNamespace()
     resp.content = [_make_tool_use_block(raw)]
+    resp.usage = SimpleNamespace(
+        input_tokens=100,
+        output_tokens=20,
+        cache_read_input_tokens=0,
+        cache_creation_input_tokens=0,
+    )
     return resp
 
 

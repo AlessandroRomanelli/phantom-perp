@@ -678,3 +678,104 @@ class TestPendingProtectiveOrderTrigger:
         assert order.is_triggered(Decimal("1800")) is True
         assert order.is_triggered(Decimal("1700")) is True
         assert order.is_triggered(Decimal("1900")) is False
+
+
+# ---------------------------------------------------------------------------
+# Tests: PaperPortfolio.restore_from_fills
+# ---------------------------------------------------------------------------
+
+
+def _make_fill_record(
+    instrument: str,
+    side: str,
+    size: str,
+    price: str,
+    fee_usdc: str,
+    is_maker: bool = True,
+    route: Route = Route.A,
+) -> FillRecord:
+    """Build a minimal FillRecord for restore tests."""
+    from libs.common.utils import generate_id
+    return FillRecord(
+        fill_id=generate_id("fill"),
+        order_id=generate_id("order"),
+        portfolio_target=route.value,
+        instrument=instrument,
+        side=side,
+        size=Decimal(size),
+        price=Decimal(price),
+        fee_usdc=Decimal(fee_usdc),
+        is_maker=is_maker,
+        filled_at=datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+        trade_id=generate_id("trade"),
+    )
+
+
+class TestRestoreFromFills:
+    def test_empty_fills_returns_fresh_portfolio(self) -> None:
+        """No fills → same as a brand-new portfolio."""
+        p = PaperPortfolio.restore_from_fills(Route.A, [])
+        assert p.realized_pnl == Decimal("0")
+        assert p.fees_paid == Decimal("0")
+        assert p.fill_count == 0
+        assert p.positions == {}
+
+    def test_single_open_position_restored(self) -> None:
+        """One BUY fill → open LONG position."""
+        rec = _make_fill_record("ETH-PERP", "BUY", "1.0", "2000.00", "0.25")
+        p = PaperPortfolio.restore_from_fills(Route.A, [rec])
+        assert "ETH-PERP" in p.positions
+        pos = p.positions["ETH-PERP"]
+        assert pos.side == PositionSide.LONG
+        assert pos.size == Decimal("1.0")
+        assert pos.entry_price == Decimal("2000.00")
+        assert p.fees_paid == Decimal("0.25")
+        assert p.realized_pnl == Decimal("0")
+        assert p.fill_count == 1
+
+    def test_closed_position_produces_realized_pnl(self) -> None:
+        """BUY then SELL at higher price → realized profit."""
+        fills = [
+            _make_fill_record("ETH-PERP", "BUY", "1.0", "2000.00", "0.25"),
+            _make_fill_record("ETH-PERP", "SELL", "1.0", "2100.00", "0.26"),
+        ]
+        p = PaperPortfolio.restore_from_fills(Route.A, fills)
+        assert p.positions.get("ETH-PERP") is None or p.positions["ETH-PERP"].size == Decimal("0") or "ETH-PERP" not in p.positions
+        assert p.realized_pnl == Decimal("100.00")  # (2100 - 2000) * 1
+        assert p.fees_paid == Decimal("0.51")
+        assert p.fill_count == 2
+
+    def test_partial_close_updates_position_and_pnl(self) -> None:
+        """BUY 2, SELL 1 → half position remains, half realized."""
+        fills = [
+            _make_fill_record("ETH-PERP", "BUY", "2.0", "2000.00", "0.50"),
+            _make_fill_record("ETH-PERP", "SELL", "1.0", "2200.00", "0.28"),
+        ]
+        p = PaperPortfolio.restore_from_fills(Route.A, fills)
+        assert p.positions["ETH-PERP"].size == Decimal("1.0")
+        assert p.realized_pnl == Decimal("200.00")  # (2200 - 2000) * 1
+        assert p.fill_count == 2
+
+    def test_multi_instrument_positions_restored(self) -> None:
+        """Fills across two instruments restored independently."""
+        fills = [
+            _make_fill_record("ETH-PERP", "BUY", "1.0", "2000.00", "0.25"),
+            _make_fill_record("BTC-PERP", "SELL", "0.1", "50000.00", "0.63"),
+        ]
+        p = PaperPortfolio.restore_from_fills(Route.A, fills)
+        assert p.positions["ETH-PERP"].side == PositionSide.LONG
+        assert p.positions["BTC-PERP"].side == PositionSide.SHORT
+        assert p.fill_count == 2
+
+    def test_equity_after_restore_matches_direct_apply(self) -> None:
+        """Restored equity equals equity built by applying fills via apply_fill."""
+        direct = PaperPortfolio(target=Route.A, initial_equity=Decimal("10000"))
+        direct.apply_fill("o1", "ETH-PERP", OrderSide.BUY, Decimal("1.0"), Decimal("2000.00"), True)
+        direct.apply_fill("o2", "ETH-PERP", OrderSide.SELL, Decimal("1.0"), Decimal("2100.00"), True)
+
+        fills = [
+            _make_fill_record("ETH-PERP", "BUY", "1.0", "2000.00", str(direct.fees_paid / 2)),
+            _make_fill_record("ETH-PERP", "SELL", "1.0", "2100.00", str(direct.fees_paid / 2)),
+        ]
+        restored = PaperPortfolio.restore_from_fills(Route.A, fills)
+        assert restored.realized_pnl == direct.realized_pnl

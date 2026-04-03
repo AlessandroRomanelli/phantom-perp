@@ -82,7 +82,7 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - `LOG_LEVEL` - Logging verbosity (INFO, DEBUG, etc.)
 - `pyproject.toml` - Python project metadata and dependencies
 - `docker-compose.yml` - Local development orchestration (build from source)
-- `docker-compose.prod.yml` - Production orchestration (pre-built images, memory-constrained: 64MB Redis, 128MB Postgres effective cache)
+- `docker-compose.yml` - Local and production orchestration (build from source, memory-constrained: 64MB Redis, 128MB Postgres effective cache)
 ## Platform Requirements
 - Python 3.12+
 - Docker & Docker Compose
@@ -92,11 +92,11 @@ A trading strategy improvement project for the Phantom Perp system — an event-
 - Docker runtime
 - Redis 7-alpine (in-memory, 64MB max with LRU eviction)
 - PostgreSQL 16 with TimescaleDB extension (in-container, 128MB effective cache)
-- ~4GB total swap space (for 8 agents + 2 services on Oracle Always Free instance)
+- ~4GB total swap space (for 8 agents + 2 services on production host)
 - 24/7 uptime requirement (no market hours)
-- Oracle Cloud Always Free AMD instance (140.238.222.244)
+- Linux `x86_64` (amd64) production host
 - Images cross-compiled on Apple Silicon for Linux target via Docker buildx
-- Transfer via SCP to production host at `opc@140.238.222.244`
+- Transfer via SCP to production host (host configured via REMOTE_HOST env var)
 <!-- GSD:stack-end -->
 
 <!-- GSD:conventions-start source:CONVENTIONS.md -->

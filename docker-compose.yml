@@ -1,32 +1,35 @@
 services:
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 64mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
 
   postgres:
     image: timescale/timescaledb:latest-pg16
-    ports:
-      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_DB: phantom_perp
       POSTGRES_USER: phantom
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-phantom_dev}
     volumes:
       - pg_data:/var/lib/postgresql/data
+    command: >
+      postgres
+        -c shared_buffers=64MB
+        -c work_mem=4MB
+        -c effective_cache_size=128MB
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U phantom -d phantom_perp"]
       interval: 10s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
 
   ingestion:
     build:
@@ -157,6 +160,17 @@ services:
       postgres:
         condition: service_healthy
     restart: "no"
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: agents/scheduler/Dockerfile
+    environment:
+      TUNER_CRON: ${TUNER_CRON:-0 0 * * *}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yml:/app/docker-compose.yml:ro
+    restart: unless-stopped
 
   dashboard:
     build:

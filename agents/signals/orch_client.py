@@ -251,7 +251,13 @@ async def call_claude_orchestrator(
         response = await client.messages.create(  # type: ignore[call-overload]
             model=_MODEL,
             max_tokens=params.max_tokens,
-            system=system_prompt,
+            system=[
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
             tools=[ORCHESTRATOR_TOOL],
             tool_choice={"type": "tool", "name": "submit_orchestrator_decisions"},
             messages=[{"role": "user", "content": user_message}],
@@ -282,6 +288,8 @@ async def call_claude_orchestrator(
         summary=raw.get("summary", "")[:120],
         input_tokens=response.usage.input_tokens,
         output_tokens=response.usage.output_tokens,
+        cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0),
+        cache_creation_tokens=getattr(response.usage, "cache_creation_input_tokens", 0),
     )
 
     return decisions
