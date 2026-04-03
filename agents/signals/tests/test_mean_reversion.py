@@ -738,3 +738,79 @@ class TestMRVolumeBoost:
         signals = strategy.evaluate(snap, store)
         assert len(signals) == 1
         assert "volume_ratio" in signals[0].metadata
+
+
+class TestMRRRFloor:
+    """Test the min_rr_floor reward:risk gate."""
+
+    def test_low_rr_signal_rejected(self) -> None:
+        """Floor set above the achievable R:R = gate rejects signal.
+
+        The test series (50 bars of low-noise stable prices + 15-pt breach)
+        naturally produces rr_ratio ~7-8 with middle-band TP.  Setting
+        min_rr_floor=20.0 is unreachable for this scenario, so the gate must
+        reject the signal.
+        """
+        params = MeanReversionParams(
+            min_conviction=0.0,
+            cooldown_bars=0,
+            rsi_oversold=80.0,
+            trend_reject_threshold=0.99,
+            stop_loss_atr_mult=1.5,
+            min_rr_floor=20.0,         # floor far above the achievable R:R
+            extended_deviation_threshold=999.0,  # TP at middle band (limits reward)
+        )
+        strategy = MeanReversionStrategy(params=params)
+        store, snap = _build_store_with_bb_breach("below")
+
+        signals = strategy.evaluate(snap, store)
+        assert signals == [], "R:R gate must reject signal when floor > achievable R:R"
+
+    def test_sufficient_rr_signal_fires(self) -> None:
+        """Tight stop + low floor = R:R gate passes and signal is returned."""
+        params = MeanReversionParams(
+            min_conviction=0.0,
+            cooldown_bars=0,
+            rsi_oversold=80.0,
+            trend_reject_threshold=0.99,
+            stop_loss_atr_mult=0.5,   # tight stop → high R:R
+            min_rr_floor=0.1,         # very low floor → almost anything passes
+            extended_deviation_threshold=0.01,  # extended TP = higher reward
+        )
+        strategy = MeanReversionStrategy(params=params)
+        store, snap = _build_store_with_bb_breach("below")
+
+        signals = strategy.evaluate(snap, store)
+        assert len(signals) == 1, "Tight stop + low floor should produce a signal"
+
+    def test_rr_metadata_present(self) -> None:
+        """rr_ratio must be present in signal metadata and be a positive float."""
+        params = MeanReversionParams(
+            min_conviction=0.0,
+            cooldown_bars=0,
+            rsi_oversold=80.0,
+            trend_reject_threshold=0.99,
+            stop_loss_atr_mult=0.5,
+            min_rr_floor=0.1,
+            extended_deviation_threshold=0.01,
+        )
+        strategy = MeanReversionStrategy(params=params)
+        store, snap = _build_store_with_bb_breach("below")
+
+        signals = strategy.evaluate(snap, store)
+        assert len(signals) == 1
+        assert "rr_ratio" in signals[0].metadata, "rr_ratio must be in metadata"
+        rr = signals[0].metadata["rr_ratio"]
+        assert isinstance(rr, float | int), "rr_ratio must be numeric"
+        assert rr > 0, "rr_ratio must be positive"
+
+    def test_config_loads_min_rr_floor(self) -> None:
+        """min_rr_floor must be settable via YAML config dict."""
+        config = {"parameters": {"min_rr_floor": 1.5}}
+        strategy = MeanReversionStrategy(config=config)
+        assert strategy._params.min_rr_floor == 1.5
+
+    def test_default_min_rr_floor(self) -> None:
+        """Default min_rr_floor must equal 1.2 as defined in MeanReversionParams."""
+        strategy = MeanReversionStrategy()
+        assert strategy._params.min_rr_floor == 1.2
