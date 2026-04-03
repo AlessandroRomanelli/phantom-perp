@@ -37,6 +37,10 @@ from agents.signals.adaptive_conviction import compute_adaptive_threshold
 from agents.signals.feature_store import FeatureStore
 from agents.signals.strategies.base import SignalStrategy
 
+from libs.common.logging import setup_logging
+
+logger = setup_logging("regime_trend", json_output=False)
+
 
 @dataclass
 class RegimeTrendParams:
@@ -259,26 +263,46 @@ class RegimeTrendStrategy(SignalStrategy):
         trend_down = trend_slope < 0 and price_below_trend
 
         if not trend_up and not trend_down:
+            logger.debug(
+                "regime_trend_no_trend",
+                instrument=snapshot.instrument,
+                trend_slope=round(trend_slope, 4),
+                price_vs_ema="above" if price_above_trend else "below",
+            )
             return []
 
         # ADX confirms trending (allow NaN ADX to pass with reduced conviction)
         adx_valid = not np.isnan(cur_adx)
         if adx_valid and cur_adx < effective_adx_thresh:
+            logger.debug(
+                "regime_trend_adx_rejected",
+                instrument=snapshot.instrument,
+                adx=round(cur_adx, 1),
+                threshold=round(effective_adx_thresh, 2),
+            )
             return []
 
         # ── Filter 2: Volatility expansion ──────────────────────────────
 
         if cur_atr_avg <= 0:
+            logger.debug("regime_trend_atr_avg_zero", instrument=snapshot.instrument)
             return []
 
         atr_ratio = cur_atr / cur_atr_avg
         if atr_ratio < effective_atr_exp_thresh:
+            logger.debug(
+                "regime_trend_atr_expansion_rejected",
+                instrument=snapshot.instrument,
+                atr_ratio=round(atr_ratio, 3),
+                threshold=round(effective_atr_exp_thresh, 3),
+            )
             return []
 
         # ── Filter 3: Spot confirmation ─────────────────────────────────
 
         prev_spot_ema = spot_ema_vals[-1 - p.spot_slope_lookback]
         if np.isnan(prev_spot_ema):
+            logger.debug("regime_trend_spot_nan", instrument=snapshot.instrument)
             return []
 
         spot_slope = cur_spot_ema - prev_spot_ema
@@ -286,8 +310,20 @@ class RegimeTrendStrategy(SignalStrategy):
         spot_confirms_short = spot_slope < 0
 
         if trend_up and not spot_confirms_long:
+            logger.debug(
+                "regime_trend_spot_rejected",
+                instrument=snapshot.instrument,
+                trend="up",
+                spot_slope=round(spot_slope, 4),
+            )
             return []
         if trend_down and not spot_confirms_short:
+            logger.debug(
+                "regime_trend_spot_rejected",
+                instrument=snapshot.instrument,
+                trend="down",
+                spot_slope=round(spot_slope, 4),
+            )
             return []
 
         # ── All filters passed — check entry patterns ───────────────────
@@ -305,6 +341,11 @@ class RegimeTrendStrategy(SignalStrategy):
             )
 
         if direction is None:
+            logger.debug(
+                "regime_trend_no_entry_pattern",
+                instrument=snapshot.instrument,
+                trend="up" if trend_up else "down",
+            )
             return []
 
         # ── Conviction ──────────────────────────────────────────────────
@@ -319,6 +360,12 @@ class RegimeTrendStrategy(SignalStrategy):
         )
 
         if conviction < p.min_conviction:
+            logger.debug(
+                "regime_trend_conviction_too_low",
+                instrument=snapshot.instrument,
+                conviction=round(conviction, 3),
+                min_conviction=p.min_conviction,
+            )
             return []
 
         # ── Build signals ───────────────────────────────────────────────
