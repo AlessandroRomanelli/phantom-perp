@@ -221,6 +221,24 @@ async def _collect_state(r: aioredis.Redis) -> dict[str, Any]:
     except Exception:
         pass
 
+    # Latest approved order per instrument — carries SL/TP prices
+    order_sl_tp: dict[str, dict[str, Any]] = {}
+    try:
+        entries = await r.xrevrange("stream:approved_orders:a", "+", "-", count=50)
+        for _, fields in entries:
+            parsed = _parse_entry(fields)
+            if parsed and parsed.get("instrument"):
+                inst = parsed["instrument"]
+                if inst not in order_sl_tp:
+                    order_sl_tp[inst] = {
+                        "stop_loss": parsed.get("stop_loss"),
+                        "take_profit": parsed.get("take_profit"),
+                        "entry_price": parsed.get("limit_price"),
+                        "side": parsed.get("side"),
+                    }
+    except Exception:
+        pass
+
     # Open positions from latest portfolio state — annotated with effective lev cap
     positions: list[dict[str, Any]] = []
     for route_key, stream_suffix in (("route_a", "a"), ("route_b", "b")):
@@ -236,6 +254,10 @@ async def _collect_state(r: aioredis.Redis) -> dict[str, Any]:
                         regime = regime_map.get(instrument, "ranging")
                         pos["regime"] = regime
                         pos["effective_lev_cap"] = _effective_lev_cap(regime, route_key)
+                        # Annotate with SL/TP from latest approved order
+                        order_info = order_sl_tp.get(instrument, {})
+                        pos["stop_loss"] = order_info.get("stop_loss")
+                        pos["take_profit"] = order_info.get("take_profit")
                         positions.append(pos)
         except Exception:
             pass

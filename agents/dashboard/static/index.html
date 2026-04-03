@@ -525,6 +525,9 @@ function renderUnifiedPortfolio(streams, topLevelPositions) {
         <th class="text-right py-1">Entry</th>
         <th class="text-right py-1">Mark</th>
         <th class="text-right py-1">P&L</th>
+        <th class="text-right py-1">SL</th>
+        <th class="text-right py-1">TP</th>
+        <th class="text-right py-1">R:R</th>
         <th class="text-right py-1">Lev (paper)</th>
         <th class="text-right py-1">Lev cap (live)</th>
         <th class="text-right py-1">Regime</th>
@@ -536,6 +539,13 @@ function renderUnifiedPortfolio(streams, topLevelPositions) {
         const regimeCls = p.regime === 'trending_up' || p.regime === 'trending_down' ? 'text-accent-green'
           : p.regime === 'high_volatility' ? 'text-accent-red'
           : 'text-gray-400';
+        const entry = parseFloat(p.entry_price);
+        const sl = p.stop_loss ? parseFloat(p.stop_loss) : null;
+        const tp = p.take_profit ? parseFloat(p.take_profit) : null;
+        const risk = sl ? Math.abs(entry - sl) : null;
+        const reward = tp ? Math.abs(tp - entry) : null;
+        const rr = (risk && reward && risk > 0) ? (reward / risk).toFixed(2) : null;
+        const rrCls = rr ? (parseFloat(rr) >= 1.5 ? 'text-accent-green' : parseFloat(rr) >= 1.0 ? 'text-accent-amber' : 'text-accent-red') : 'text-gray-600';
         return `<tr class="border-t border-gray-800/20">
           <td class="py-1.5 text-white">${p.instrument}</td>
           <td class="py-1.5 ${sideCls} font-semibold">${p.side}</td>
@@ -544,6 +554,9 @@ function renderUnifiedPortfolio(streams, topLevelPositions) {
           <td class="py-1.5 text-right text-gray-400">$${p.entry_price}</td>
           <td class="py-1.5 text-right text-white">$${p.mark_price}</td>
           <td class="py-1.5 text-right ${pnlColor(p.unrealized_pnl_usdc)}">${fmtPnl(p.unrealized_pnl_usdc)}</td>
+          <td class="py-1.5 text-right text-accent-red text-xs">${sl ? '$' + sl.toFixed(2) : '—'}</td>
+          <td class="py-1.5 text-right text-accent-green text-xs">${tp ? '$' + tp.toFixed(2) : '—'}</td>
+          <td class="py-1.5 text-right ${rrCls} font-semibold text-xs">${rr ? rr + 'x' : '—'}</td>
           <td class="py-1.5 text-right text-gray-400">${parseFloat(p.leverage).toFixed(1)}x</td>
           <td class="py-1.5 text-right text-yellow-400 font-semibold">${p.effective_lev_cap || '—'}x</td>
           <td class="py-1.5 text-right ${regimeCls} text-xs">${(p.regime || '—').replace('_', ' ')}</td>
@@ -563,9 +576,10 @@ function renderUnifiedPortfolio(streams, topLevelPositions) {
       </div>
       <span class="text-gray-500 text-xs font-mono">${agoFromISO(snap.timestamp)}</span>
     </div>
-    <div class="grid grid-cols-3 gap-3 text-xs font-mono mb-2">
+    <div class="grid grid-cols-4 gap-3 text-xs font-mono mb-2">
       <div><span class="text-gray-500">Equity</span><br><span class="text-white text-base font-semibold glow-blue">$${equity}</span></div>
       <div><span class="text-gray-500">Used Margin</span><br><span class="text-gray-300">$${usedMargin}</span></div>
+      <div><span class="text-gray-500">Open Notional</span><br><span class="text-gray-300">$${positions.reduce((s, p) => s + parseFloat(p.size) * parseFloat(p.mark_price), 0).toFixed(2)}</span></div>
       <div><span class="text-gray-500">Available</span><br><span class="text-gray-300">$${availMargin}</span></div>
     </div>
     <div class="mb-2">
