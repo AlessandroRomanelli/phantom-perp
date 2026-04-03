@@ -23,8 +23,8 @@ instruments:
   BTC-PERP:
     divergence_lookback: 24
     div_threshold_pct: 2.0
-    min_conviction: 0.6
-    cooldown_bars: 16
+    min_conviction: 0.45
+    cooldown_bars: 12
   SOL-PERP:
     divergence_lookback: 15
     div_threshold_pct: 2.5

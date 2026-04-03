@@ -26,6 +26,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import structlog
 
 from agents.signals.strategies.base import SignalStrategy
 from libs.common.instruments import get_instrument
@@ -37,6 +38,8 @@ from libs.indicators.volatility import atr
 if TYPE_CHECKING:
     from agents.signals.feature_store import FeatureStore
     from libs.common.models.market_snapshot import MarketSnapshot
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -147,6 +150,12 @@ class OIDivergenceStrategy(SignalStrategy):
             return []
 
         if self._bars_since_signal < self._params.cooldown_bars:
+            logger.debug(
+                "oi_divergence_cooldown_active",
+                instrument=snapshot.instrument,
+                bars_since_signal=self._bars_since_signal,
+                cooldown_bars=self._params.cooldown_bars,
+            )
             return []
 
         p = self._params
@@ -209,11 +218,24 @@ class OIDivergenceStrategy(SignalStrategy):
         # --- Combine modes ---
         if div_direction is None and accel_direction is None:
             # Neither mode fired
+            logger.debug(
+                "oi_divergence_no_mode_fired",
+                instrument=snapshot.instrument,
+                price_pct=round(price_pct, 4),
+                oi_pct=round(oi_pct, 4),
+                acceleration=round(acceleration, 4),
+            )
             return []
 
         if div_direction is not None and accel_direction is not None:
             if div_direction != accel_direction:
                 # Modes conflict — no signal
+                logger.debug(
+                    "oi_divergence_modes_conflict",
+                    instrument=snapshot.instrument,
+                    div_direction=div_direction.value,
+                    accel_direction=accel_direction.value,
+                )
                 return []
             # Both agree — sum scores (capped at 1.0)
             direction = div_direction
@@ -226,6 +248,12 @@ class OIDivergenceStrategy(SignalStrategy):
             conviction = round(accel_score, 3)
 
         if conviction < p.min_conviction:
+            logger.debug(
+                "oi_divergence_conviction_too_low",
+                instrument=snapshot.instrument,
+                conviction=conviction,
+                min_conviction=p.min_conviction,
+            )
             return []
 
         # --- ATR-based stops ---
