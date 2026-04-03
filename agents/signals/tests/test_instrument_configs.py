@@ -135,3 +135,42 @@ class TestPerInstrumentMinConvictionLowered:
         assert min_conv <= 0.40, (
             f"regime_trend ETH-PERP min_conviction={min_conv}, expected <= 0.40"
         )
+
+
+class TestRegimeTrendThresholds:
+    """Regime trend thresholds loosened to increase firing frequency (T02)."""
+
+    def test_eth_adx_threshold_loosened(self) -> None:
+        config = load_strategy_config_for_instrument("regime_trend", "ETH-PERP")
+        adx = config["parameters"]["adx_threshold"]
+        assert adx <= 18, f"ETH-PERP adx_threshold={adx}, expected <= 18"
+
+    def test_btc_adx_threshold_loosened(self) -> None:
+        config = load_strategy_config_for_instrument("regime_trend", "BTC-PERP")
+        adx = config["parameters"]["adx_threshold"]
+        assert adx <= 22, f"BTC-PERP adx_threshold={adx}, expected <= 22"
+
+    def test_sol_adx_threshold_loosened(self) -> None:
+        config = load_strategy_config_for_instrument("regime_trend", "SOL-PERP")
+        adx = config["parameters"]["adx_threshold"]
+        assert adx <= 18, f"SOL-PERP adx_threshold={adx}, expected <= 18"
+
+    def test_eth_atr_expansion_loosened(self) -> None:
+        config = load_strategy_config_for_instrument("regime_trend", "ETH-PERP")
+        atr_exp = config["parameters"]["atr_expansion_threshold"]
+        assert atr_exp <= 0.9, f"ETH-PERP atr_expansion_threshold={atr_exp}, expected <= 0.9"
+
+    def test_btc_atr_expansion_present(self) -> None:
+        config = load_strategy_config_for_instrument("regime_trend", "BTC-PERP")
+        atr_exp = config["parameters"]["atr_expansion_threshold"]
+        assert atr_exp <= 1.0, f"BTC-PERP atr_expansion_threshold={atr_exp}, expected <= 1.0"
+
+    def test_sol_atr_expansion_loosened(self) -> None:
+        config = load_strategy_config_for_instrument("regime_trend", "SOL-PERP")
+        atr_exp = config["parameters"]["atr_expansion_threshold"]
+        assert atr_exp <= 0.95, f"SOL-PERP atr_expansion_threshold={atr_exp}, expected <= 0.95"
+
+    def test_pullback_tolerance_widened(self) -> None:
+        config = load_strategy_config("regime_trend")
+        pullback = config["parameters"]["pullback_tolerance_atr"]
+        assert pullback >= 0.5, f"pullback_tolerance_atr={pullback}, expected >= 0.5"

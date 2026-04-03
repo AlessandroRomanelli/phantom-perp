@@ -35,8 +35,8 @@ def registry() -> dict[str, BoundsEntry]:
 
 
 def test_load_bounds_registry_returns_all_entries(registry: dict[str, BoundsEntry]) -> None:
-    """Loading configs/bounds.yaml should return exactly 12 entries (8 base + 3 regime_leverage + 1 min_rr_floor)."""
-    assert len(registry) == 12
+    """Loading configs/bounds.yaml should return exactly 14 entries (8 base + 3 regime_leverage + 1 min_rr_floor + 2 regime_trend thresholds)."""
+    assert len(registry) == 14
 
 
 def test_load_bounds_registry_contains_min_conviction(registry: dict[str, BoundsEntry]) -> None:
