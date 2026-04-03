@@ -25,11 +25,13 @@ Design notes:
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from agents.signals.news_client import fetch_crypto_headlines, fetch_economic_events
 from agents.signals.orch_client import (
     OrchestratorParams,
     build_orchestrator_context,
@@ -53,6 +55,10 @@ _TICK_SLEEP_SECONDS: int = 60
 _BOUNDS_PATH: Path = (
     Path(__file__).resolve().parent.parent.parent / "configs" / "bounds.yaml"
 )
+
+# Minimum number of live snapshots before the orchestrator is allowed to run.
+# Without this guard the first run fires ~10s after startup with stale regime data.
+_MIN_SNAPSHOTS_BEFORE_ORCH: int = 20
 
 
 async def run_orchestrator_scheduler(
@@ -184,7 +190,6 @@ async def _run_tick(
     # makes bad decisions that persist for the full update_interval_seconds (2h).
     # latest_snapshots is only populated by live snapshot events, so it is a
     # reliable proxy for "the regime detector has real data".
-    MIN_SNAPSHOTS_BEFORE_ORCH = 20
     instruments_ready = [
         iid for iid in instrument_ids if iid in latest_snapshots
     ]
@@ -193,7 +198,7 @@ async def _run_tick(
             "orchestrator_run_skipped",
             reason="warmup",
             waiting_for=[i for i in instrument_ids if i not in latest_snapshots],
-            min_snapshots=MIN_SNAPSHOTS_BEFORE_ORCH,
+            min_snapshots=_MIN_SNAPSHOTS_BEFORE_ORCH,
         )
         return last_run_time
 
@@ -201,16 +206,25 @@ async def _run_tick(
     # per instrument (RegimeDetector needs ≥10 to classify; use 20 for safety).
     insufficient_regime = [
         iid for iid in instrument_ids
-        if regime_detector.snapshot_count_for(iid) < MIN_SNAPSHOTS_BEFORE_ORCH
+        if regime_detector.snapshot_count_for(iid) < _MIN_SNAPSHOTS_BEFORE_ORCH
     ]
     if insufficient_regime:
         _logger.info(
             "orchestrator_run_skipped",
             reason="regime_warmup",
             waiting_for=insufficient_regime,
-            min_samples=MIN_SNAPSHOTS_BEFORE_ORCH,
+            min_samples=_MIN_SNAPSHOTS_BEFORE_ORCH,
         )
         return last_run_time
+
+    # Fetch news context concurrently before building the orchestrator context.
+    cp_key = os.environ.get("CRYPTOPANIC_API_KEY", "")
+    fh_key = os.environ.get("FINNHUB_API_KEY", "")
+    headlines, events = await asyncio.gather(
+        fetch_crypto_headlines(api_key=cp_key),
+        fetch_economic_events(api_key=fh_key),
+    )
+    _logger.info("news_context_fetched", headline_count=len(headlines), event_count=len(events))
 
     # Build context and call Claude
     context_str = build_orchestrator_context(
@@ -218,6 +232,8 @@ async def _run_tick(
         slow_stores=slow_stores,
         latest_snapshots=latest_snapshots,
         regime_detector=regime_detector,
+        headlines=headlines,
+        events=events,
     )
 
     decisions = await call_claude_orchestrator(context_str, params)

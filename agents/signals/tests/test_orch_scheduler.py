@@ -8,6 +8,7 @@ Tests cover:
 - Error recovery — loop continues after failure
 - Safe default: gate_map.get((inst, strat), True) == True for missing keys
 - Orchestrator param adjustments merged into session overrides (wins on conflict)
+- News fetching wired into _run_tick() (T02)
 
 All tests mock call_claude_orchestrator; no real HTTP calls are made.
 """
@@ -67,6 +68,21 @@ def _make_decision(
     }
 
 
+def _make_warmed_mocks(
+    instruments: list[str],
+) -> tuple[dict[str, Any], MagicMock]:
+    """Return (latest_snapshots, regime_detector) that satisfy the warmup guard.
+
+    ``latest_snapshots`` has a ``MagicMock()`` entry per instrument.
+    ``regime_detector.snapshot_count_for.return_value`` is set to 25, which
+    exceeds the MIN_SNAPSHOTS_BEFORE_ORCH = 20 threshold.
+    """
+    latest_snapshots: dict[str, Any] = {iid: MagicMock() for iid in instruments}
+    regime_detector = MagicMock()
+    regime_detector.snapshot_count_for.return_value = 25
+    return latest_snapshots, regime_detector
+
+
 # ---------------------------------------------------------------------------
 # TestRunTick — interval and cooldown enforcement
 # ---------------------------------------------------------------------------
@@ -82,6 +98,7 @@ class TestRunTick:
         param_adj: dict[tuple[str, str], dict[str, Any]] = {}
         redis = _make_redis()
         decisions = [_make_decision()]
+        warmed_snaps, warmed_regime = _make_warmed_mocks([_INSTRUMENT])
 
         with (
             patch(
@@ -96,12 +113,20 @@ class TestRunTick:
                 "agents.signals.orch_scheduler.build_orchestrator_context",
                 return_value="context",
             ),
+            patch(
+                "agents.signals.orch_scheduler.fetch_crypto_headlines",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch(
+                "agents.signals.orch_scheduler.fetch_economic_events",
+                new=AsyncMock(return_value=[]),
+            ),
         ):
             result = await _run_tick(
                 instrument_ids=[_INSTRUMENT],
                 slow_stores={},
-                latest_snapshots={},
-                regime_detector=MagicMock(),
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
                 redis_client=redis,
                 gate_map=gate_map,
                 param_adjustments=param_adj,
@@ -176,6 +201,7 @@ class TestRunTick:
         gate_map: dict[tuple[str, str], bool] = {}
         param_adj: dict[tuple[str, str], dict[str, Any]] = {}
         decisions = [_make_decision()]
+        warmed_snaps, warmed_regime = _make_warmed_mocks([_INSTRUMENT])
 
         import time
         old_time = time.time() - 50000  # well past any interval
@@ -193,12 +219,20 @@ class TestRunTick:
                 "agents.signals.orch_scheduler.build_orchestrator_context",
                 return_value="ctx",
             ),
+            patch(
+                "agents.signals.orch_scheduler.fetch_crypto_headlines",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch(
+                "agents.signals.orch_scheduler.fetch_economic_events",
+                new=AsyncMock(return_value=[]),
+            ),
         ):
             result = await _run_tick(
                 instrument_ids=[_INSTRUMENT],
                 slow_stores={},
-                latest_snapshots={},
-                regime_detector=MagicMock(),
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
                 redis_client=_make_redis(),
                 gate_map=gate_map,
                 param_adjustments=param_adj,
@@ -223,17 +257,20 @@ class TestGateMapUpdates:
         """gate_map[(inst, strat)] == True when decision.enabled == True."""
         gate_map: dict[tuple[str, str], bool] = {}
         decisions = [_make_decision(enabled=True)]
+        warmed_snaps, warmed_regime = _make_warmed_mocks([_INSTRUMENT])
 
         with (
             patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=decisions)),
             patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=decisions),
             patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+            patch("agents.signals.orch_scheduler.fetch_crypto_headlines", new=AsyncMock(return_value=[])),
+            patch("agents.signals.orch_scheduler.fetch_economic_events", new=AsyncMock(return_value=[])),
         ):
             await _run_tick(
                 instrument_ids=[_INSTRUMENT],
                 slow_stores={},
-                latest_snapshots={},
-                regime_detector=MagicMock(),
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
                 redis_client=_make_redis(),
                 gate_map=gate_map,
                 param_adjustments={},
@@ -248,17 +285,20 @@ class TestGateMapUpdates:
         """gate_map[(inst, strat)] == False when decision.enabled == False."""
         gate_map: dict[tuple[str, str], bool] = {}
         decisions = [_make_decision(enabled=False)]
+        warmed_snaps, warmed_regime = _make_warmed_mocks([_INSTRUMENT])
 
         with (
             patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=decisions)),
             patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=decisions),
             patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+            patch("agents.signals.orch_scheduler.fetch_crypto_headlines", new=AsyncMock(return_value=[])),
+            patch("agents.signals.orch_scheduler.fetch_economic_events", new=AsyncMock(return_value=[])),
         ):
             await _run_tick(
                 instrument_ids=[_INSTRUMENT],
                 slow_stores={},
-                latest_snapshots={},
-                regime_detector=MagicMock(),
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
                 redis_client=_make_redis(),
                 gate_map=gate_map,
                 param_adjustments={},
@@ -274,17 +314,20 @@ class TestGateMapUpdates:
         gate_map: dict[tuple[str, str], bool] = {}
         param_adj: dict[tuple[str, str], dict[str, Any]] = {}
         decisions = [_make_decision(param_adjustments={"min_conviction": 0.65, "weight": 0.3})]
+        warmed_snaps, warmed_regime = _make_warmed_mocks([_INSTRUMENT])
 
         with (
             patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=decisions)),
             patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=decisions),
             patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+            patch("agents.signals.orch_scheduler.fetch_crypto_headlines", new=AsyncMock(return_value=[])),
+            patch("agents.signals.orch_scheduler.fetch_economic_events", new=AsyncMock(return_value=[])),
         ):
             await _run_tick(
                 instrument_ids=[_INSTRUMENT],
                 slow_stores={},
-                latest_snapshots={},
-                regime_detector=MagicMock(),
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
                 redis_client=_make_redis(),
                 gate_map=gate_map,
                 param_adjustments=param_adj,
@@ -301,17 +344,20 @@ class TestGateMapUpdates:
         gate_map: dict[tuple[str, str], bool] = {}
         param_adj: dict[tuple[str, str], dict[str, Any]] = {key: {"weight": 0.5}}
         decisions = [_make_decision(param_adjustments={})]  # no adjustments this run
+        warmed_snaps, warmed_regime = _make_warmed_mocks([_INSTRUMENT])
 
         with (
             patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=decisions)),
             patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=decisions),
             patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+            patch("agents.signals.orch_scheduler.fetch_crypto_headlines", new=AsyncMock(return_value=[])),
+            patch("agents.signals.orch_scheduler.fetch_economic_events", new=AsyncMock(return_value=[])),
         ):
             await _run_tick(
                 instrument_ids=[_INSTRUMENT],
                 slow_stores={},
-                latest_snapshots={},
-                regime_detector=MagicMock(),
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
                 redis_client=_make_redis(),
                 gate_map=gate_map,
                 param_adjustments=param_adj,
@@ -329,17 +375,20 @@ class TestGateMapUpdates:
             _make_decision(instrument="ETH-PERP", strategy="momentum", enabled=True),
             _make_decision(instrument="BTC-PERP", strategy="mean_reversion", enabled=False),
         ]
+        warmed_snaps, warmed_regime = _make_warmed_mocks(["ETH-PERP", "BTC-PERP"])
 
         with (
             patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=decisions)),
             patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=decisions),
             patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+            patch("agents.signals.orch_scheduler.fetch_crypto_headlines", new=AsyncMock(return_value=[])),
+            patch("agents.signals.orch_scheduler.fetch_economic_events", new=AsyncMock(return_value=[])),
         ):
             await _run_tick(
                 instrument_ids=["ETH-PERP", "BTC-PERP"],
                 slow_stores={},
-                latest_snapshots={},
-                regime_detector=MagicMock(),
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
                 redis_client=_make_redis(),
                 gate_map=gate_map,
                 param_adjustments={},
@@ -365,17 +414,20 @@ class TestRedisIntegration:
         gate_map: dict[tuple[str, str], bool] = {}
         redis = _make_redis()
         decisions = [_make_decision(instrument="ETH-PERP", strategy="momentum", enabled=True)]
+        warmed_snaps, warmed_regime = _make_warmed_mocks(["ETH-PERP"])
 
         with (
             patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=decisions)),
             patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=decisions),
             patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+            patch("agents.signals.orch_scheduler.fetch_crypto_headlines", new=AsyncMock(return_value=[])),
+            patch("agents.signals.orch_scheduler.fetch_economic_events", new=AsyncMock(return_value=[])),
         ):
             await _run_tick(
                 instrument_ids=["ETH-PERP"],
                 slow_stores={},
-                latest_snapshots={},
-                regime_detector=MagicMock(),
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
                 redis_client=redis,
                 gate_map=gate_map,
                 param_adjustments={},
@@ -395,17 +447,20 @@ class TestRedisIntegration:
         gate_map: dict[tuple[str, str], bool] = {}
         redis = _make_redis()
         decisions = [_make_decision(instrument="SOL-PERP", strategy="regime_trend", enabled=False)]
+        warmed_snaps, warmed_regime = _make_warmed_mocks(["SOL-PERP"])
 
         with (
             patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=decisions)),
             patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=decisions),
             patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+            patch("agents.signals.orch_scheduler.fetch_crypto_headlines", new=AsyncMock(return_value=[])),
+            patch("agents.signals.orch_scheduler.fetch_economic_events", new=AsyncMock(return_value=[])),
         ):
             await _run_tick(
                 instrument_ids=["SOL-PERP"],
                 slow_stores={},
-                latest_snapshots={},
-                regime_detector=MagicMock(),
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
                 redis_client=redis,
                 gate_map=gate_map,
                 param_adjustments={},
@@ -423,17 +478,20 @@ class TestRedisIntegration:
         redis.hset.side_effect = ConnectionError("redis down")
         decisions = [_make_decision()]
         gate_map: dict[tuple[str, str], bool] = {}
+        warmed_snaps, warmed_regime = _make_warmed_mocks([_INSTRUMENT])
 
         with (
             patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=decisions)),
             patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=decisions),
             patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+            patch("agents.signals.orch_scheduler.fetch_crypto_headlines", new=AsyncMock(return_value=[])),
+            patch("agents.signals.orch_scheduler.fetch_economic_events", new=AsyncMock(return_value=[])),
         ):
             result = await _run_tick(
                 instrument_ids=[_INSTRUMENT],
                 slow_stores={},
-                latest_snapshots={},
-                regime_detector=MagicMock(),
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
                 redis_client=redis,
                 gate_map=gate_map,
                 param_adjustments={},
@@ -457,16 +515,19 @@ class TestErrorRecovery:
     async def test_claude_none_logs_failure_and_advances_time(self) -> None:
         """When Claude returns None, time is still advanced (prevents hammering)."""
         gate_map: dict[tuple[str, str], bool] = {}
+        warmed_snaps, warmed_regime = _make_warmed_mocks([_INSTRUMENT])
 
         with (
             patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=None)),
             patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+            patch("agents.signals.orch_scheduler.fetch_crypto_headlines", new=AsyncMock(return_value=[])),
+            patch("agents.signals.orch_scheduler.fetch_economic_events", new=AsyncMock(return_value=[])),
         ):
             result = await _run_tick(
                 instrument_ids=[_INSTRUMENT],
                 slow_stores={},
-                latest_snapshots={},
-                regime_detector=MagicMock(),
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
                 redis_client=_make_redis(),
                 gate_map=gate_map,
                 param_adjustments={},
@@ -480,19 +541,23 @@ class TestErrorRecovery:
     @pytest.mark.asyncio
     async def test_call_raises_exception_propagates_to_caller(self) -> None:
         """If call_claude_orchestrator raises, the exception propagates out of _run_tick."""
+        warmed_snaps, warmed_regime = _make_warmed_mocks([_INSTRUMENT])
+
         with (
             patch(
                 "agents.signals.orch_scheduler.call_claude_orchestrator",
                 new=AsyncMock(side_effect=RuntimeError("unexpected")),
             ),
             patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+            patch("agents.signals.orch_scheduler.fetch_crypto_headlines", new=AsyncMock(return_value=[])),
+            patch("agents.signals.orch_scheduler.fetch_economic_events", new=AsyncMock(return_value=[])),
         ):
             with pytest.raises(RuntimeError, match="unexpected"):
                 await _run_tick(
                     instrument_ids=[_INSTRUMENT],
                     slow_stores={},
-                    latest_snapshots={},
-                    regime_detector=MagicMock(),
+                    latest_snapshots=warmed_snaps,
+                    regime_detector=warmed_regime,
                     redis_client=_make_redis(),
                     gate_map={},
                     param_adjustments={},
@@ -504,7 +569,6 @@ class TestErrorRecovery:
     async def test_scheduler_loop_continues_after_tick_error(self) -> None:
         """run_orchestrator_scheduler catches tick errors and sleeps before next try."""
         call_count = 0
-        original_run_tick = None
 
         async def _patched_run_tick(*args: Any, **kwargs: Any) -> float:
             nonlocal call_count
@@ -656,17 +720,20 @@ class TestConfidenceThresholdFiltering:
         threshold = 0.7
         decision = _make_decision_with_confidence(confidence=0.9)
         validated = [dict(decision)]  # simulate validate_orchestrator_response output
+        warmed_snaps, warmed_regime = _make_warmed_mocks([_INSTRUMENT])
 
         with (
             patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=[decision])),
             patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=validated),
             patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+            patch("agents.signals.orch_scheduler.fetch_crypto_headlines", new=AsyncMock(return_value=[])),
+            patch("agents.signals.orch_scheduler.fetch_economic_events", new=AsyncMock(return_value=[])),
         ):
             await _run_tick(
                 instrument_ids=[_INSTRUMENT],
                 slow_stores={},
-                latest_snapshots={},
-                regime_detector=MagicMock(),
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
                 redis_client=_make_redis(),
                 gate_map=gate_map,
                 param_adjustments={},
@@ -683,17 +750,20 @@ class TestConfidenceThresholdFiltering:
         threshold = 0.7
         decision = _make_decision_with_confidence(confidence=0.5)
         validated = [dict(decision)]
+        warmed_snaps, warmed_regime = _make_warmed_mocks([_INSTRUMENT])
 
         with (
             patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=[decision])),
             patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=validated),
             patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+            patch("agents.signals.orch_scheduler.fetch_crypto_headlines", new=AsyncMock(return_value=[])),
+            patch("agents.signals.orch_scheduler.fetch_economic_events", new=AsyncMock(return_value=[])),
         ):
             await _run_tick(
                 instrument_ids=[_INSTRUMENT],
                 slow_stores={},
-                latest_snapshots={},
-                regime_detector=MagicMock(),
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
                 redis_client=_make_redis(),
                 gate_map=gate_map,
                 param_adjustments={},
@@ -710,17 +780,20 @@ class TestConfidenceThresholdFiltering:
         threshold = 0.7
         decision = _make_decision_with_confidence(confidence=0.7)
         validated = [dict(decision)]
+        warmed_snaps, warmed_regime = _make_warmed_mocks([_INSTRUMENT])
 
         with (
             patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=[decision])),
             patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=validated),
             patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+            patch("agents.signals.orch_scheduler.fetch_crypto_headlines", new=AsyncMock(return_value=[])),
+            patch("agents.signals.orch_scheduler.fetch_economic_events", new=AsyncMock(return_value=[])),
         ):
             await _run_tick(
                 instrument_ids=[_INSTRUMENT],
                 slow_stores={},
-                latest_snapshots={},
-                regime_detector=MagicMock(),
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
                 redis_client=_make_redis(),
                 gate_map=gate_map,
                 param_adjustments={},
@@ -738,17 +811,20 @@ class TestConfidenceThresholdFiltering:
         decision = _make_decision_with_confidence(confidence=None)
         # Simulate validate_orchestrator_response adding confidence=1.0 as default
         validated = [{**decision, "confidence": 1.0}]
+        warmed_snaps, warmed_regime = _make_warmed_mocks([_INSTRUMENT])
 
         with (
             patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=[decision])),
             patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=validated),
             patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+            patch("agents.signals.orch_scheduler.fetch_crypto_headlines", new=AsyncMock(return_value=[])),
+            patch("agents.signals.orch_scheduler.fetch_economic_events", new=AsyncMock(return_value=[])),
         ):
             await _run_tick(
                 instrument_ids=[_INSTRUMENT],
                 slow_stores={},
-                latest_snapshots={},
-                regime_detector=MagicMock(),
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
                 redis_client=_make_redis(),
                 gate_map=gate_map,
                 param_adjustments={},
@@ -776,6 +852,7 @@ class TestConfidenceThresholdFiltering:
             {**decision_high, "confidence": 0.9},
             {**decision_low, "confidence": 0.3},
         ]
+        warmed_snaps, warmed_regime = _make_warmed_mocks(["ETH-PERP", "BTC-PERP"])
 
         with structlog.testing.capture_logs() as cap_logs:
             with (
@@ -788,12 +865,14 @@ class TestConfidenceThresholdFiltering:
                     return_value=validated,
                 ),
                 patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+                patch("agents.signals.orch_scheduler.fetch_crypto_headlines", new=AsyncMock(return_value=[])),
+                patch("agents.signals.orch_scheduler.fetch_economic_events", new=AsyncMock(return_value=[])),
             ):
                 await _run_tick(
                     instrument_ids=["ETH-PERP", "BTC-PERP"],
                     slow_stores={},
-                    latest_snapshots={},
-                    regime_detector=MagicMock(),
+                    latest_snapshots=warmed_snaps,
+                    regime_detector=warmed_regime,
                     redis_client=_make_redis(),
                     gate_map=gate_map,
                     param_adjustments={},
@@ -812,3 +891,131 @@ class TestConfidenceThresholdFiltering:
         assert len(filter_logs) == 1
         assert filter_logs[0]["skipped"] == 1
         assert filter_logs[0]["log_level"] == "debug"
+
+
+# ---------------------------------------------------------------------------
+# T02 additions: news fetching integration in _run_tick
+# ---------------------------------------------------------------------------
+
+
+class TestNewsIntegration:
+    """T02: fetch_crypto_headlines and fetch_economic_events wired into _run_tick."""
+
+    @pytest.mark.asyncio
+    async def test_news_fetch_called_in_tick(self) -> None:
+        """fetch_crypto_headlines and fetch_economic_events are awaited during a tick."""
+        decisions = [_make_decision()]
+        warmed_snaps, warmed_regime = _make_warmed_mocks([_INSTRUMENT])
+        mock_headlines = AsyncMock(return_value=[])
+        mock_events = AsyncMock(return_value=[])
+
+        with (
+            patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=decisions)),
+            patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=decisions),
+            patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+            patch("agents.signals.orch_scheduler.fetch_crypto_headlines", new=mock_headlines),
+            patch("agents.signals.orch_scheduler.fetch_economic_events", new=mock_events),
+        ):
+            await _run_tick(
+                instrument_ids=[_INSTRUMENT],
+                slow_stores={},
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
+                redis_client=_make_redis(),
+                gate_map={},
+                param_adjustments={},
+                params=_make_params(),
+                last_run_time=0.0,
+            )
+
+        mock_headlines.assert_awaited_once()
+        mock_events.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_news_context_fetched_log_emitted(self) -> None:
+        """news_context_fetched log event is emitted with headline_count and event_count."""
+        import structlog.testing
+
+        from agents.signals.news_client import CryptoHeadline, EconomicEvent
+
+        decisions = [_make_decision()]
+        warmed_snaps, warmed_regime = _make_warmed_mocks([_INSTRUMENT])
+
+        # Build minimal stubs — only __class__ identity matters for isinstance; len() is what's logged
+        headline_stub = MagicMock(spec=CryptoHeadline)
+        event_stub = MagicMock(spec=EconomicEvent)
+
+        with structlog.testing.capture_logs() as cap_logs:
+            with (
+                patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=decisions)),
+                patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=decisions),
+                patch("agents.signals.orch_scheduler.build_orchestrator_context", return_value="ctx"),
+                patch(
+                    "agents.signals.orch_scheduler.fetch_crypto_headlines",
+                    new=AsyncMock(return_value=[headline_stub, headline_stub]),
+                ),
+                patch(
+                    "agents.signals.orch_scheduler.fetch_economic_events",
+                    new=AsyncMock(return_value=[event_stub]),
+                ),
+            ):
+                await _run_tick(
+                    instrument_ids=[_INSTRUMENT],
+                    slow_stores={},
+                    latest_snapshots=warmed_snaps,
+                    regime_detector=warmed_regime,
+                    redis_client=_make_redis(),
+                    gate_map={},
+                    param_adjustments={},
+                    params=_make_params(),
+                    last_run_time=0.0,
+                )
+
+        news_logs = [e for e in cap_logs if e.get("event") == "news_context_fetched"]
+        assert len(news_logs) == 1
+        assert news_logs[0]["headline_count"] == 2
+        assert news_logs[0]["event_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_news_passed_to_build_context(self) -> None:
+        """build_orchestrator_context receives headlines= and events= kwargs."""
+        from agents.signals.news_client import CryptoHeadline, EconomicEvent
+
+        decisions = [_make_decision()]
+        warmed_snaps, warmed_regime = _make_warmed_mocks([_INSTRUMENT])
+        headline_stub = MagicMock(spec=CryptoHeadline)
+        event_stub = MagicMock(spec=EconomicEvent)
+
+        mock_build_context = MagicMock(return_value="ctx")
+
+        with (
+            patch("agents.signals.orch_scheduler.call_claude_orchestrator", new=AsyncMock(return_value=decisions)),
+            patch("agents.signals.orch_scheduler.validate_orchestrator_response", return_value=decisions),
+            patch("agents.signals.orch_scheduler.build_orchestrator_context", new=mock_build_context),
+            patch(
+                "agents.signals.orch_scheduler.fetch_crypto_headlines",
+                new=AsyncMock(return_value=[headline_stub]),
+            ),
+            patch(
+                "agents.signals.orch_scheduler.fetch_economic_events",
+                new=AsyncMock(return_value=[event_stub]),
+            ),
+        ):
+            await _run_tick(
+                instrument_ids=[_INSTRUMENT],
+                slow_stores={},
+                latest_snapshots=warmed_snaps,
+                regime_detector=warmed_regime,
+                redis_client=_make_redis(),
+                gate_map={},
+                param_adjustments={},
+                params=_make_params(),
+                last_run_time=0.0,
+            )
+
+        mock_build_context.assert_called_once()
+        call_kwargs = mock_build_context.call_args.kwargs
+        assert "headlines" in call_kwargs
+        assert "events" in call_kwargs
+        assert call_kwargs["headlines"] == [headline_stub]
+        assert call_kwargs["events"] == [event_stub]
