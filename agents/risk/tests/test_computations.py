@@ -375,3 +375,165 @@ class TestConvexSizing:
         """conviction=0 must always produce size=0."""
         size = self._size_at(0.0)
         assert size == Decimal("0")
+
+
+# ── Route A vs Route B Margin Differentiation ───────────────────────────
+
+
+class TestRouteABMargin:
+    """Verify margin, liquidation, and distance differences between Route A (10x) and B (5x)."""
+
+    def test_route_a_initial_margin_10x(self) -> None:
+        margin = compute_initial_margin(Decimal("1"), Decimal("2000"), Decimal("10"))
+        assert margin == Decimal("200")
+
+    def test_route_b_initial_margin_5x(self) -> None:
+        margin = compute_initial_margin(Decimal("1"), Decimal("2000"), Decimal("5"))
+        assert margin == Decimal("400")
+
+    def test_route_a_less_margin_than_b(self) -> None:
+        margin_a = compute_initial_margin(Decimal("1"), Decimal("2000"), Decimal("10"))
+        margin_b = compute_initial_margin(Decimal("1"), Decimal("2000"), Decimal("5"))
+        assert margin_a < margin_b
+
+    def test_route_a_liq_closer_than_b_long(self) -> None:
+        """10x liquidation price is closer to entry (higher) than 5x for LONG."""
+        liq_10x = compute_liquidation_price(Decimal("2000"), Decimal("10"), PositionSide.LONG)
+        liq_5x = compute_liquidation_price(Decimal("2000"), Decimal("5"), PositionSide.LONG)
+        assert liq_10x > liq_5x
+
+    def test_route_a_liq_closer_than_b_short(self) -> None:
+        """10x liquidation price is closer to entry (lower) than 5x for SHORT."""
+        liq_10x = compute_liquidation_price(Decimal("2000"), Decimal("10"), PositionSide.SHORT)
+        liq_5x = compute_liquidation_price(Decimal("2000"), Decimal("5"), PositionSide.SHORT)
+        assert liq_10x < liq_5x
+
+    def test_route_a_liq_distance_narrower(self) -> None:
+        """Distance to liquidation at 10x is smaller than at 5x."""
+        liq_10x = compute_liquidation_price(Decimal("2000"), Decimal("10"), PositionSide.LONG)
+        liq_5x = compute_liquidation_price(Decimal("2000"), Decimal("5"), PositionSide.LONG)
+        dist_10x = compute_liquidation_distance_pct(
+            Decimal("2000"), liq_10x, PositionSide.LONG,
+        )
+        dist_5x = compute_liquidation_distance_pct(
+            Decimal("2000"), liq_5x, PositionSide.LONG,
+        )
+        assert dist_10x < dist_5x
+
+
+# ── Liquidation Distance Threshold ──────────────────────────────────────
+
+
+class TestLiquidationDistanceThreshold:
+    """Verify stop_is_before_liquidation rejection and acceptance."""
+
+    def test_rejects_position_too_close(self) -> None:
+        """Stop at liquidation price → False (not strictly above for LONG)."""
+        assert stop_is_before_liquidation(
+            Decimal("1600"), Decimal("1600"), PositionSide.LONG,
+        ) is False
+
+    def test_accepts_safely_distant_long(self) -> None:
+        """Stop above liquidation price → True for LONG."""
+        assert stop_is_before_liquidation(
+            Decimal("1800"), Decimal("1600"), PositionSide.LONG,
+        ) is True
+
+    def test_rejects_stop_beyond_liq_short(self) -> None:
+        """Stop above liquidation price for SHORT → False."""
+        assert stop_is_before_liquidation(
+            Decimal("2500"), Decimal("2400"), PositionSide.SHORT,
+        ) is False
+
+    def test_accepts_safely_distant_short(self) -> None:
+        """Stop below liquidation price → True for SHORT."""
+        assert stop_is_before_liquidation(
+            Decimal("2200"), Decimal("2400"), PositionSide.SHORT,
+        ) is True
+
+    def test_flat_direction_raises(self) -> None:
+        """FLAT direction must raise ValueError."""
+        with pytest.raises(ValueError):
+            stop_is_before_liquidation(
+                Decimal("1800"), Decimal("1600"), PositionSide.FLAT,
+            )
+
+
+# ── Position Sizer Max-Equity Bound ─────────────────────────────────────
+
+
+class TestPositionSizerMaxEquityBound:
+    """Verify position sizer respects equity percentage and margin caps."""
+
+    def test_route_a_40pct_bound(self) -> None:
+        """With 40% equity limit and 10x leverage, margin ≤ 40% of equity."""
+        limits = _default_limits(
+            max_leverage=Decimal("10"),
+            max_position_pct_equity=Decimal("40"),
+            max_position_notional_usdc=Decimal("200000"),
+        )
+        size = compute_position_size(
+            entry_price=Decimal("2000"),
+            conviction=1.0,
+            equity=Decimal("10000"),
+            used_margin=Decimal("0"),
+            existing_positions=[],
+            limits=limits,
+        )
+        notional = size * Decimal("2000")
+        margin = notional / Decimal("10")
+        assert margin <= Decimal("4000")  # 40% of 10000
+
+    def test_route_b_25pct_bound(self) -> None:
+        """With 25% equity limit and 5x leverage, margin ≤ 25% of equity."""
+        limits = _default_limits(
+            max_leverage=Decimal("5"),
+            max_position_pct_equity=Decimal("25"),
+            max_position_notional_usdc=Decimal("200000"),
+        )
+        size = compute_position_size(
+            entry_price=Decimal("2000"),
+            conviction=1.0,
+            equity=Decimal("10000"),
+            used_margin=Decimal("0"),
+            existing_positions=[],
+            limits=limits,
+        )
+        notional = size * Decimal("2000")
+        margin = notional / Decimal("5")
+        assert margin <= Decimal("2500")  # 25% of 10000
+
+    def test_high_conviction_still_bounded(self) -> None:
+        """At conviction=1.0, notional still ≤ max_position_notional_usdc."""
+        limits = _default_limits(max_position_notional_usdc=Decimal("5000"))
+        size = compute_position_size(
+            entry_price=Decimal("2000"),
+            conviction=1.0,
+            equity=Decimal("1000000"),
+            used_margin=Decimal("0"),
+            existing_positions=[],
+            limits=limits,
+        )
+        notional = size * Decimal("2000")
+        assert notional <= Decimal("5000")
+
+    def test_margin_utilization_caps(self) -> None:
+        """With 6000 used margin out of 7000 max, remaining budget is limited."""
+        limits = _default_limits(
+            max_margin_utilization_pct=Decimal("70"),
+            max_position_notional_usdc=Decimal("200000"),
+            max_position_pct_equity=Decimal("10000"),
+        )
+        size = compute_position_size(
+            entry_price=Decimal("2000"),
+            conviction=1.0,
+            equity=Decimal("10000"),
+            used_margin=Decimal("6000"),
+            existing_positions=[],
+            limits=limits,
+        )
+        # max total margin = 70% of 10000 = 7000; available = 7000 - 6000 = 1000
+        # max notional from margin = 1000 * 5 = 5000; max size = 5000 / 2000 = 2.5
+        notional = size * Decimal("2000")
+        margin_used = notional / Decimal("5")
+        assert margin_used <= Decimal("1000")
