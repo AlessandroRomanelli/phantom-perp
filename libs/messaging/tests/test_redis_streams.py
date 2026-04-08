@@ -9,7 +9,6 @@ from unittest.mock import patch
 import fakeredis.aioredis
 import orjson
 import pytest
-import structlog
 from structlog.testing import capture_logs
 
 from libs.messaging.redis_streams import RedisConsumer
