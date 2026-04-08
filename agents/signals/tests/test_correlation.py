@@ -735,3 +735,31 @@ class TestPortfolioARouting:
 
         assert len(signals) == 1
         assert signals[0].suggested_route == Route.B
+
+
+class TestCorrelationIndexPriceGuard:
+    """CorrelationStrategy must return [] when index_price is the zero sentinel."""
+
+    def test_returns_empty_when_index_price_zero(self) -> None:
+        """When index_price is Decimal('0'), basis is all zeros so no signals fire."""
+        params = CorrelationParams(
+            basis_short_lookback=30,
+            basis_medium_lookback=60,
+            basis_long_lookback=120,
+            basis_zscore_threshold=1.5,
+            min_conviction=0.0,
+            cooldown_bars=0,
+        )
+        strategy = CorrelationStrategy(params=params)
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+
+        # Feed enough samples — all with index_price=0 (zero sentinel)
+        for i in range(150):
+            snap = _snap(mark=2230.0 + i * 0.1, index=0.0, ts=base + timedelta(seconds=i))
+            store.update(snap)
+
+        result = strategy.evaluate(snap, store)
+        assert result == [], (
+            "CorrelationStrategy must return [] when index_price is the zero sentinel"
+        )

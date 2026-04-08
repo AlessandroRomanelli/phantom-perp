@@ -643,3 +643,23 @@ class TestTrailingStopMetadata:
         assert "adaptive_atr_expansion" in sig.metadata
         assert isinstance(sig.metadata["adaptive_adx_threshold"], float)
         assert isinstance(sig.metadata["adaptive_atr_expansion"], float)
+
+
+class TestRegimeTrendIndexPriceGuard:
+    """RegimeTrendStrategy must return [] when index_price is the zero sentinel."""
+
+    def test_returns_empty_when_index_price_zero(self) -> None:
+        """When index_price is Decimal('0') (sentinel), no signals are emitted."""
+        strategy = RegimeTrendStrategy()
+        store = FeatureStore(sample_interval=timedelta(seconds=0))
+        base = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
+
+        # Feed enough samples with zero index_price to exceed min_history
+        for i in range(130):
+            snap = _snap(2230.0 + i * 0.1, ts=base + timedelta(seconds=i), index=0.0)
+            store.update(snap)
+
+        result = strategy.evaluate(snap, store)
+        assert result == [], (
+            "RegimeTrendStrategy must return [] when index_price is the zero sentinel"
+        )

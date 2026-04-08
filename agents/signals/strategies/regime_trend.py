@@ -202,6 +202,12 @@ class RegimeTrendStrategy(SignalStrategy):
         lows = store.lows
         index_prices = store.index_prices
 
+        # Guard: if index_price is the zero sentinel (unavailable from exchange),
+        # the spot EMA filter cannot produce meaningful values — skip signal generation.
+        if len(index_prices) == 0 or np.any(index_prices[-p.spot_ema_period:] == 0.0):
+            logger.debug("regime_trend_no_index_price", instrument=snapshot.instrument)
+            return []
+
         # ── Compute indicators ──────────────────────────────────────────
 
         trend_ema_vals = ema(closes, p.trend_ema_period)
