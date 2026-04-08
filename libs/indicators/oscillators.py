@@ -226,7 +226,7 @@ def adx(
     # DX
     dx = np.full(n, np.nan, dtype=np.float64)
     for i in range(period, n):
-        if plus_di[i] is not np.nan and minus_di[i] is not np.nan:
+        if not np.isnan(plus_di[i]) and not np.isnan(minus_di[i]):
             di_sum = plus_di[i] + minus_di[i]
             if di_sum > 0:
                 dx[i] = 100.0 * abs(plus_di[i] - minus_di[i]) / di_sum
