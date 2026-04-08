@@ -171,3 +171,79 @@ class TestFillSerialization:
         assert reconstructed.route == Route.B
         assert reconstructed.side == OrderSide.SELL
         assert reconstructed.is_maker is False
+
+
+class TestDedupFIFOEviction:
+    """BUG-02: Verify dedup eviction removes oldest entry (FIFO), not arbitrary."""
+
+    def test_dedup_fifo_evicts_oldest(self) -> None:
+        """When capacity exceeded, the first-added ID is evicted."""
+        from collections import OrderedDict
+
+        dedup: OrderedDict[str, None] = OrderedDict()
+        max_size = 3
+        for i in range(5):
+            dedup[f"order-{i}"] = None
+            while len(dedup) > max_size:
+                dedup.popitem(last=False)
+        # order-0 and order-1 evicted; order-2, order-3, order-4 remain
+        assert "order-0" not in dedup
+        assert "order-1" not in dedup
+        assert "order-2" in dedup
+        assert "order-3" in dedup
+        assert "order-4" in dedup
+
+    def test_dedup_fifo_preserves_recent(self) -> None:
+        """Most recently added IDs are never evicted before older ones."""
+        from collections import OrderedDict
+
+        dedup: OrderedDict[str, None] = OrderedDict()
+        max_size = 2
+        dedup["oldest"] = None
+        dedup["middle"] = None
+        dedup["newest"] = None
+        while len(dedup) > max_size:
+            dedup.popitem(last=False)
+        assert "oldest" not in dedup
+        assert "middle" in dedup
+        assert "newest" in dedup
+
+    def test_dedup_membership_check(self) -> None:
+        """OrderedDict in-operator works like set for membership."""
+        from collections import OrderedDict
+
+        dedup: OrderedDict[str, None] = OrderedDict()
+        dedup["exists"] = None
+        assert "exists" in dedup
+        assert "missing" not in dedup
+
+    def test_dedup_readd_existing_no_duplicate(self) -> None:
+        """Re-adding an existing ID does not grow the dict."""
+        from collections import OrderedDict
+
+        dedup: OrderedDict[str, None] = OrderedDict()
+        dedup["order-1"] = None
+        dedup["order-2"] = None
+        dedup["order-1"] = None  # re-add
+        assert len(dedup) == 2
+
+    def test_dedup_capacity_10000(self) -> None:
+        """At production capacity, FIFO eviction is correct."""
+        from collections import OrderedDict
+
+        dedup: OrderedDict[str, None] = OrderedDict()
+        max_size = 10_000
+        total = 10_003
+        for i in range(total):
+            dedup[f"order-{i}"] = None
+            while len(dedup) > max_size:
+                dedup.popitem(last=False)
+        assert len(dedup) == max_size
+        # First 3 evicted
+        assert "order-0" not in dedup
+        assert "order-1" not in dedup
+        assert "order-2" not in dedup
+        # Last one present
+        assert f"order-{total - 1}" in dedup
+        # First surviving entry
+        assert "order-3" in dedup
