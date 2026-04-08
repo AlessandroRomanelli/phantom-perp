@@ -59,6 +59,62 @@ from agents.risk.margin_calculator import (
 from agents.risk.portfolio_state_fetcher import PortfolioStateFetcher
 
 
+def _perp_position_from_dict(d: dict[str, Any], route: Route) -> "PerpPosition":
+    """Reconstruct a PerpPosition from a Redis stream position dict.
+
+    Parses the compact position representation published by the paper simulator
+    (via portfolio_snapshot_to_dict) into a full PerpPosition object.
+
+    Args:
+        d: Position dict with at minimum: instrument, side, size, entry_price,
+           mark_price, leverage, liquidation_price.  unrealized_pnl_usdc is
+           optional and defaults to Decimal("0").
+        route: The portfolio route this position belongs to.
+
+    Returns:
+        A PerpPosition with derived margin fields computed from size/price/leverage.
+
+    Raises:
+        ValueError: If side is not a valid PositionSide member.
+        KeyError: If a required field is missing from d.
+    """
+    from libs.common.models.position import PerpPosition
+
+    side = PositionSide(d["side"])
+    size = Decimal(d["size"])
+    mark_price = Decimal(d["mark_price"])
+    entry_price = Decimal(d["entry_price"])
+    leverage = Decimal(d["leverage"])
+    liquidation_price = Decimal(d["liquidation_price"])
+    unrealized_pnl_usdc = Decimal(d.get("unrealized_pnl_usdc", "0"))
+
+    # Derive margin fields from available data
+    if leverage > 0:
+        initial_margin = (size * mark_price / leverage).quantize(Decimal("0.01"))
+    else:
+        initial_margin = Decimal("0")
+    maint_margin = (initial_margin / 2).quantize(Decimal("0.01"))
+    margin_ratio = float(maint_margin / initial_margin) if initial_margin > 0 else 0.0
+
+    return PerpPosition(
+        instrument=d["instrument"],
+        route=route,
+        side=side,
+        size=size,
+        entry_price=entry_price,
+        mark_price=mark_price,
+        unrealized_pnl_usdc=unrealized_pnl_usdc,
+        realized_pnl_usdc=Decimal("0"),
+        leverage=leverage,
+        initial_margin_usdc=initial_margin,
+        maintenance_margin_usdc=maint_margin,
+        liquidation_price=liquidation_price,
+        margin_ratio=margin_ratio,
+        cumulative_funding_usdc=Decimal("0"),
+        total_fees_usdc=Decimal("0"),
+    )
+
+
 class PaperPortfolioStateFetcher:
     """Read latest portfolio state from Redis streams (paper mode).
 
@@ -117,7 +173,11 @@ class PaperPortfolioStateFetcher:
                         used_margin_usdc=Decimal(str(data.get("used_margin_usdc", "0"))),
                         available_margin_usdc=Decimal(str(data.get("available_margin_usdc", "10000"))),
                         margin_utilization_pct=float(data.get("margin_utilization_pct", 0)),
-                        positions=[],
+                        positions=[
+                            _perp_position_from_dict(p, target)
+                            for p in data.get("positions", [])
+                            if Decimal(p.get("size", "0")) > 0
+                        ],
                         unrealized_pnl_usdc=Decimal(str(data.get("unrealized_pnl_usdc", "0"))),
                         realized_pnl_today_usdc=Decimal(str(data.get("realized_pnl_today_usdc", "0"))),
                         funding_pnl_today_usdc=Decimal(str(data.get("funding_pnl_today_usdc", "0"))),
