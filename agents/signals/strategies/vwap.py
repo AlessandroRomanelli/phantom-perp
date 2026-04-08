@@ -277,20 +277,17 @@ class VWAPStrategy(SignalStrategy):
             session_start_idx = self._find_session_start_index(
                 timestamps, p.session_reset_hour_utc,
             )
-            # Use bar_volumes (clamped) for session VWAP
+            # Use bar_volumes (clamped) for session VWAP.
+            # bar_volumes now has the same length as closes (one entry per sample).
             bar_vols = store.bar_volumes
             if len(bar_vols) == 0:
                 return []
 
-            # bar_volumes has length (sample_count - 1), align with closes[1:]
-            # So session_start_idx for bar_volumes is max(session_start_idx - 1, 0)
-            bv_start = max(session_start_idx - 1, 0)
+            bv_start = session_start_idx
             if bv_start >= len(bar_vols):
                 return []
 
-            # Use closes[1:] aligned with bar_volumes
-            aligned_closes = closes[1:]
-            vwap = self._compute_vwap(aligned_closes, bar_vols, bv_start)
+            vwap = self._compute_vwap(closes, bar_vols, bv_start)
 
             # Session progress
             session_progress = self._compute_session_progress(

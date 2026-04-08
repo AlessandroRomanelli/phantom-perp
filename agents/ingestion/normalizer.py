@@ -60,10 +60,15 @@ def build_snapshot(
     # Use last_price from WS (real-time) as the primary source, with
     # funding_mark_price (REST, every 5min) as fallback when WS hasn't ticked.
     mark_price = state.last_price or state.funding_mark_price or state.mark_price
-    # index_price: prefer WS value, fall back to last_price (spot approx)
-    index_price = state.index_price or state.last_price
+    # index_price: use exchange value when available; Decimal("0") sentinel when not.
+    # Downstream strategies guard against the zero sentinel rather than silently
+    # using last_price as a substitute, which would make basis calculations meaningless.
+    index_price = state.index_price if state.index_price is not None else Decimal("0")
     assert mark_price is not None
-    assert index_price is not None
+
+    # candle_volume_1m: use latest 1-minute candle volume as per-bar weight for VWAP.
+    latest_1m = state.candles_by_granularity.get("ONE_MINUTE", [])
+    candle_volume_1m = Decimal(latest_1m[-1].volume) if latest_1m else Decimal("0")
 
     now = utc_now()
 
@@ -91,6 +96,7 @@ def build_snapshot(
         ),
         volatility_1h=compute_volatility_1h(state),
         volatility_24h=compute_volatility_24h(state),
+        candle_volume_1m=candle_volume_1m,
     )
 
 

@@ -132,8 +132,9 @@ def _snap_with_volume(
     ts: datetime,
     mark: float = 2230.0,
     volume_24h: float = 15000.0,
+    candle_volume_1m: float = 0.0,
 ) -> MarketSnapshot:
-    """Create a MarketSnapshot with a specific volume_24h for testing."""
+    """Create a MarketSnapshot with specific volume fields for testing."""
     return MarketSnapshot(
         timestamp=ts,
         instrument=TEST_INSTRUMENT_ID,
@@ -151,6 +152,7 @@ def _snap_with_volume(
         orderbook_imbalance=0.0,
         volatility_1h=0.15,
         volatility_24h=0.45,
+        candle_volume_1m=Decimal(str(candle_volume_1m)),
     )
 
 
@@ -184,24 +186,28 @@ class TestBarVolumes:
     def test_bar_volumes_one_sample(self) -> None:
         store = FeatureStore(sample_interval=timedelta(seconds=0))
         base = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
-        store.update(_snap_with_volume(base, volume_24h=100.0))
+        store.update(_snap_with_volume(base, candle_volume_1m=100.0))
         result = store.bar_volumes
-        assert result.shape == (0,)
+        # One sample → one bar_volume entry (candle volume, not a diff)
+        assert result.shape == (1,)
+        assert result[0] == pytest.approx(100.0)
 
-    def test_bar_volumes_computes_diffs(self) -> None:
+    def test_bar_volumes_from_candle_data(self) -> None:
+        """bar_volumes returns true per-bar candle volumes, never negative."""
         store = FeatureStore(sample_interval=timedelta(seconds=0))
         base = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
-        volumes = [100.0, 150.0, 140.0]
-        for i, vol in enumerate(volumes):
-            store.update(_snap_with_volume(base + timedelta(seconds=i), volume_24h=vol))
+        candle_vols = [100.0, 150.0, 200.0]
+        for i, vol in enumerate(candle_vols):
+            store.update(_snap_with_volume(base + timedelta(seconds=i), candle_volume_1m=vol))
 
         result = store.bar_volumes
-        np.testing.assert_array_almost_equal(result, [50.0, -10.0])
+        np.testing.assert_array_almost_equal(result, [100.0, 150.0, 200.0])
 
     def test_bar_volumes_length(self) -> None:
         store = FeatureStore(sample_interval=timedelta(seconds=0))
         base = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
         for i in range(5):
-            store.update(_snap_with_volume(base + timedelta(seconds=i), volume_24h=100.0 + i * 10))
+            store.update(_snap_with_volume(base + timedelta(seconds=i), candle_volume_1m=50.0 + i * 10))
 
-        assert len(store.bar_volumes) == 4
+        # bar_volumes length matches sample_count (one per sample, not N-1 diffs)
+        assert len(store.bar_volumes) == 5

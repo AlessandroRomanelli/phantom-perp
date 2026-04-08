@@ -29,6 +29,7 @@ class MarketSnapshot:
     volatility_1h: float
     volatility_24h: float
     metadata: dict[str, object] = field(default_factory=dict)
+    candle_volume_1m: Decimal = Decimal("0")  # Volume of most recent 1-min candle bar
 
     @property
     def mid_price(self) -> Decimal:

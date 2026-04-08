@@ -57,6 +57,9 @@ class FeatureStore:
         # Funding rate history (one per snapshot that carries funding data)
         self._funding_rates: deque[float] = deque(maxlen=max_samples)
 
+        # Per-bar volume from 1-minute candle data (replaces np.diff approach)
+        self._bar_volumes: deque[float] = deque(maxlen=max_samples)
+
     def update(self, snapshot: MarketSnapshot) -> bool:
         """Ingest a new MarketSnapshot, sampling if the interval has elapsed.
 
@@ -95,6 +98,7 @@ class FeatureStore:
         self._volumes.append(float(snapshot.volume_24h))
         self._open_interests.append(float(snapshot.open_interest))
         self._orderbook_imbalances.append(snapshot.orderbook_imbalance)
+        self._bar_volumes.append(float(snapshot.candle_volume_1m))
         self._last_sample_time = snapshot.timestamp
 
         # Reset interval tracking
@@ -130,6 +134,7 @@ class FeatureStore:
             "open_interests": list(self._open_interests),
             "orderbook_imbalances": list(self._orderbook_imbalances),
             "funding_rates": list(self._funding_rates),
+            "bar_volumes": list(self._bar_volumes),
         }
 
     @classmethod
@@ -189,6 +194,7 @@ class FeatureStore:
         store._funding_rates.extend(
             float("nan") if v is None else v for v in data["funding_rates"]
         )
+        store._bar_volumes.extend(data.get("bar_volumes", []))
 
         return store
 
@@ -254,14 +260,12 @@ class FeatureStore:
 
     @property
     def bar_volumes(self) -> NDArray[np.float64]:
-        """Per-bar volume deltas from consecutive 24h volume samples.
+        """Per-bar volume from 1-minute candle data.
 
-        Length is (sample_count - 1). Values can be negative when
-        high-volume periods roll off the 24h window.
+        Values are always non-negative (candle volumes are never negative).
+        Length matches sample_count — one entry per sampled snapshot.
         """
-        if len(self._volumes) < 2:
-            return np.array([], dtype=np.float64)
-        return np.diff(np.array(self._volumes, dtype=np.float64))
+        return np.array(self._bar_volumes, dtype=np.float64)
 
     @property
     def latest_close(self) -> float | None:
