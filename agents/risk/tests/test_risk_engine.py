@@ -605,3 +605,94 @@ class TestSerialization:
         assert idea.entry_price == Decimal("2000.00")
         assert len(idea.sources) == 2
         assert idea.time_horizon == timedelta(hours=4)
+
+
+# ---------------------------------------------------------------------------
+# _perp_position_from_dict unit tests
+# ---------------------------------------------------------------------------
+
+class TestPerpPositionFromDict:
+    """Unit tests for the _perp_position_from_dict helper."""
+
+    _VALID_DICT: dict[str, str] = {
+        "instrument": "ETH-PERP",
+        "side": "LONG",
+        "size": "1.5",
+        "entry_price": "2300.01",
+        "mark_price": "2310.50",
+        "unrealized_pnl_usdc": "15.74",
+        "leverage": "3",
+        "liquidation_price": "1533.34",
+    }
+
+    def test_valid_long_position(self) -> None:
+        """Valid LONG dict reconstructs PerpPosition with correct fields."""
+        from agents.risk.main import _perp_position_from_dict
+
+        pos = _perp_position_from_dict(self._VALID_DICT, Route.A)
+        assert pos.instrument == "ETH-PERP"
+        assert pos.side == PositionSide.LONG
+        assert pos.size == Decimal("1.5")
+        assert pos.entry_price == Decimal("2300.01")
+        assert pos.mark_price == Decimal("2310.50")
+        assert pos.leverage == Decimal("3")
+        assert pos.liquidation_price == Decimal("1533.34")
+        assert pos.route == Route.A
+
+    def test_valid_short_position(self) -> None:
+        """SHORT side is parsed correctly."""
+        from agents.risk.main import _perp_position_from_dict
+
+        d = {**self._VALID_DICT, "side": "SHORT"}
+        pos = _perp_position_from_dict(d, Route.A)
+        assert pos.side == PositionSide.SHORT
+
+    def test_missing_unrealized_pnl_defaults_zero(self) -> None:
+        """Omitting unrealized_pnl_usdc defaults to Decimal('0')."""
+        from agents.risk.main import _perp_position_from_dict
+
+        d = {k: v for k, v in self._VALID_DICT.items() if k != "unrealized_pnl_usdc"}
+        pos = _perp_position_from_dict(d, Route.A)
+        assert pos.unrealized_pnl_usdc == Decimal("0")
+
+    def test_invalid_side_raises(self) -> None:
+        """Unknown side string raises ValueError."""
+        from agents.risk.main import _perp_position_from_dict
+
+        d = {**self._VALID_DICT, "side": "INVALID"}
+        with pytest.raises(ValueError):
+            _perp_position_from_dict(d, Route.A)
+
+
+# ---------------------------------------------------------------------------
+# Paper mode position deserialization — risk guard integration tests
+# ---------------------------------------------------------------------------
+
+class TestPaperPositionsInRiskGuards:
+    """Verify risk guards fire correctly when paper positions are present."""
+
+    def test_paper_positions_block_max_concurrent(self) -> None:
+        """RiskEngine rejects new trade when 3 paper positions hit the limit."""
+        engine = _engine()
+        positions = [_make_position() for _ in range(3)]  # max_concurrent_positions = 3
+        state = _portfolio(positions=positions)
+
+        result = engine.evaluate(
+            _idea(), state, MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        assert result.approved is False
+        assert "concurrent" in (result.rejection_reason or "").lower()
+
+    def test_paper_same_instrument_stacking_rejected(self) -> None:
+        """RiskEngine rejects stacking a second position on the same instrument."""
+        engine = _engine()
+        existing = _make_position(size=Decimal("1"), mark=Decimal("2000"), side=PositionSide.LONG)
+        state = _portfolio(positions=[existing], used_margin=Decimal("400"))
+
+        # Try to open another position on the same instrument (TEST_INSTRUMENT_ID)
+        result = engine.evaluate(
+            _idea(target=Route.A), state, MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        assert result.approved is False
+        reason = (result.rejection_reason or "").lower()
+        assert any(kw in reason for kw in ("instrument", "stacking", "existing", "open"))
