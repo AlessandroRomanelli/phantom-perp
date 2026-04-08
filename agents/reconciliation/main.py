@@ -24,7 +24,7 @@ from libs.coinbase.auth import CoinbaseAuth
 from libs.coinbase.models import PortfolioResponse, PositionResponse
 from libs.coinbase.rate_limiter import RateLimiter
 from libs.coinbase.rest_client import CoinbaseRESTClient
-from libs.common.config import get_settings
+from libs.common.config import AppSettings, get_settings
 from libs.common.exceptions import CoinbaseAPIError, RateLimitExceededError
 from libs.common.logging import setup_logging
 from libs.common.models.enums import Route
@@ -180,6 +180,43 @@ async def run_portfolio_poller(
 # ---------------------------------------------------------------------------
 
 
+def _create_live_clients(
+    settings: AppSettings,
+) -> tuple[CoinbaseRESTClient, CoinbaseRESTClient]:
+    """Create Route A and Route B REST clients from settings.
+
+    Returns (client_a, client_b). When api_key_b is set, client_b uses separate
+    Route B credentials. When api_key_b is empty, client_b is the same object as
+    client_a (backward-compatible single-client fallback).
+    """
+    auth_a = CoinbaseAuth(
+        api_key=settings.coinbase.api_key_a,
+        api_secret=settings.coinbase.api_secret_a,
+    )
+    client_a = CoinbaseRESTClient(
+        auth=auth_a,
+        base_url=settings.coinbase.rest_url,
+        rate_limiter=RateLimiter(),
+    )
+
+    if settings.coinbase.api_key_b and settings.coinbase.api_secret_b:
+        auth_b = CoinbaseAuth(
+            api_key=settings.coinbase.api_key_b,
+            api_secret=settings.coinbase.api_secret_b,
+        )
+        client_b = CoinbaseRESTClient(
+            auth=auth_b,
+            base_url=settings.coinbase.rest_url,
+            rate_limiter=RateLimiter(),
+        )
+        logger.info("route_b_credentials_loaded", note="using separate Route B API key")
+    else:
+        client_b = client_a
+        logger.info("route_b_credentials_fallback", note="using Route A API key for Route B")
+
+    return client_a, client_b
+
+
 async def run_agent() -> None:
     """Main event loop for the reconciliation agent.
 
@@ -229,16 +266,7 @@ async def run_agent() -> None:
         return
 
     # --- Live mode: poll Coinbase API ---
-    auth = CoinbaseAuth(
-        api_key=settings.coinbase.api_key_a,
-        api_secret=settings.coinbase.api_secret_a,
-    )
-
-    client = CoinbaseRESTClient(
-        auth=auth,
-        base_url=settings.coinbase.rest_url,
-        rate_limiter=RateLimiter(),
-    )
+    client_a, client_b = _create_live_clients(settings)
 
     logger.info(
         "reconciliation_agent_started",
@@ -249,19 +277,18 @@ async def run_agent() -> None:
 
     try:
         async with asyncio.TaskGroup() as tg:
-            # Poll Route A
+            # Poll Route A with Route A credentials
             tg.create_task(
                 run_portfolio_poller(
-                    client, Route.A, publisher,
+                    client_a, Route.A, publisher,
                     expected_portfolio_id=portfolio_id,
                 ),
             )
 
-            # Also publish the same portfolio state to Route B stream so downstream
-            # agents consuming stream:portfolio_state:b continue to receive updates.
+            # Poll Route B — uses dedicated credentials when configured, else falls back to A
             tg.create_task(
                 run_portfolio_poller(
-                    client, Route.B, publisher,
+                    client_b, Route.B, publisher,
                     expected_portfolio_id=portfolio_id,
                 ),
             )
@@ -271,7 +298,9 @@ async def run_agent() -> None:
             logger.error("reconciliation_task_failed", error=str(exc), exc_type=type(exc).__name__)
         raise
     finally:
-        await client.close()
+        await client_a.close()
+        if client_b is not client_a:
+            await client_b.close()
         await publisher.close()
         logger.info("reconciliation_agent_stopped", mode="live")
 

@@ -156,13 +156,21 @@ class TestCoinbaseSettingsEnvPrefix:
         settings = CoinbaseSettings()
         assert settings.rest_url == "https://api.coinbase.com"
 
-    def test_b_credential_fields_removed(self) -> None:
-        """api_key_b and api_secret_b no longer exist on CoinbaseSettings (D-single-client)."""
+    def test_b_credential_fields_are_optional(self) -> None:
+        """api_key_b and api_secret_b are optional fields with empty string defaults (SAFE-05)."""
         settings = CoinbaseSettings()
-        assert not hasattr(settings, "api_key_b"), \
-            "api_key_b should not exist after single-client collapse"
-        assert not hasattr(settings, "api_secret_b"), \
-            "api_secret_b should not exist after single-client collapse"
+        assert hasattr(settings, "api_key_b"), "api_key_b should exist as optional Route B field"
+        assert hasattr(settings, "api_secret_b"), "api_secret_b should exist as optional Route B field"
+        assert settings.api_key_b == ""
+        assert settings.api_secret_b == ""
+
+    def test_coinbase_settings_reads_api_key_b_from_env(self) -> None:
+        """COINBASE_ADV_API_KEY_B env var populates api_key_b field (SAFE-05)."""
+        env = {"COINBASE_ADV_API_KEY_B": "test-key-b-uuid", "COINBASE_ADV_API_SECRET_B": "test-secret-b"}
+        with patch.dict(os.environ, env, clear=False):
+            settings = CoinbaseSettings()
+            assert settings.api_key_b == "test-key-b-uuid"
+            assert settings.api_secret_b == "test-secret-b"
 
 
 class TestPortfolioIDSettingsSingleField:

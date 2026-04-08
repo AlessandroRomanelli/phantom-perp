@@ -23,9 +23,13 @@ class CoinbaseSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="COINBASE_ADV_")
 
-    # Single-portfolio credentials (Cloud API Key)
+    # Route A credentials (Cloud API Key)
     api_key_a: str = ""
     api_secret_a: str = ""
+
+    # Route B credentials — optional; falls back to api_key_a when empty (SAFE-05)
+    api_key_b: str = ""
+    api_secret_b: str = ""
 
     # Shared endpoints
     rest_url: str = "https://api.coinbase.com"

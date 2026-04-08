@@ -1,7 +1,8 @@
-"""Tests for reconciliation agent serialization helpers."""
+"""Tests for reconciliation agent serialization helpers and credential routing."""
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from unittest.mock import MagicMock, patch
 
 from libs.common.models.enums import (
     OrderSide,
@@ -161,3 +162,61 @@ class TestFundingPaymentSerialization:
         assert reconstructed.position_side == PositionSide.SHORT
         assert reconstructed.payment_usdc == Decimal("1.00")
         assert reconstructed.route == Route.B
+
+
+class TestRouteBCredentialRouting:
+    """Tests for Route B client credential routing in _create_live_clients (SAFE-05)."""
+
+    def test_route_b_uses_separate_credentials_when_set(self) -> None:
+        """When api_key_b is set, a separate CoinbaseAuth is created for Route B."""
+        from agents.reconciliation.main import _create_live_clients
+
+        mock_settings = MagicMock()
+        mock_settings.coinbase.api_key_a = "key_a"
+        mock_settings.coinbase.api_secret_a = "secret_a"
+        mock_settings.coinbase.api_key_b = "key_b"
+        mock_settings.coinbase.api_secret_b = "secret_b"
+        mock_settings.coinbase.rest_url = "https://api.coinbase.com"
+
+        mock_client_a = MagicMock()
+        mock_client_b = MagicMock()
+
+        with patch("agents.reconciliation.main.CoinbaseAuth") as MockAuth, \
+             patch("agents.reconciliation.main.CoinbaseRESTClient") as MockClient, \
+             patch("agents.reconciliation.main.RateLimiter"):
+            MockClient.side_effect = [mock_client_a, mock_client_b]
+
+            client_a, client_b = _create_live_clients(mock_settings)
+
+            # Two separate CoinbaseAuth instances created
+            assert MockAuth.call_count == 2
+            assert MockAuth.call_args_list[0].kwargs["api_key"] == "key_a"
+            assert MockAuth.call_args_list[1].kwargs["api_key"] == "key_b"
+            # client_a and client_b are different objects
+            assert client_a is not client_b
+
+    def test_route_b_falls_back_to_route_a_credentials(self) -> None:
+        """When api_key_b is empty, the same client object is used for both routes."""
+        from agents.reconciliation.main import _create_live_clients
+
+        mock_settings = MagicMock()
+        mock_settings.coinbase.api_key_a = "key_a"
+        mock_settings.coinbase.api_secret_a = "secret_a"
+        mock_settings.coinbase.api_key_b = ""
+        mock_settings.coinbase.api_secret_b = ""
+        mock_settings.coinbase.rest_url = "https://api.coinbase.com"
+
+        mock_client = MagicMock()
+
+        with patch("agents.reconciliation.main.CoinbaseAuth") as MockAuth, \
+             patch("agents.reconciliation.main.CoinbaseRESTClient") as MockClient, \
+             patch("agents.reconciliation.main.RateLimiter"):
+            MockClient.return_value = mock_client
+
+            client_a, client_b = _create_live_clients(mock_settings)
+
+            # Only one CoinbaseAuth instance — Route A credentials only
+            assert MockAuth.call_count == 1
+            assert MockAuth.call_args_list[0].kwargs["api_key"] == "key_a"
+            # Same client object for both routes
+            assert client_a is client_b

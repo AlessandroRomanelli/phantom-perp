@@ -281,6 +281,29 @@ class TestDailyLossKillSwitch:
         )
         assert "Daily loss" not in (result.rejection_reason or "")
 
+    def test_daily_loss_kill_switch_fires_on_real_loss(self) -> None:
+        """Kill switch fires when realized_pnl_today_usdc produces 12% loss (SAFE-02)."""
+        engine = _engine()
+        # realized_pnl_today_usdc=-600, equity=5000 → -(-600)/5000*100 = 12% > 10% limit
+        state = _portfolio(equity=Decimal("5000"), net_pnl_today=Decimal("-600"))
+
+        result = engine.evaluate(
+            _idea(), state, MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        assert result.approved is False
+        assert "Daily loss kill switch" in (result.rejection_reason or "")
+
+    def test_daily_loss_kill_switch_allows_small_loss(self) -> None:
+        """Kill switch does not fire when realized P&L is below the threshold (2% loss, SAFE-02)."""
+        engine = _engine()
+        # realized_pnl_today_usdc=-100, equity=5000 → 100/5000*100 = 2% < 10% limit
+        state = _portfolio(equity=Decimal("5000"), net_pnl_today=Decimal("-100"))
+
+        result = engine.evaluate(
+            _idea(), state, MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        assert "Daily loss" not in (result.rejection_reason or "")
+
 
 # ---------------------------------------------------------------------------
 # Max Concurrent Positions
