@@ -43,7 +43,7 @@ See MILESTONES.md for v1.1 accomplishments.
 **Milestone Goal:** Fix structural profitability issues identified by the 5-agent forensic audit — eliminate bugs causing financial loss, recalibrate sizing/execution to overcome fee drag, and fix corrupted data inputs degrading signal quality.
 
 - [x] **Phase 21: Safety Critical Fixes** - Eliminate double execution, wire real P&L into kill switches, restore safety constants, fix credential routing (completed 2026-04-08)
-- [ ] **Phase 22: Data Pipeline Fixes** - Fix corrupted bar_volumes, ADX NaN bug, Bollinger ddof, and index price sourcing
+- [x] **Phase 22: Data Pipeline Fixes** - Fix corrupted bar_volumes, ADX NaN bug, Bollinger ddof, and index price sourcing (completed 2026-04-08)
 - [ ] **Phase 23: Sizing & Execution Optimization** - Recalibrate conviction sizing, switch SL to maker fees, add fee filter, cap BTC notional
 - [ ] **Phase 24: Risk Engine Enhancements** - Add cross-instrument correlation check and equity HWM drawdown tracking
 - [ ] **Phase 25: Paper Simulator Fidelity** - Probabilistic fill model with adverse selection and SL slippage
@@ -233,8 +233,8 @@ Plans:
   4. MarketSnapshot `index_price` is populated from exchange data when available, and strategies that depend on basis (index vs mark) gracefully degrade or skip when index_price is unavailable
 **Plans**: 2 plans
 Plans:
-- [ ] 22-01-PLAN.md — Fix ADX NaN identity comparison (PROF-04) and Bollinger ddof (ROBU-02) with indicator tests
-- [ ] 22-02-PLAN.md — Fix bar_volumes from candle data (PROF-03) and index_price sourcing with graceful degradation (ROBU-05)
+- [x] 22-01-PLAN.md — Fix ADX NaN identity comparison (PROF-04) and Bollinger ddof (ROBU-02) with indicator tests
+- [x] 22-02-PLAN.md — Fix bar_volumes from candle data (PROF-03) and index_price sourcing with graceful degradation (ROBU-05)
 
 ### Phase 23: Sizing & Execution Optimization
 **Goal**: Trades are sized large enough to overcome fee drag and protective orders minimize execution costs — the system is net-profitable on a per-trade basis after fees
@@ -247,8 +247,8 @@ Plans:
   4. BTC-PERP either has a higher max_position_notional_usdc cap or OBI strategy has a longer cooldown — whichever is configured, the result is fewer fee-negative high-frequency BTC trades
 **Plans**: 2 plans
 Plans:
-- [x] 21-01-PLAN.md — Fix double execution (SAFE-01), metadata serialization (SAFE-03), leverage constant (SAFE-04)
-- [x] 21-02-PLAN.md — Kill switch regression test (SAFE-02), Route B credentials (SAFE-05)
+- [ ] 23-01-PLAN.md — Config changes (conviction_power, OBI cooldown) and STOP_LIMIT stop-loss with maker fees
+- [ ] 23-02-PLAN.md — Fee-adjusted signal filter in risk engine
 
 ### Phase 24: Risk Engine Enhancements
 **Goal**: The risk engine prevents concentrated directional bets across correlated instruments and tracks true peak-to-trough drawdown for kill switch decisions
@@ -295,7 +295,7 @@ Phases execute in numeric order: 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17 ->
 | 19. Core Infrastructure Tests | v1.3 | 2/2 | Complete    | 2026-04-08 |
 | 20. Risk & Indicator Tests | v1.3 | 2/2 | Complete    | 2026-04-08 |
 | 21. Safety Critical Fixes | v1.4 | 2/2 | Complete    | 2026-04-08 |
-| 22. Data Pipeline Fixes | v1.4 | 0/? | Not started | - |
+| 22. Data Pipeline Fixes | v1.4 | 2/2 | Complete    | 2026-04-08 |
 | 23. Sizing & Execution Optimization | v1.4 | 0/? | Not started | - |
 | 24. Risk Engine Enhancements | v1.4 | 0/? | Not started | - |
 | 25. Paper Simulator Fidelity | v1.4 | 0/? | Not started | - |
