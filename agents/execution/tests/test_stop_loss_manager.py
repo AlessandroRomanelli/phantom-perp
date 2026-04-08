@@ -22,8 +22,9 @@ class TestBuildProtectiveOrders:
         assert result.stop_loss is not None
         assert result.stop_loss.side == OrderSide.SELL
         assert result.stop_loss.size == Decimal("2.5")
-        assert result.stop_loss.order_type == OrderType.STOP_MARKET
+        assert result.stop_loss.order_type == OrderType.STOP_LIMIT
         assert result.stop_loss.stop_price == Decimal("2100")
+        assert result.stop_loss.limit_price is not None
         assert result.stop_loss.reduce_only is True
 
     def test_short_position_sl_is_buy(self) -> None:
@@ -97,6 +98,65 @@ class TestBuildProtectiveOrders:
         assert result.stop_loss.stop_price == Decimal("2100.12")
         assert result.take_profit is not None
         assert result.take_profit.limit_price == Decimal("2400.57")
+
+
+class TestStopLimitBuffer:
+    def test_long_sl_limit_price_below_stop(self) -> None:
+        """LONG stop: limit_price must be below stop_price (buffer keeps order as maker)."""
+        result = build_protective_orders(
+            fill_side=OrderSide.BUY,
+            fill_size=Decimal("1.0"),
+            fill_price=Decimal("2200"),
+            stop_loss_price=Decimal("2100"),
+            take_profit_price=None,
+            sl_limit_buffer_bps=10,
+        )
+        assert result.stop_loss is not None
+        assert result.stop_loss.order_type == OrderType.STOP_LIMIT
+        assert result.stop_loss.limit_price is not None
+        assert result.stop_loss.limit_price < result.stop_loss.stop_price
+
+    def test_short_sl_limit_price_above_stop(self) -> None:
+        """SHORT stop: limit_price must be above stop_price."""
+        result = build_protective_orders(
+            fill_side=OrderSide.SELL,
+            fill_size=Decimal("1.0"),
+            fill_price=Decimal("2200"),
+            stop_loss_price=Decimal("2300"),
+            take_profit_price=None,
+            sl_limit_buffer_bps=10,
+        )
+        assert result.stop_loss is not None
+        assert result.stop_loss.order_type == OrderType.STOP_LIMIT
+        assert result.stop_loss.limit_price is not None
+        assert result.stop_loss.limit_price > result.stop_loss.stop_price
+
+    def test_zero_buffer_limit_equals_stop(self) -> None:
+        """sl_limit_buffer_bps=0 → limit_price == stop_price."""
+        result = build_protective_orders(
+            fill_side=OrderSide.BUY,
+            fill_size=Decimal("1.0"),
+            fill_price=Decimal("2200"),
+            stop_loss_price=Decimal("2100"),
+            take_profit_price=None,
+            sl_limit_buffer_bps=0,
+        )
+        assert result.stop_loss is not None
+        assert result.stop_loss.limit_price == result.stop_loss.stop_price
+
+    def test_buffer_10_bps_calculation(self) -> None:
+        """LONG stop at 2100 with 10 bps buffer → limit_price = round(2100 * 0.999) = 2097.90."""
+        result = build_protective_orders(
+            fill_side=OrderSide.BUY,
+            fill_size=Decimal("1.0"),
+            fill_price=Decimal("2200"),
+            stop_loss_price=Decimal("2100"),
+            take_profit_price=None,
+            sl_limit_buffer_bps=10,
+        )
+        assert result.stop_loss is not None
+        # 2100 * (1 - 10/10000) = 2100 * 0.999 = 2097.90
+        assert result.stop_loss.limit_price == Decimal("2097.90")
 
 
 class TestValidateStopLoss:

@@ -43,6 +43,7 @@ def build_protective_orders(
     stop_loss_price: Decimal | None,
     take_profit_price: Decimal | None,
     tick_size: Decimal = Decimal("0.01"),
+    sl_limit_buffer_bps: int = 10,
 ) -> ProtectiveOrders:
     """Build protective order parameters after a primary fill.
 
@@ -52,6 +53,9 @@ def build_protective_orders(
         fill_price: Price the primary order filled at (for SL validation).
         stop_loss_price: Stop-loss trigger price.
         take_profit_price: Take-profit trigger price.
+        tick_size: Price increment for rounding.
+        sl_limit_buffer_bps: Basis points below (LONG) or above (SHORT) stop_price
+            for the STOP_LIMIT limit_price. Enables maker-fee fills on stop triggers.
 
     Returns:
         ProtectiveOrders with SL and optionally TP params.
@@ -69,12 +73,20 @@ def build_protective_orders(
                 stop_loss_price=str(stop_loss_price),
             )
         else:
+            buffer = Decimal(str(sl_limit_buffer_bps)) / Decimal("10000")
+            rounded_stop = _round_to_tick(stop_loss_price, tick_size)
+            if fill_side == OrderSide.BUY:
+                # LONG: limit_price is below stop_price
+                limit_px = _round_to_tick(rounded_stop * (1 - buffer), tick_size)
+            else:
+                # SHORT: limit_price is above stop_price
+                limit_px = _round_to_tick(rounded_stop * (1 + buffer), tick_size)
             sl = ProtectiveOrderParams(
                 side=close_side,
                 size=fill_size,
-                order_type=OrderType.STOP_MARKET,
-                stop_price=_round_to_tick(stop_loss_price, tick_size),
-                limit_price=None,
+                order_type=OrderType.STOP_LIMIT,
+                stop_price=rounded_stop,
+                limit_price=limit_px,
                 reduce_only=True,
             )
 

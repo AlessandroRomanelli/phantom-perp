@@ -19,6 +19,7 @@ class ExecutionConfig:
     max_retries: int = 2
     prefer_maker: bool = True
     instrument_limit_offset_bps: dict[str, int] = field(default_factory=dict)
+    sl_limit_buffer_bps: int = 10
 
     def resolve_limit_offset_bps(self, instrument: str) -> int:
         """Return per-instrument limit offset bps, falling back to the global default.
@@ -55,4 +56,5 @@ def load_execution_config(yaml_config: dict[str, Any]) -> ExecutionConfig:
         max_retries=int(section.get("max_retries", 2)),
         prefer_maker=section.get("prefer_maker", True),
         instrument_limit_offset_bps=instrument_limit_offset_bps,
+        sl_limit_buffer_bps=int(section.get("sl_limit_buffer_bps", 10)),
     )

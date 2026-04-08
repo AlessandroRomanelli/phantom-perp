@@ -379,6 +379,7 @@ async def _place_protective_orders(
     paper_broker: PaperBroker | None,
     last_price: Decimal | None,
     repo: TunerRepository,
+    sl_limit_buffer_bps: int = 10,
     client_pool: CoinbaseClientPool | None = None,
 ) -> None:
     """Place stop-loss and take-profit orders after a primary fill."""
@@ -388,6 +389,7 @@ async def _place_protective_orders(
         fill_price=fill_price,
         stop_loss_price=stop_loss,
         take_profit_price=take_profit,
+        sl_limit_buffer_bps=sl_limit_buffer_bps,
     )
 
     if protective.stop_loss:
@@ -864,6 +866,7 @@ async def run_agent() -> None:
                             paper_broker=paper_broker,
                             last_price=market.last_price,
                             repo=repo,
+                            sl_limit_buffer_bps=exec_config.sl_limit_buffer_bps,
                             client_pool=client_pool,
                         )
                 else:

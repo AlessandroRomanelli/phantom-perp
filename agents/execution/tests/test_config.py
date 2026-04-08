@@ -78,3 +78,13 @@ class TestLoadExecutionConfig:
         cfg = load_execution_config(yaml_config)
         assert cfg.instrument_limit_offset_bps == {}
         assert cfg.resolve_limit_offset_bps("BTC-PERP") == 7
+
+    def test_sl_limit_buffer_bps_default(self) -> None:
+        """sl_limit_buffer_bps defaults to 10 when not in YAML."""
+        cfg = load_execution_config({})
+        assert cfg.sl_limit_buffer_bps == 10
+
+    def test_sl_limit_buffer_bps_parsed(self) -> None:
+        """sl_limit_buffer_bps is parsed from execution section."""
+        cfg = load_execution_config({"execution": {"sl_limit_buffer_bps": 15}})
+        assert cfg.sl_limit_buffer_bps == 15

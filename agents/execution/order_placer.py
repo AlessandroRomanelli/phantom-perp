@@ -83,6 +83,7 @@ def build_result_from_response(
     is_maker: bool,
     stop_loss: Decimal | None,
     take_profit: Decimal | None,
+    sl_limit_buffer_bps: int = 10,
 ) -> ExecutionResult:
     """Convert a Coinbase OrderResponse into our ExecutionResult.
 
@@ -103,6 +104,7 @@ def build_result_from_response(
             fill_price=avg_price or Decimal("0"),
             stop_loss_price=stop_loss,
             take_profit_price=take_profit,
+            sl_limit_buffer_bps=sl_limit_buffer_bps,
         )
 
     return ExecutionResult(
