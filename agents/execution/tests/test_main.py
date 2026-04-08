@@ -11,12 +11,13 @@ from libs.common.models.enums import (
     SignalSource,
 )
 from libs.common.models.order import ApprovedOrder, Fill, ProposedOrder
-
-from agents.execution.main import (
+from libs.common.serialization import (
+    approved_order_to_dict,
     deserialize_approved_order,
     deserialize_fill,
     deserialize_proposed_order,
     fill_to_dict,
+    order_to_dict,
 )
 
 T0 = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
@@ -25,8 +26,6 @@ T0 = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
 class TestDeserializeProposedOrder:
     def test_roundtrip_with_risk_agent_format(self) -> None:
         """Verify we can deserialize what risk agent's order_to_dict produces."""
-        from agents.risk.main import order_to_dict
-
         original = ProposedOrder(
             order_id="ord-exec-1",
             signal_id="sig-exec-1",
@@ -65,8 +64,6 @@ class TestDeserializeProposedOrder:
         assert reconstructed.reduce_only is False
 
     def test_none_prices(self) -> None:
-        from agents.risk.main import order_to_dict
-
         original = ProposedOrder(
             order_id="ord-np",
             signal_id="sig-np",
@@ -97,8 +94,6 @@ class TestDeserializeProposedOrder:
 class TestDeserializeApprovedOrder:
     def test_roundtrip_with_confirmation_agent_format(self) -> None:
         """Verify we can deserialize what confirmation agent's approved_order_to_dict produces."""
-        from agents.confirmation.main import approved_order_to_dict
-
         original = ApprovedOrder(
             order_id="ord-conf-1",
             route=Route.B,

@@ -7,7 +7,7 @@ from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.signal import StandardSignal
 
 from agents.signals.feature_store import FeatureStore
-from agents.signals.main import deserialize_snapshot, signal_to_dict
+from libs.common.serialization import deserialize_snapshot, signal_to_dict
 from agents.signals.tests.test_feature_store import _snap
 
 ALL_INSTRUMENTS = ["ETH-PERP", "BTC-PERP", "SOL-PERP", "QQQ-PERP", "SPY-PERP"]

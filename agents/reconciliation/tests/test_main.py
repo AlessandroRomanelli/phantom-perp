@@ -12,10 +12,11 @@ from libs.common.models.funding import FundingPayment
 from libs.common.models.order import Fill
 from libs.common.models.portfolio import PortfolioSnapshot
 
-from agents.reconciliation.main import (
+from libs.common.serialization import (
     deserialize_fill,
     deserialize_funding_payment,
     deserialize_portfolio_snapshot,
+    fill_to_dict,
     funding_payment_to_dict,
     portfolio_snapshot_to_dict,
 )
@@ -26,8 +27,6 @@ T0 = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
 class TestFillDeserialization:
     def test_roundtrip_with_execution_agent_format(self) -> None:
         """Verify we can deserialize what execution agent's fill_to_dict produces."""
-        from agents.execution.main import fill_to_dict
-
         original = Fill(
             fill_id="fill-001",
             order_id="ord-001",
@@ -55,8 +54,6 @@ class TestFillDeserialization:
         assert reconstructed.trade_id == "trade-001"
 
     def test_taker_fill(self) -> None:
-        from agents.execution.main import fill_to_dict
-
         original = Fill(
             fill_id="fill-002",
             order_id="ord-002",

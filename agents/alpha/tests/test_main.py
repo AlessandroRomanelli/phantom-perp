@@ -7,7 +7,7 @@ from libs.common.models.enums import Route, PositionSide, SignalSource
 from libs.common.models.signal import StandardSignal
 from libs.common.models.trade_idea import RankedTradeIdea
 
-from agents.alpha.main import deserialize_signal, idea_to_dict
+from libs.common.serialization import deserialize_idea, deserialize_signal, idea_to_dict
 
 
 class TestDeserializeSignal:
@@ -103,8 +103,6 @@ class TestIdeaToDict:
         d = idea_to_dict(idea)
 
         # Verify risk agent can reconstruct it
-        from agents.risk.main import deserialize_idea
-
         reconstructed = deserialize_idea(d)
         assert reconstructed.idea_id == "idea-002"
         assert reconstructed.route == Route.B
@@ -132,8 +130,6 @@ class TestIdeaToDict:
         assert d["take_profit"] is None
 
         # Risk agent should also handle None prices
-        from agents.risk.main import deserialize_idea
-
         reconstructed = deserialize_idea(d)
         assert reconstructed.entry_price is None
         assert reconstructed.stop_loss is None

@@ -13,12 +13,17 @@ from libs.common.models.order import Fill
 from libs.common.models.portfolio import PortfolioSnapshot
 
 from agents.monitoring.alerting import Alert, AlertSeverity, AlertType
-from agents.monitoring.main import (
-    alert_to_dict,
-    deserialize_alert,
+from libs.common.serialization import (
     deserialize_fill,
     deserialize_funding_payment,
     deserialize_portfolio_snapshot,
+    fill_to_dict,
+    funding_payment_to_dict,
+    portfolio_snapshot_to_dict,
+)
+from agents.monitoring.main import (
+    alert_to_dict,
+    deserialize_alert,
 )
 
 T0 = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
@@ -27,8 +32,6 @@ T0 = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
 class TestPortfolioSnapshotDeserialization:
     def test_roundtrip_with_reconciliation_format(self) -> None:
         """Verify we can deserialize what reconciliation agent produces."""
-        from agents.reconciliation.main import portfolio_snapshot_to_dict
-
         original = PortfolioSnapshot(
             timestamp=T0,
             route=Route.A,
@@ -58,8 +61,6 @@ class TestPortfolioSnapshotDeserialization:
 class TestFundingPaymentDeserialization:
     def test_roundtrip_with_reconciliation_format(self) -> None:
         """Verify we can deserialize what reconciliation agent produces."""
-        from agents.reconciliation.main import funding_payment_to_dict
-
         original = FundingPayment(
             timestamp=T0,
             instrument="ETH-PERP",
@@ -83,8 +84,6 @@ class TestFundingPaymentDeserialization:
 class TestFillDeserialization:
     def test_roundtrip_with_execution_format(self) -> None:
         """Verify we can deserialize what execution agent produces."""
-        from agents.execution.main import fill_to_dict
-
         original = Fill(
             fill_id="fill-001",
             order_id="ord-001",

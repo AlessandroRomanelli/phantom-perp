@@ -11,11 +11,11 @@ from libs.common.models.enums import (
     SignalSource,
 )
 from libs.common.models.order import ApprovedOrder, ProposedOrder
-
-from agents.confirmation.main import (
+from libs.common.serialization import (
     approved_order_to_dict,
     deserialize_approved_order,
-    deserialize_order,
+    deserialize_proposed_order,
+    order_to_dict,
 )
 
 T0 = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
@@ -47,7 +47,7 @@ class TestDeserializeOrder:
             "status": "risk_approved",
             "reasoning": "Breakout detected",
         }
-        order = deserialize_order(payload)
+        order = deserialize_proposed_order(payload)
         assert order.order_id == "ord-123"
         assert order.route == Route.B
         assert order.side == OrderSide.BUY
@@ -92,7 +92,7 @@ class TestDeserializeOrder:
             "status": "risk_approved",
             "reasoning": "Elevated funding",
         }
-        order = deserialize_order(payload)
+        order = deserialize_proposed_order(payload)
         assert order.limit_price is None
         assert order.stop_loss is None
         assert order.take_profit is None
@@ -102,8 +102,6 @@ class TestDeserializeOrder:
 
     def test_matches_risk_agent_order_to_dict(self) -> None:
         """Verify we can deserialize what risk agent's order_to_dict produces."""
-        from agents.risk.main import order_to_dict
-
         original = ProposedOrder(
             order_id="ord-rt",
             signal_id="sig-rt",
@@ -128,7 +126,7 @@ class TestDeserializeOrder:
             reasoning="Test roundtrip",
         )
         serialized = order_to_dict(original)
-        reconstructed = deserialize_order(serialized)
+        reconstructed = deserialize_proposed_order(serialized)
 
         assert reconstructed.order_id == original.order_id
         assert reconstructed.route == original.route

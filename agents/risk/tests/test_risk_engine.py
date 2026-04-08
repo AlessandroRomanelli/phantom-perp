@@ -563,7 +563,7 @@ class TestHappyPath:
 class TestSerialization:
     def test_order_to_dict_fields(self) -> None:
         """order_to_dict should produce all required fields."""
-        from agents.risk.main import order_to_dict
+        from libs.common.serialization import order_to_dict
 
         engine = _engine()
         result = engine.evaluate(
@@ -581,7 +581,7 @@ class TestSerialization:
 
     def test_deserialize_idea_roundtrip(self) -> None:
         """Serialized → deserialized idea should preserve fields."""
-        from agents.risk.main import deserialize_idea
+        from libs.common.serialization import deserialize_idea
 
         payload = {
             "idea_id": "idea-abc",
