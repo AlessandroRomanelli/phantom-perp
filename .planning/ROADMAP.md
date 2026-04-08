@@ -217,7 +217,10 @@ Plans:
   3. A RankedTradeIdea serialized to Redis and deserialized back retains its funding_rate field with the original value, enabling the funding rate circuit breaker to evaluate correctly
   4. `MAX_LEVERAGE_GLOBAL` in `libs/common/constants.py` equals `Decimal("5.0")` and all leverage checks reference this constant
   5. The reconciliation agent's Route B portfolio poll authenticates with Route B API credentials (KEY_B, SECRET_B, PASSPHRASE_B), not Route A credentials
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 21-01-PLAN.md — Fix double execution (SAFE-01), metadata serialization (SAFE-03), leverage constant (SAFE-04)
+- [ ] 21-02-PLAN.md — Kill switch regression test (SAFE-02), Route B credentials (SAFE-05)
 
 ### Phase 22: Data Pipeline Fixes
 **Goal**: Signal strategies receive correct indicator values and market data — bar_volumes are true per-bar deltas, ADX produces valid numbers, Bollinger Bands use correct statistics, and index_price is reliably sourced
@@ -228,7 +231,10 @@ Plans:
   2. The ADX indicator never returns NaN for a valid input series of sufficient length — `np.isnan()` is used for all NaN comparisons in the indicator pipeline
   3. Bollinger Bands use `ddof=1` (sample standard deviation) consistently with all other volatility calculations in the codebase
   4. MarketSnapshot `index_price` is populated from exchange data when available, and strategies that depend on basis (index vs mark) gracefully degrade or skip when index_price is unavailable
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 21-01-PLAN.md — Fix double execution (SAFE-01), metadata serialization (SAFE-03), leverage constant (SAFE-04)
+- [ ] 21-02-PLAN.md — Kill switch regression test (SAFE-02), Route B credentials (SAFE-05)
 
 ### Phase 23: Sizing & Execution Optimization
 **Goal**: Trades are sized large enough to overcome fee drag and protective orders minimize execution costs — the system is net-profitable on a per-trade basis after fees
@@ -239,7 +245,10 @@ Plans:
   2. Stop-loss orders are placed as STOP_LIMIT with a configurable limit buffer (e.g., 0.1%) below the stop price, paying maker fee instead of taker fee
   3. The risk engine rejects any proposed trade where estimated round-trip fees (entry + exit) exceed the signal's expected edge, logging the rejection reason
   4. BTC-PERP either has a higher max_position_notional_usdc cap or OBI strategy has a longer cooldown — whichever is configured, the result is fewer fee-negative high-frequency BTC trades
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 21-01-PLAN.md — Fix double execution (SAFE-01), metadata serialization (SAFE-03), leverage constant (SAFE-04)
+- [ ] 21-02-PLAN.md — Kill switch regression test (SAFE-02), Route B credentials (SAFE-05)
 
 ### Phase 24: Risk Engine Enhancements
 **Goal**: The risk engine prevents concentrated directional bets across correlated instruments and tracks true peak-to-trough drawdown for kill switch decisions
@@ -249,7 +258,10 @@ Plans:
   1. The risk engine rejects a new LONG ETH-PERP trade when existing LONG positions in BTC-PERP and SOL-PERP already exceed a configurable net directional exposure threshold
   2. The equity high-water mark is updated on every portfolio snapshot and the drawdown kill switch compares current equity to the true all-time peak — not a daily-reset proxy
   3. The correlation exposure check and HWM drawdown are both configurable via YAML and can be disabled per-route without code changes
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 21-01-PLAN.md — Fix double execution (SAFE-01), metadata serialization (SAFE-03), leverage constant (SAFE-04)
+- [ ] 21-02-PLAN.md — Kill switch regression test (SAFE-02), Route B credentials (SAFE-05)
 
 ### Phase 25: Paper Simulator Fidelity
 **Goal**: Paper mode results approximate real-world execution quality — fills are not guaranteed, adverse selection is modeled, and stop-loss orders experience realistic slippage
@@ -259,7 +271,10 @@ Plans:
   1. The paper simulator does not fill 100% of limit orders instantly — fill probability depends on price proximity to the order price and available volume
   2. Filled orders experience adverse selection: the average fill price is worse than the order price by a configurable amount reflecting typical market impact
   3. Stop-loss orders in paper mode experience configurable slippage (e.g., 0.05-0.15%) reflecting real-world stop execution in fast markets
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 21-01-PLAN.md — Fix double execution (SAFE-01), metadata serialization (SAFE-03), leverage constant (SAFE-04)
+- [ ] 21-02-PLAN.md — Kill switch regression test (SAFE-02), Route B credentials (SAFE-05)
 
 ## Progress
 
@@ -279,7 +294,7 @@ Phases execute in numeric order: 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17 ->
 | 18. Messaging Infrastructure | v1.3 | 1/1 | Complete    | 2026-04-08 |
 | 19. Core Infrastructure Tests | v1.3 | 2/2 | Complete    | 2026-04-08 |
 | 20. Risk & Indicator Tests | v1.3 | 2/2 | Complete    | 2026-04-08 |
-| 21. Safety Critical Fixes | v1.4 | 0/? | Not started | - |
+| 21. Safety Critical Fixes | v1.4 | 0/2 | Not started | - |
 | 22. Data Pipeline Fixes | v1.4 | 0/? | Not started | - |
 | 23. Sizing & Execution Optimization | v1.4 | 0/? | Not started | - |
 | 24. Risk Engine Enhancements | v1.4 | 0/? | Not started | - |
