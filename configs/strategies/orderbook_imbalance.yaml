@@ -20,6 +20,7 @@ instruments:
     max_spread_bps: 10.0
     stop_loss_atr_mult: 2.0
     take_profit_atr_mult: 2.5
+    cooldown_bars: 20
   SOL-PERP:
     enabled: false
   QQQ-PERP:

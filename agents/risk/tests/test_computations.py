@@ -34,7 +34,7 @@ def _default_limits(**overrides: object) -> RiskLimits:
         stop_loss_required=True,
         max_concurrent_positions=3,
         max_funding_cost_per_day_usdc=Decimal("20"),
-        conviction_power=2.0,
+        conviction_power=1.0,
     )
     defaults.update(overrides)
     return RiskLimits(**defaults)  # type: ignore[arg-type]
@@ -375,6 +375,58 @@ class TestConvexSizing:
         """conviction=0 must always produce size=0."""
         size = self._size_at(0.0)
         assert size == Decimal("0")
+
+    def test_default_limits_use_linear_conviction(self) -> None:
+        """_default_limits() uses conviction_power=1.0: conviction=0.5 → 50% of max size."""
+        limits = _default_limits()
+        size_full = compute_position_size(
+            entry_price=Decimal("2000"),
+            conviction=1.0,
+            equity=Decimal("10000"),
+            used_margin=Decimal("0"),
+            existing_positions=[],
+            limits=limits,
+        )
+        size_half = compute_position_size(
+            entry_price=Decimal("2000"),
+            conviction=0.5,
+            equity=Decimal("10000"),
+            used_margin=Decimal("0"),
+            existing_positions=[],
+            limits=limits,
+        )
+        ratio = float(size_half / size_full)
+        assert abs(ratio - 0.50) < 0.01, f"Expected ~0.50, got {ratio:.4f}"
+
+    def test_half_conviction_absolute_size_with_linear_power(self) -> None:
+        """At conviction_power=1.0, conviction=0.5, size ≈ 1.5 ETH (50% of 3.0 max from notional)."""
+        limits = _default_limits(conviction_power=1.0)
+        size = compute_position_size(
+            entry_price=Decimal("2000"),
+            conviction=0.5,
+            equity=Decimal("10000"),
+            used_margin=Decimal("0"),
+            existing_positions=[],
+            limits=limits,
+        )
+        # max_from_notional = 6000 / 2000 = 3.0 ETH; 50% = 1.5 ETH
+        assert abs(float(size) - 1.5) < 0.01, f"Expected ~1.5 ETH, got {size}"
+
+    def test_maker_fee_round_trip_under_one_pct(self) -> None:
+        """Round-trip maker fee at conviction=0.5 / power=1.0 is well under 1% of notional."""
+        limits = _default_limits(conviction_power=1.0)
+        size = compute_position_size(
+            entry_price=Decimal("2000"),
+            conviction=0.5,
+            equity=Decimal("10000"),
+            used_margin=Decimal("0"),
+            existing_positions=[],
+            limits=limits,
+        )
+        notional = size * Decimal("2000")
+        round_trip_fee = notional * Decimal("0.000125") * 2  # maker both ways
+        fee_ratio = float(round_trip_fee / notional)
+        assert fee_ratio < 0.01, f"Round-trip fee {fee_ratio:.4%} exceeds 1%"
 
 
 # ── Route A vs Route B Margin Differentiation ───────────────────────────
