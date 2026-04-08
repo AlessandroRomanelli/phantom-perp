@@ -121,3 +121,16 @@ class TestLimitsForRoute:
         limits = limits_for_route(Route.A, {})
         assert limits.max_leverage == MAX_LEVERAGE_GLOBAL
         assert limits.min_liquidation_distance_pct == ROUTE_A_MIN_LIQUIDATION_DISTANCE_PCT
+
+    def test_limits_for_route_a_caps_leverage_at_global_max(self) -> None:
+        """SAFE-04: limits_for_route(A) must never return leverage above Decimal('5.0').
+
+        Even if YAML config requests 10x leverage, the hard cap must apply.
+        This is a regression guard — if MAX_LEVERAGE_GLOBAL is ever set above 5.0
+        this test will catch it.
+        """
+        config = {"risk": {"route_a": {"max_leverage": 10.0}}}
+        limits = limits_for_route(Route.A, config)
+        assert limits.max_leverage <= Decimal("5.0"), (
+            f"SAFE-04: Route A leverage {limits.max_leverage} exceeds hard cap of 5.0"
+        )

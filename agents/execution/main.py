@@ -644,7 +644,22 @@ async def run_agent() -> None:
                 )
 
                 # -----------------------------------------------------------
-                # 2. Check circuit breaker
+                # 2. Paper mode early-return — paper_simulator owns all fills
+                # -----------------------------------------------------------
+                if is_paper:
+                    logger.debug(
+                        "paper_mode_order_skipped",
+                        order_id=order_id,
+                        note="paper_simulator handles execution",
+                    )
+                    processed_order_ids[order_id] = None
+                    while len(processed_order_ids) > _DEDUP_SET_MAX:
+                        processed_order_ids.popitem(last=False)
+                    await consumer.ack(channel, "execution_agent", msg_id)
+                    continue
+
+                # -----------------------------------------------------------
+                # 3. Check circuit breaker
                 # -----------------------------------------------------------
                 if cb.is_open(route):
                     trip = cb.get_trip(route)

@@ -173,6 +173,54 @@ class TestFillSerialization:
         assert reconstructed.is_maker is False
 
 
+class TestPaperModeSkip:
+    """SAFE-01: Verify execution agent skips order processing in paper mode."""
+
+    def test_paper_mode_skip_log_string_present(self) -> None:
+        """run_agent source must contain the paper_mode_order_skipped log call."""
+        import inspect
+        import agents.execution.main as m
+        src = inspect.getsource(m.run_agent)
+        assert "paper_mode_order_skipped" in src, (
+            "SAFE-01: 'paper_mode_order_skipped' log is missing from run_agent. "
+            "Paper mode early-return has not been implemented."
+        )
+
+    def test_paper_mode_skip_before_circuit_breaker(self) -> None:
+        """Paper mode skip must occur BEFORE the circuit breaker check.
+
+        The early-return must be placed between the dedup check and cb.is_open()
+        so the order is never seen by the circuit breaker or exchange logic.
+        """
+        import inspect
+        import agents.execution.main as m
+        src = inspect.getsource(m.run_agent)
+        assert "paper_mode_order_skipped" in src, (
+            "SAFE-01: paper_mode_order_skipped missing from run_agent"
+        )
+        skip_pos = src.index("paper_mode_order_skipped")
+        cb_pos = src.index("cb.is_open")
+        assert skip_pos < cb_pos, (
+            "SAFE-01: paper mode skip must occur before circuit breaker check (cb.is_open)"
+        )
+
+    def test_paper_mode_skip_after_dedup(self) -> None:
+        """Paper mode skip must occur AFTER the dedup guard.
+
+        The dedup guard must run first so re-delivered paper orders are deduplicated.
+        """
+        import inspect
+        import agents.execution.main as m
+        src = inspect.getsource(m.run_agent)
+        assert "paper_mode_order_skipped" in src
+        # dedup guard appears first as 'order_deduplicated'
+        dedup_pos = src.index("order_deduplicated")
+        skip_pos = src.index("paper_mode_order_skipped")
+        assert dedup_pos < skip_pos, (
+            "SAFE-01: paper mode skip must occur after dedup guard (order_deduplicated)"
+        )
+
+
 class TestDedupFIFOEviction:
     """BUG-02: Verify dedup eviction removes oldest entry (FIFO), not arbitrary."""
 

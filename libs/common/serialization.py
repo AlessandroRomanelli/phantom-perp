@@ -47,6 +47,21 @@ from libs.common.models.trade_idea import RankedTradeIdea
 # ---------------------------------------------------------------------------
 
 
+def _json_safe_metadata(metadata: dict[str, object]) -> dict[str, object]:
+    """Convert Decimal values in a metadata dict to str for JSON serialization.
+
+    Leaves str, int, float, None, list, and dict values unchanged.
+    Required because orjson raises TypeError on Decimal values.
+
+    Args:
+        metadata: Raw metadata dict from a RankedTradeIdea.
+
+    Returns:
+        New dict with Decimal values converted to str.
+    """
+    return {k: str(v) if isinstance(v, Decimal) else v for k, v in metadata.items()}
+
+
 def _parse_bool(value: str | bool | int) -> bool:
     """Parse a boolean from a Redis stream value.
 
@@ -235,6 +250,7 @@ def idea_to_dict(idea: RankedTradeIdea) -> dict[str, Any]:
         "stop_loss": str(idea.stop_loss) if idea.stop_loss else None,
         "take_profit": str(idea.take_profit) if idea.take_profit else None,
         "reasoning": idea.reasoning,
+        "metadata": _json_safe_metadata(idea.metadata),
     }
 
 
@@ -262,6 +278,7 @@ def deserialize_idea(payload: dict[str, Any]) -> RankedTradeIdea:
         stop_loss=Decimal(payload["stop_loss"]) if payload.get("stop_loss") else None,
         take_profit=Decimal(payload["take_profit"]) if payload.get("take_profit") else None,
         reasoning=payload.get("reasoning", ""),
+        metadata=payload.get("metadata", {}),
     )
 
 

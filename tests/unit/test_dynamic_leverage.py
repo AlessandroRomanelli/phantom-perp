@@ -53,8 +53,9 @@ class TestGetRegimeLeverageCap:
     @pytest.mark.parametrize(
         "regime,expected",
         [
-            (MarketRegime.TRENDING_UP, Decimal("8.0")),
-            (MarketRegime.TRENDING_DOWN, Decimal("8.0")),
+            # Config has 8.0 for trending regimes, but MAX_LEVERAGE_GLOBAL=5.0 caps it.
+            (MarketRegime.TRENDING_UP, Decimal("5.0")),
+            (MarketRegime.TRENDING_DOWN, Decimal("5.0")),
             (MarketRegime.RANGING, Decimal("4.0")),
             (MarketRegime.HIGH_VOLATILITY, Decimal("2.0")),
             (MarketRegime.LOW_VOLATILITY, Decimal("5.0")),

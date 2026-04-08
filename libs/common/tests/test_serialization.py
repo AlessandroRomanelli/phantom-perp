@@ -579,6 +579,72 @@ class TestDeserializePortfolioSnapshot:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# TestIdeaMetadata (SAFE-03)
+# ---------------------------------------------------------------------------
+
+
+class TestIdeaMetadata:
+    """SAFE-03: metadata field must survive Redis round-trips through idea_to_dict / deserialize_idea."""
+
+    def _make_idea_with_metadata(self, metadata: dict) -> RankedTradeIdea:
+        return RankedTradeIdea(
+            idea_id="idea-meta-001",
+            timestamp=T0,
+            instrument="ETH-PERP",
+            route=Route.A,
+            direction=PositionSide.LONG,
+            conviction=0.80,
+            sources=[SignalSource.MOMENTUM],
+            time_horizon=timedelta(hours=2),
+            metadata=metadata,
+        )
+
+    def test_idea_to_dict_includes_metadata(self) -> None:
+        """idea_to_dict must include a 'metadata' key in its output."""
+        idea = self._make_idea_with_metadata({"regime": "trending", "contributing_signals": 3})
+        result = idea_to_dict(idea)
+        assert "metadata" in result, "SAFE-03: 'metadata' key missing from idea_to_dict output"
+        assert result["metadata"]["regime"] == "trending"
+        assert result["metadata"]["contributing_signals"] == 3
+
+    def test_idea_metadata_round_trip(self) -> None:
+        """Full round-trip: str/int metadata values are preserved exactly."""
+        idea = self._make_idea_with_metadata({"regime": "ranging", "contributing_signals": 2})
+        result = deserialize_idea(idea_to_dict(idea))
+        assert result.metadata == {"regime": "ranging", "contributing_signals": 2}
+
+    def test_idea_metadata_decimal_serialization(self) -> None:
+        """Decimal values in metadata must be serialized as str (not Decimal) to avoid orjson TypeError."""
+        idea = self._make_idea_with_metadata({"funding_rate": Decimal("0.0003")})
+        serialized = idea_to_dict(idea)
+        assert serialized["metadata"]["funding_rate"] == "0.0003", (
+            "SAFE-03: Decimal in metadata must be converted to str for JSON serialization"
+        )
+        assert not isinstance(serialized["metadata"]["funding_rate"], Decimal)
+
+    def test_idea_empty_metadata_round_trip(self) -> None:
+        """Empty metadata {} must round-trip to empty dict."""
+        idea = self._make_idea_with_metadata({})
+        result = deserialize_idea(idea_to_dict(idea))
+        assert result.metadata == {}
+
+    def test_idea_metadata_mixed_types(self) -> None:
+        """str, int, float, None values in metadata pass through unchanged."""
+        meta = {"name": "trending", "count": 5, "score": 0.75, "extra": None}
+        idea = self._make_idea_with_metadata(meta)
+        serialized = idea_to_dict(idea)
+        assert serialized["metadata"]["name"] == "trending"
+        assert serialized["metadata"]["count"] == 5
+        assert serialized["metadata"]["score"] == 0.75
+        assert serialized["metadata"]["extra"] is None
+
+
+# ---------------------------------------------------------------------------
+# TestDeserializeFundingPayment
+# ---------------------------------------------------------------------------
+
+
 class TestDeserializeFundingPayment:
     def test_round_trip(self) -> None:
         """funding_payment_to_dict -> deserialize_funding_payment produces equivalent."""

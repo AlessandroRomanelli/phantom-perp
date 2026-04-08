@@ -78,8 +78,8 @@ risk:
 
   regime_leverage:
     route_a:
-      trending_up: 8.0
-      trending_down: 8.0
+      trending_up: 5.0
+      trending_down: 5.0
       ranging: 4.0
       high_volatility: 2.0
       low_volatility: 5.0
