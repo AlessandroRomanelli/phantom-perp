@@ -144,6 +144,10 @@ notification:
     include_stop_loss_triggers: true
     include_funding_settlements: false
 
+messaging:
+  reclaim_idle_ms: 60000
+  reclaim_batch_size: 10
+
 monitoring:
   funding_alert_threshold_pct: 0.03
   margin_alert_threshold_pct: 50.0

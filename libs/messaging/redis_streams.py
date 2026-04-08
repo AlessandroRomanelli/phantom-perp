@@ -2,13 +2,36 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from typing import Any
 
 import orjson
 import redis.asyncio as aioredis
+import structlog
 
 from libs.messaging.base import Consumer, Publisher
+
+
+def _build_idle_map(
+    pending: list[dict[str, Any]],
+    min_idle_ms: int,
+) -> dict[bytes, str]:
+    """Build a map of message_id -> original consumer name for idle entries."""
+    idle_map: dict[bytes, str] = {}
+    for entry in pending:
+        idle_time = entry.get("time_since_delivered", 0)
+        if idle_time >= min_idle_ms:
+            msg_id = entry["message_id"]
+            raw_consumer = entry.get("consumer", b"unknown")
+            consumer_name = (
+                raw_consumer.decode()
+                if isinstance(raw_consumer, bytes)
+                else str(raw_consumer)
+            )
+            idle_map[msg_id] = consumer_name
+    return idle_map
 
 
 class RedisPublisher(Publisher):
@@ -74,6 +97,8 @@ class RedisConsumer(Consumer):
         redis_url: str = "redis://localhost:6379",
         block_ms: int = 5000,
         batch_size: int = 10,
+        reclaim_idle_ms: int = 60_000,
+        reclaim_batch_size: int = 10,
     ) -> None:
         self._redis: aioredis.Redis = aioredis.from_url(
             redis_url,
@@ -81,9 +106,16 @@ class RedisConsumer(Consumer):
         )
         self._block_ms = block_ms
         self._batch_size = batch_size
+        self._reclaim_idle_ms = reclaim_idle_ms
+        self._reclaim_batch_size = reclaim_batch_size
         self._channels: list[str] = []
         self._group = ""
         self._consumer_name = ""
+        self._reclaim_task: asyncio.Task[None] | None = None
+        self._reclaim_queue: asyncio.Queue[tuple[str, str, dict[str, Any]]] = (
+            asyncio.Queue()
+        )
+        self._logger = structlog.get_logger("libs.messaging.redis_consumer")
 
     async def subscribe(
         self,
@@ -115,6 +147,68 @@ class RedisConsumer(Consumer):
                 if "BUSYGROUP" not in str(e):
                     raise
 
+        self._reclaim_task = asyncio.create_task(
+            self._reclaim_loop(),
+            name=f"pel_reclaim_{self._consumer_name}",
+        )
+
+    async def _reclaim_loop(self) -> None:
+        """Background loop that reclaims idle PEL messages via XAUTOCLAIM."""
+        while True:
+            await asyncio.sleep(self._reclaim_idle_ms / 1000.0)
+            for channel in self._channels:
+                try:
+                    await self._reclaim_channel(channel)
+                except Exception:
+                    self._logger.warning(
+                        "pel_reclaim_error",
+                        channel=channel,
+                        exc_info=True,
+                    )
+
+    async def _reclaim_channel(self, channel: str) -> None:
+        """Reclaim idle messages from a single channel's PEL."""
+        pending = await self._redis.xpending_range(
+            name=channel,
+            groupname=self._group,
+            min="-",
+            max="+",
+            count=self._reclaim_batch_size,
+        )
+        idle_map = _build_idle_map(pending, self._reclaim_idle_ms)
+        if not idle_map:
+            return
+
+        result = await self._redis.xautoclaim(
+            name=channel,
+            groupname=self._group,
+            consumername=self._consumer_name,
+            min_idle_time=self._reclaim_idle_ms,
+            start_id="0-0",
+            count=self._reclaim_batch_size,
+        )
+        claimed_entries = result[1]
+
+        for msg_id_raw, fields in claimed_entries:
+            msg_id = (
+                msg_id_raw.decode()
+                if isinstance(msg_id_raw, bytes)
+                else str(msg_id_raw)
+            )
+            original = idle_map.get(msg_id_raw, "unknown")
+            self._logger.info(
+                "pel_message_reclaimed",
+                channel=channel,
+                original_consumer=original,
+                message_id=msg_id,
+                idle_ms=self._reclaim_idle_ms,
+            )
+            raw_data = fields.get(b"data") or fields.get("data")
+            if raw_data is None:
+                continue
+            payload: dict[str, Any] = orjson.loads(raw_data)
+            await self._reclaim_queue.put((channel, msg_id, payload))
+
     async def listen(self) -> AsyncIterator[tuple[str, str, dict[str, Any]]]:
         """Yield messages from subscribed streams.
 
@@ -124,6 +218,13 @@ class RedisConsumer(Consumer):
         streams = {ch: ">" for ch in self._channels}
 
         while True:
+            # Drain any reclaimed messages first
+            while not self._reclaim_queue.empty():
+                try:
+                    yield self._reclaim_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+
             results: list[Any] = await self._redis.xreadgroup(
                 groupname=self._group,
                 consumername=self._consumer_name,
@@ -166,5 +267,9 @@ class RedisConsumer(Consumer):
         await self._redis.xack(channel, group, message_id)
 
     async def close(self) -> None:
-        """Close the Redis connection."""
+        """Close the Redis connection and cancel reclaim task."""
+        if self._reclaim_task is not None:
+            self._reclaim_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._reclaim_task
         await self._redis.aclose()
