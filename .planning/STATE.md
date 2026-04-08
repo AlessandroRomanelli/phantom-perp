@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.3
-milestone_name: Concerns Resolution
-status: complete
-stopped_at: v1.3 milestone complete — all 5 phases shipped
-last_updated: "2026-04-08T21:45:00.000Z"
+milestone: v1.4
+milestone_name: Forensic Audit Fixes
+status: defining_requirements
+stopped_at: v1.4 milestone started — defining requirements
+last_updated: "2026-04-08T22:15:00.000Z"
 last_activity: 2026-04-08
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -20,18 +20,18 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-04-08)
 
-**Core value:** Harden the system — fix critical bugs, security gaps, and tech debt for reliable paper and live trading
-**Current focus:** v1.3 complete — all concerns resolved
+**Core value:** Fix structural profitability issues — eliminate bugs, recalibrate sizing/execution, fix corrupted data
+**Current focus:** v1.4 Forensic Audit Fixes — defining requirements
 
 ## Current Position
 
-Phase: 20 (final)
-Plan: All complete
-Status: v1.3 Milestone Complete
-Last activity: 2026-04-08
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-08 — Milestone v1.4 started
 
 ```
-Progress: [████████████████████] 5/5 phases
+Progress: [                    ] 0/? phases
 ```
 
 ## Performance Metrics
