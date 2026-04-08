@@ -76,7 +76,7 @@ def bollinger_bands(
     std = np.full(n, np.nan, dtype=np.float64)
 
     for i in range(period - 1, n):
-        std[i] = np.std(values[i - period + 1 : i + 1], ddof=0)
+        std[i] = np.std(values[i - period + 1 : i + 1], ddof=1)
 
     upper = middle + num_std * std
     lower = middle - num_std * std
