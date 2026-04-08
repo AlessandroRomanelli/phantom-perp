@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import signal
 import sys
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -534,9 +535,9 @@ async def run_agent() -> None:
 
     cb = CircuitBreaker()
 
-    # Track processed order IDs for deduplication on redelivery
-    processed_order_ids: set[str] = set()
-    # Cap the dedup set to prevent unbounded memory growth
+    # Track processed order IDs for deduplication on redelivery (FIFO-ordered)
+    processed_order_ids: OrderedDict[str, None] = OrderedDict()
+    # Cap the dedup dict to prevent unbounded memory growth
     _DEDUP_SET_MAX = 10_000
 
     channel_a = Channel.approved_orders(Route.A)
@@ -859,12 +860,9 @@ async def run_agent() -> None:
                     )
 
                 # Track this order as processed for deduplication
-                processed_order_ids.add(order_id)
-                if len(processed_order_ids) > _DEDUP_SET_MAX:
-                    # Evict oldest entries (set is unordered, but this bounds memory)
-                    to_remove = len(processed_order_ids) - _DEDUP_SET_MAX
-                    for _ in range(to_remove):
-                        processed_order_ids.pop()
+                processed_order_ids[order_id] = None
+                while len(processed_order_ids) > _DEDUP_SET_MAX:
+                    processed_order_ids.popitem(last=False)  # FIFO: evict oldest
 
             except (KeyError, ValueError) as e:
                 logger.warning(
