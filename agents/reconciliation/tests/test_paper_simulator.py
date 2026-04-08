@@ -693,12 +693,13 @@ def _make_fill_record(
     fee_usdc: str,
     is_maker: bool = True,
     route: Route = Route.A,
+    order_id: str | None = None,
 ) -> FillRecord:
     """Build a minimal FillRecord for restore tests."""
     from libs.common.utils import generate_id
     return FillRecord(
         fill_id=generate_id("fill"),
-        order_id=generate_id("order"),
+        order_id=order_id or generate_id("order"),
         portfolio_target=route.value,
         instrument=instrument,
         side=side,
