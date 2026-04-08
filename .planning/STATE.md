@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Forensic Audit Fixes
-status: defining_requirements
-stopped_at: v1.4 milestone started — defining requirements
-last_updated: "2026-04-08T22:15:00.000Z"
+status: roadmap_created
+stopped_at: v1.4 roadmap created — ready to plan Phase 21
+last_updated: "2026-04-08T23:00:00.000Z"
 last_activity: 2026-04-08
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-08)
 
 **Core value:** Fix structural profitability issues — eliminate bugs, recalibrate sizing/execution, fix corrupted data
-**Current focus:** v1.4 Forensic Audit Fixes — defining requirements
+**Current focus:** v1.4 Forensic Audit Fixes — Phase 21 (Safety Critical Fixes) next
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 21 — Safety Critical Fixes (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-04-08 — Milestone v1.4 started
+Status: Roadmap created, ready for phase planning
+Last activity: 2026-04-08 — v1.4 roadmap created
 
 ```
-Progress: [                    ] 0/? phases
+Progress: [                    ] 0/5 phases
 ```
 
 ## Performance Metrics
@@ -46,13 +46,11 @@ Progress: [                    ] 0/? phases
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 16. Centralized Deserialization | TBD | - | - |
-| 17. Bug Fixes | TBD | - | - |
-| 18. Messaging Infrastructure | TBD | - | - |
-| 19. Core Infrastructure Tests | TBD | - | - |
-| 20. Risk & Indicator Tests | TBD | - | - |
-| 16 | 2 | - | - |
-| 17 | 2 | - | - |
+| 16. Centralized Deserialization | 2 | - | - |
+| 17. Bug Fixes | 2 | - | - |
+| 18. Messaging Infrastructure | 1 | - | - |
+| 19. Core Infrastructure Tests | 2 | - | - |
+| 20. Risk & Indicator Tests | 2 | - | - |
 
 *Updated after each plan completion*
 
@@ -87,6 +85,9 @@ Progress: [                    ] 0/? phases
 - [Phase 14]: TUNER_CRON env var with sed substitution -- configurable daily default 00:00 UTC per D-05
 - v1.3: BUG-04 (centralize deserialization) precedes BUG-01/BUG-03 — fixes are implemented in the centralized module, not patched in-place per agent
 - v1.3: Phase 18 (INFR-01 PEL cleanup) precedes Phase 19 (TEST-01 messaging tests) — TEST-01 must cover the XAUTOCLAIM reclaim path added in Phase 18
+- v1.4: Tier 1 safety fixes (Phase 21) precede all other work — trustworthy paper results are prerequisite for measuring profitability improvements
+- v1.4: Data pipeline fixes (Phase 22) precede sizing optimization (Phase 23) — correct indicator values needed before recalibrating position sizing
+- v1.4: Phase 24 (risk engine) depends only on Phase 21, not Phase 22/23 — can be parallelized with data/sizing work if needed
 
 ### Blockers/Concerns
 
@@ -98,6 +99,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-08T12:00:00.000Z
-Stopped at: v1.3 roadmap created — ready to plan Phase 16
+Last session: 2026-04-08T23:00:00.000Z
+Stopped at: v1.4 roadmap created — ready to plan Phase 21
 Resume file: None

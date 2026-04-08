@@ -63,16 +63,29 @@ Deferred to a later milestone.
 
 ## Traceability
 
-Updated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (to be filled by roadmapper) | | |
+| SAFE-01 | Phase 21 | Pending |
+| SAFE-02 | Phase 21 | Pending |
+| SAFE-03 | Phase 21 | Pending |
+| SAFE-04 | Phase 21 | Pending |
+| SAFE-05 | Phase 21 | Pending |
+| PROF-01 | Phase 23 | Pending |
+| PROF-02 | Phase 23 | Pending |
+| PROF-03 | Phase 22 | Pending |
+| PROF-04 | Phase 22 | Pending |
+| PROF-05 | Phase 23 | Pending |
+| ROBU-01 | Phase 24 | Pending |
+| ROBU-02 | Phase 22 | Pending |
+| ROBU-03 | Phase 25 | Pending |
+| ROBU-04 | Phase 24 | Pending |
+| ROBU-05 | Phase 22 | Pending |
+| ROBU-06 | Phase 23 | Pending |
 
 **Coverage:**
 - v1.4 requirements: 16 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 16
+- Mapped to phases: 16
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-08*

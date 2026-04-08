@@ -6,6 +6,7 @@
 - ✅ **v1.1 Multi-Instrument Ingestion** - Phases 6-9.1 (shipped 2026-03-23)
 - 🚧 **v1.2 AI-Powered Parameter Tuner** - Phases 10-15 (in progress)
 - ✅ **v1.3 Concerns Resolution** - Phases 16-20 (shipped 2026-04-08)
+- 🚧 **v1.4 Forensic Audit Fixes** - Phases 21-25
 
 ## Phases
 
@@ -27,7 +28,7 @@ See MILESTONES.md for v1.1 accomplishments.
 
 **Milestone Goal:** Add a daily tuner container that uses Claude to analyze Portfolio A's trading performance and intelligently adjust strategy + risk parameters — closing the gap between Portfolio A (-$204) and Portfolio B (+$120) by learning from trade history.
 
-### 🚧 v1.3 Concerns Resolution (In Progress)
+### ✅ v1.3 Concerns Resolution (Shipped 2026-04-08)
 
 **Milestone Goal:** Fix critical bugs, security gaps, and tech debt identified in the codebase audit — hardening the system for reliable paper and live trading.
 
@@ -36,6 +37,16 @@ See MILESTONES.md for v1.1 accomplishments.
 - [x] **Phase 18: Messaging Infrastructure** - Add XAUTOCLAIM-based PEL cleanup for crashed consumers (completed 2026-04-08)
 - [x] **Phase 19: Core Infrastructure Tests** - Unit tests for libs/messaging and libs/portfolio/router (completed 2026-04-08)
 - [x] **Phase 20: Risk & Indicator Tests** - Unit tests for risk submodules and indicator modules (completed 2026-04-08)
+
+### 🚧 v1.4 Forensic Audit Fixes
+
+**Milestone Goal:** Fix structural profitability issues identified by the 5-agent forensic audit — eliminate bugs causing financial loss, recalibrate sizing/execution to overcome fee drag, and fix corrupted data inputs degrading signal quality.
+
+- [ ] **Phase 21: Safety Critical Fixes** - Eliminate double execution, wire real P&L into kill switches, restore safety constants, fix credential routing
+- [ ] **Phase 22: Data Pipeline Fixes** - Fix corrupted bar_volumes, ADX NaN bug, Bollinger ddof, and index price sourcing
+- [ ] **Phase 23: Sizing & Execution Optimization** - Recalibrate conviction sizing, switch SL to maker fees, add fee filter, cap BTC notional
+- [ ] **Phase 24: Risk Engine Enhancements** - Add cross-instrument correlation check and equity HWM drawdown tracking
+- [ ] **Phase 25: Paper Simulator Fidelity** - Probabilistic fill model with adverse selection and SL slippage
 
 ## Phase Details
 
@@ -58,7 +69,7 @@ Plans:
 **Depends on**: Phase 10
 **Requirements**: METR-01, METR-02, METR-03, METR-04
 **Success Criteria** (what must be TRUE):
-  1. Tuner computes expectancy (avg_win × win_rate − avg_loss × loss_rate) as primary metric for each (strategy, instrument) pair
+  1. Tuner computes expectancy (avg_win x win_rate - avg_loss x loss_rate) as primary metric for each (strategy, instrument) pair
   2. Tuner computes profit factor (gross profit / gross loss) per strategy per instrument
   3. Tuner computes max drawdown amount and duration per strategy
   4. All P&L metrics are fee-adjusted (trading fees and funding costs subtracted)
@@ -119,7 +130,7 @@ Plans:
   1. Operator receives a Telegram message after each tuning run listing every changed parameter with Claude's reasoning
   2. Telegram message shows before and after values for each changed parameter (or an explicit no-change message when nothing changed)
   3. Every tuning run produces a structured log entry regardless of whether changes were applied
-  4. End-to-end pipeline — data → metrics → bounds → Claude → config write → Telegram — completes successfully against live PostgreSQL data
+  4. End-to-end pipeline — data -> metrics -> bounds -> Claude -> config write -> Telegram — completes successfully against live PostgreSQL data
 **Plans**: 2 plans
 Plans:
 - [ ] 15-01-PLAN.md — Telegram notification module: report formatter, TunerNotifier, entrypoint hook (TDD)
@@ -174,7 +185,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. RedisPublisher tests cover publish success, publish failure, and connection error paths using fakeredis
   2. RedisConsumer tests cover consume, acknowledge, and error paths — including the XAUTOCLAIM reclaim path added in Phase 18
-  3. Portfolio router tests verify every routing rule: time horizon short → Route A, high-frequency source → Route A, low conviction → Route B, default fallback
+  3. Portfolio router tests verify every routing rule: time horizon short -> Route A, high-frequency source -> Route A, low conviction -> Route B, default fallback
   4. Router tests cover all 5 instruments and both routes — no routing combination is left untested
 **Plans:** 2/2 plans complete
 Plans:
@@ -196,10 +207,64 @@ Plans:
 - [x] 20-01-PLAN.md — Risk submodule tests (Route A/B margin, liquidation, equity bounds)
 - [x] 20-02-PLAN.md — Indicator known-value and boundary tests
 
+### Phase 21: Safety Critical Fixes
+**Goal**: The system cannot lose money through known infrastructure bugs — double execution is impossible, kill switches use real P&L, metadata survives serialization, leverage constant matches spec, and Route B uses correct credentials
+**Depends on**: Phase 20 (v1.3 shipped)
+**Requirements**: SAFE-01, SAFE-02, SAFE-03, SAFE-04, SAFE-05
+**Success Criteria** (what must be TRUE):
+  1. In paper mode, an order published to the execution stream is executed exactly once — the PaperBroker and paper_simulator do not both act on the same order
+  2. The risk agent's daily loss kill switch fires when cumulative realized P&L (from reconciliation) exceeds the threshold — not when a hardcoded zero is compared
+  3. A RankedTradeIdea serialized to Redis and deserialized back retains its funding_rate field with the original value, enabling the funding rate circuit breaker to evaluate correctly
+  4. `MAX_LEVERAGE_GLOBAL` in `libs/common/constants.py` equals `Decimal("5.0")` and all leverage checks reference this constant
+  5. The reconciliation agent's Route B portfolio poll authenticates with Route B API credentials (KEY_B, SECRET_B, PASSPHRASE_B), not Route A credentials
+**Plans**: TBD
+
+### Phase 22: Data Pipeline Fixes
+**Goal**: Signal strategies receive correct indicator values and market data — bar_volumes are true per-bar deltas, ADX produces valid numbers, Bollinger Bands use correct statistics, and index_price is reliably sourced
+**Depends on**: Phase 21
+**Requirements**: PROF-03, PROF-04, ROBU-02, ROBU-05
+**Success Criteria** (what must be TRUE):
+  1. FeatureStore `bar_volumes` returns the volume traded within each candle bar (not the difference between consecutive 24h cumulative values) and the VWAP strategy produces correct volume-weighted prices
+  2. The ADX indicator never returns NaN for a valid input series of sufficient length — `np.isnan()` is used for all NaN comparisons in the indicator pipeline
+  3. Bollinger Bands use `ddof=1` (sample standard deviation) consistently with all other volatility calculations in the codebase
+  4. MarketSnapshot `index_price` is populated from exchange data when available, and strategies that depend on basis (index vs mark) gracefully degrade or skip when index_price is unavailable
+**Plans**: TBD
+
+### Phase 23: Sizing & Execution Optimization
+**Goal**: Trades are sized large enough to overcome fee drag and protective orders minimize execution costs — the system is net-profitable on a per-trade basis after fees
+**Depends on**: Phase 22
+**Requirements**: PROF-01, PROF-02, PROF-05, ROBU-06
+**Success Criteria** (what must be TRUE):
+  1. A strategy signal with conviction 0.5 produces a position size whose expected profit (based on historical win rate and average win) exceeds estimated round-trip fees
+  2. Stop-loss orders are placed as STOP_LIMIT with a configurable limit buffer (e.g., 0.1%) below the stop price, paying maker fee instead of taker fee
+  3. The risk engine rejects any proposed trade where estimated round-trip fees (entry + exit) exceed the signal's expected edge, logging the rejection reason
+  4. BTC-PERP either has a higher max_position_notional_usdc cap or OBI strategy has a longer cooldown — whichever is configured, the result is fewer fee-negative high-frequency BTC trades
+**Plans**: TBD
+
+### Phase 24: Risk Engine Enhancements
+**Goal**: The risk engine prevents concentrated directional bets across correlated instruments and tracks true peak-to-trough drawdown for kill switch decisions
+**Depends on**: Phase 21
+**Requirements**: ROBU-01, ROBU-04
+**Success Criteria** (what must be TRUE):
+  1. The risk engine rejects a new LONG ETH-PERP trade when existing LONG positions in BTC-PERP and SOL-PERP already exceed a configurable net directional exposure threshold
+  2. The equity high-water mark is updated on every portfolio snapshot and the drawdown kill switch compares current equity to the true all-time peak — not a daily-reset proxy
+  3. The correlation exposure check and HWM drawdown are both configurable via YAML and can be disabled per-route without code changes
+**Plans**: TBD
+
+### Phase 25: Paper Simulator Fidelity
+**Goal**: Paper mode results approximate real-world execution quality — fills are not guaranteed, adverse selection is modeled, and stop-loss orders experience realistic slippage
+**Depends on**: Phase 23
+**Requirements**: ROBU-03
+**Success Criteria** (what must be TRUE):
+  1. The paper simulator does not fill 100% of limit orders instantly — fill probability depends on price proximity to the order price and available volume
+  2. Filled orders experience adverse selection: the average fill price is worse than the order price by a configurable amount reflecting typical market impact
+  3. Stop-loss orders in paper mode experience configurable slippage (e.g., 0.05-0.15%) reflecting real-world stop execution in fast markets
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20
+Phases execute in numeric order: 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17 -> 18 -> 19 -> 20 -> 21 -> 22 -> 23 -> 24 -> 25
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -214,3 +279,8 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16 �
 | 18. Messaging Infrastructure | v1.3 | 1/1 | Complete    | 2026-04-08 |
 | 19. Core Infrastructure Tests | v1.3 | 2/2 | Complete    | 2026-04-08 |
 | 20. Risk & Indicator Tests | v1.3 | 2/2 | Complete    | 2026-04-08 |
+| 21. Safety Critical Fixes | v1.4 | 0/? | Not started | - |
+| 22. Data Pipeline Fixes | v1.4 | 0/? | Not started | - |
+| 23. Sizing & Execution Optimization | v1.4 | 0/? | Not started | - |
+| 24. Risk Engine Enhancements | v1.4 | 0/? | Not started | - |
+| 25. Paper Simulator Fidelity | v1.4 | 0/? | Not started | - |
