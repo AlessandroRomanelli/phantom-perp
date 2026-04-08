@@ -14,20 +14,17 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from datetime import datetime, timedelta
-from decimal import Decimal
-from typing import Any
+from datetime import timedelta
 
 from libs.common.config import get_settings, load_yaml_config
 from libs.common.logging import setup_logging
-from libs.common.models.enums import (
-    OrderSide,
-    OrderStatus,
-    OrderType,
-    Route,
-    SignalSource,
-)
+from libs.common.models.enums import Route
 from libs.common.models.order import ApprovedOrder, ProposedOrder
+from libs.common.serialization import (
+    approved_order_to_dict,
+    deserialize_approved_order,
+    deserialize_proposed_order,
+)
 from libs.common.utils import utc_now
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
@@ -39,81 +36,6 @@ logger = setup_logging("confirmation", json_output=False)
 
 EXPIRY_CHECK_INTERVAL = 15  # seconds
 DELAYED_RESEND_INTERVAL = 30  # seconds
-
-
-# ---------------------------------------------------------------------------
-# Serialization helpers
-# ---------------------------------------------------------------------------
-
-
-def deserialize_order(payload: dict[str, Any]) -> ProposedOrder:
-    """Reconstruct a ProposedOrder from the dict published by the risk agent."""
-    return ProposedOrder(
-        order_id=payload["order_id"],
-        signal_id=payload["signal_id"],
-        instrument=payload["instrument"],
-        route=Route(payload["route"]),
-        side=OrderSide(payload["side"]),
-        size=Decimal(payload["size"]),
-        order_type=OrderType(payload["order_type"]),
-        conviction=float(payload["conviction"]),
-        sources=[SignalSource(s) for s in payload["sources"].split(",") if s],
-        estimated_margin_required_usdc=Decimal(
-            payload["estimated_margin_required_usdc"],
-        ),
-        estimated_liquidation_price=Decimal(payload["estimated_liquidation_price"]),
-        estimated_fee_usdc=Decimal(payload["estimated_fee_usdc"]),
-        estimated_funding_cost_1h_usdc=Decimal(
-            payload["estimated_funding_cost_1h_usdc"],
-        ),
-        proposed_at=datetime.fromisoformat(payload["proposed_at"]),
-        limit_price=Decimal(payload["limit_price"]) if payload.get("limit_price") else None,
-        stop_loss=Decimal(payload["stop_loss"]) if payload.get("stop_loss") else None,
-        take_profit=Decimal(payload["take_profit"]) if payload.get("take_profit") else None,
-        leverage=Decimal(payload["leverage"]),
-        reduce_only=payload["reduce_only"] == "True" if isinstance(payload["reduce_only"], str) else bool(payload["reduce_only"]),
-        status=OrderStatus(payload["status"]),
-        reasoning=payload.get("reasoning", ""),
-    )
-
-
-def approved_order_to_dict(order: ApprovedOrder) -> dict[str, Any]:
-    """Serialize an ApprovedOrder for publishing to stream:confirmed_orders."""
-    return {
-        "order_id": order.order_id,
-        "route": order.route.value,
-        "instrument": order.instrument,
-        "side": order.side.value,
-        "size": str(order.size),
-        "order_type": order.order_type.value,
-        "limit_price": str(order.limit_price) if order.limit_price else "",
-        "stop_loss": str(order.stop_loss) if order.stop_loss else "",
-        "take_profit": str(order.take_profit) if order.take_profit else "",
-        "leverage": str(order.leverage),
-        "reduce_only": str(order.reduce_only),
-        "approved_at": order.approved_at.isoformat(),
-    }
-
-
-def deserialize_approved_order(payload: dict[str, Any]) -> ApprovedOrder:
-    """Reconstruct an ApprovedOrder from stream:confirmed_orders payload.
-
-    Used by the execution agent to consume confirmed orders.
-    """
-    return ApprovedOrder(
-        order_id=payload["order_id"],
-        route=Route(payload["route"]),
-        instrument=payload["instrument"],
-        side=OrderSide(payload["side"]),
-        size=Decimal(payload["size"]),
-        order_type=OrderType(payload["order_type"]),
-        limit_price=Decimal(payload["limit_price"]) if payload.get("limit_price") else None,
-        stop_loss=Decimal(payload["stop_loss"]) if payload.get("stop_loss") else None,
-        take_profit=Decimal(payload["take_profit"]) if payload.get("take_profit") else None,
-        leverage=Decimal(payload["leverage"]),
-        reduce_only=payload["reduce_only"] == "True" if isinstance(payload["reduce_only"], str) else bool(payload["reduce_only"]),
-        approved_at=datetime.fromisoformat(payload["approved_at"]),
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +132,7 @@ async def run_agent() -> None:
         order_count = 0
         async for channel, msg_id, payload in consumer.listen():
             try:
-                order = deserialize_order(payload)
+                order = deserialize_proposed_order(payload)
             except (KeyError, ValueError) as e:
                 logger.warning("order_deserialize_error", error=str(e))
                 await consumer.ack(channel, "confirmation_agent", msg_id)

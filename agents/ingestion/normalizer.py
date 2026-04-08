@@ -7,11 +7,11 @@ agents (signals, risk, monitoring) consume.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Any
 
 from libs.common.models.market_snapshot import MarketSnapshot
+from libs.common.serialization import snapshot_to_dict
 from libs.common.utils import utc_now
 
 from agents.ingestion.enrichment import (
@@ -92,37 +92,6 @@ def build_snapshot(
         volatility_1h=compute_volatility_1h(state),
         volatility_24h=compute_volatility_24h(state),
     )
-
-
-def snapshot_to_dict(snapshot: MarketSnapshot) -> dict[str, Any]:
-    """Serialize a MarketSnapshot to a JSON-compatible dict for Redis.
-
-    Converts Decimal fields to strings and datetime to ISO 8601.
-
-    Args:
-        snapshot: The MarketSnapshot to serialize.
-
-    Returns:
-        Dict ready for orjson serialization.
-    """
-    return {
-        "timestamp": snapshot.timestamp.isoformat(),
-        "instrument": snapshot.instrument,
-        "mark_price": str(snapshot.mark_price),
-        "index_price": str(snapshot.index_price),
-        "last_price": str(snapshot.last_price),
-        "best_bid": str(snapshot.best_bid),
-        "best_ask": str(snapshot.best_ask),
-        "spread_bps": snapshot.spread_bps,
-        "volume_24h": str(snapshot.volume_24h),
-        "open_interest": str(snapshot.open_interest),
-        "funding_rate": str(snapshot.funding_rate),
-        "next_funding_time": snapshot.next_funding_time.isoformat(),
-        "hours_since_last_funding": snapshot.hours_since_last_funding,
-        "orderbook_imbalance": snapshot.orderbook_imbalance,
-        "volatility_1h": snapshot.volatility_1h,
-        "volatility_24h": snapshot.volatility_24h,
-    }
 
 
 def _next_hour(now: datetime) -> datetime:

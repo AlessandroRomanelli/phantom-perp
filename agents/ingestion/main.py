@@ -39,7 +39,9 @@ from libs.common.logging import setup_logging
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisPublisher
 
-from agents.ingestion.normalizer import build_snapshot, snapshot_to_dict
+from libs.common.serialization import snapshot_to_dict
+
+from agents.ingestion.normalizer import build_snapshot
 from agents.ingestion.sources.candles import run_all_candle_pollers
 from agents.ingestion.sources.funding_rate import run_funding_poller
 from agents.ingestion.sources.ws_market_data import run_ws_market_data

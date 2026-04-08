@@ -43,6 +43,8 @@ from libs.common.models.trade_idea import RankedTradeIdea
 from libs.common.utils import generate_id, round_to_tick, utc_now
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
+from libs.common.serialization import deserialize_idea, order_to_dict
+
 from agents.risk.dynamic_leverage import compute_effective_leverage_cap
 from agents.risk.fee_calculator import estimate_fee
 from agents.risk.funding_cost_estimator import estimate_funding_cost
@@ -458,55 +460,6 @@ class RiskEngine:
         )
 
         return RiskCheckResult(approved=True, proposed_order=order)
-
-
-# ---------------------------------------------------------------------------
-# Serialization helpers
-# ---------------------------------------------------------------------------
-
-def deserialize_idea(payload: dict[str, Any]) -> RankedTradeIdea:
-    """Rebuild a RankedTradeIdea from a Redis stream payload dict."""
-    return RankedTradeIdea(
-        idea_id=payload["idea_id"],
-        timestamp=datetime.fromisoformat(payload["timestamp"]),
-        instrument=payload["instrument"],
-        route=Route(payload["route"]),
-        direction=PositionSide(payload["direction"]),
-        conviction=float(payload["conviction"]),
-        sources=[SignalSource(s) for s in payload["sources"].split(",")],
-        time_horizon=timedelta(seconds=float(payload["time_horizon_seconds"])),
-        entry_price=Decimal(payload["entry_price"]) if payload.get("entry_price") else None,
-        stop_loss=Decimal(payload["stop_loss"]) if payload.get("stop_loss") else None,
-        take_profit=Decimal(payload["take_profit"]) if payload.get("take_profit") else None,
-        reasoning=payload.get("reasoning", ""),
-    )
-
-
-def order_to_dict(order: ProposedOrder) -> dict[str, Any]:
-    """Serialize a ProposedOrder to a JSON-compatible dict for Redis."""
-    return {
-        "order_id": order.order_id,
-        "signal_id": order.signal_id,
-        "instrument": order.instrument,
-        "route": order.route.value,
-        "side": order.side.value,
-        "size": str(order.size),
-        "order_type": order.order_type.value,
-        "conviction": order.conviction,
-        "sources": ",".join(s.value for s in order.sources),
-        "estimated_margin_required_usdc": str(order.estimated_margin_required_usdc),
-        "estimated_liquidation_price": str(order.estimated_liquidation_price),
-        "estimated_fee_usdc": str(order.estimated_fee_usdc),
-        "estimated_funding_cost_1h_usdc": str(order.estimated_funding_cost_1h_usdc),
-        "proposed_at": order.proposed_at.isoformat(),
-        "limit_price": str(order.limit_price) if order.limit_price else "",
-        "stop_loss": str(order.stop_loss) if order.stop_loss else "",
-        "take_profit": str(order.take_profit) if order.take_profit else "",
-        "leverage": str(order.leverage),
-        "reduce_only": str(order.reduce_only),
-        "status": order.status.value,
-        "reasoning": order.reasoning,
-    }
 
 
 # ---------------------------------------------------------------------------

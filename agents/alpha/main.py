@@ -10,8 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from datetime import datetime, timedelta
-from decimal import Decimal
+from datetime import timedelta
 from typing import Any
 
 from agents.alpha.combiner import AlphaCombiner
@@ -19,83 +18,13 @@ from agents.alpha.regime_detector import RegimeDetector
 from agents.alpha.scorecard import StrategyScorecard
 from libs.common.config import get_settings, load_yaml_config
 from libs.common.logging import setup_logging
-from libs.common.models.enums import MarketRegime, PositionSide, Route, SignalSource
-from libs.common.models.market_snapshot import MarketSnapshot
-from libs.common.models.signal import StandardSignal
-from libs.common.models.trade_idea import RankedTradeIdea
+from libs.common.models.enums import MarketRegime, Route, SignalSource
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
+from libs.common.serialization import deserialize_signal, deserialize_snapshot, idea_to_dict
 from libs.portfolio.router import RouteRouter
 
 logger = setup_logging("alpha", json_output=False)
-
-
-# ---------------------------------------------------------------------------
-# Serialization helpers
-# ---------------------------------------------------------------------------
-
-
-def deserialize_snapshot(payload: dict[str, Any]) -> MarketSnapshot:
-    """Rebuild a MarketSnapshot from a Redis stream payload dict."""
-    return MarketSnapshot(
-        timestamp=datetime.fromisoformat(payload["timestamp"]),
-        instrument=payload["instrument"],
-        mark_price=Decimal(payload["mark_price"]),
-        index_price=Decimal(payload["index_price"]),
-        last_price=Decimal(payload["last_price"]),
-        best_bid=Decimal(payload["best_bid"]),
-        best_ask=Decimal(payload["best_ask"]),
-        spread_bps=float(payload["spread_bps"]),
-        volume_24h=Decimal(payload["volume_24h"]),
-        open_interest=Decimal(payload["open_interest"]),
-        funding_rate=Decimal(payload["funding_rate"]),
-        next_funding_time=datetime.fromisoformat(payload["next_funding_time"]),
-        hours_since_last_funding=float(payload["hours_since_last_funding"]),
-        orderbook_imbalance=float(payload["orderbook_imbalance"]),
-        volatility_1h=float(payload["volatility_1h"] or 0.0),
-        volatility_24h=float(payload["volatility_24h"] or 0.0),
-    )
-
-
-def deserialize_signal(payload: dict[str, Any]) -> StandardSignal:
-    """Rebuild a StandardSignal from a Redis stream payload dict."""
-    suggested = payload.get("suggested_route")
-    return StandardSignal(
-        signal_id=payload["signal_id"],
-        timestamp=datetime.fromisoformat(payload["timestamp"]),
-        instrument=payload["instrument"],
-        direction=PositionSide(payload["direction"]),
-        conviction=float(payload["conviction"]),
-        source=SignalSource(payload["source"]),
-        time_horizon=timedelta(seconds=float(payload["time_horizon_seconds"])),
-        reasoning=payload.get("reasoning", ""),
-        suggested_route=Route(suggested) if suggested else None,
-        entry_price=Decimal(payload["entry_price"]) if payload.get("entry_price") else None,
-        stop_loss=Decimal(payload["stop_loss"]) if payload.get("stop_loss") else None,
-        take_profit=Decimal(payload["take_profit"]) if payload.get("take_profit") else None,
-        metadata=payload.get("metadata", {}),
-    )
-
-
-def idea_to_dict(idea: RankedTradeIdea) -> dict[str, Any]:
-    """Serialize a RankedTradeIdea for Redis.
-
-    Format must match agents.risk.main.deserialize_idea().
-    """
-    return {
-        "idea_id": idea.idea_id,
-        "timestamp": idea.timestamp.isoformat(),
-        "instrument": idea.instrument,
-        "route": idea.route.value,
-        "direction": idea.direction.value,
-        "conviction": idea.conviction,
-        "sources": ",".join(s.value for s in idea.sources),
-        "time_horizon_seconds": int(idea.time_horizon.total_seconds()),
-        "entry_price": str(idea.entry_price) if idea.entry_price else None,
-        "stop_loss": str(idea.stop_loss) if idea.stop_loss else None,
-        "take_profit": str(idea.take_profit) if idea.take_profit else None,
-        "reasoning": idea.reasoning,
-    }
 
 
 # ---------------------------------------------------------------------------

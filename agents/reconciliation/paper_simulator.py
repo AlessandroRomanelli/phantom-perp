@@ -25,9 +25,8 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -45,16 +44,17 @@ from libs.common.models.funding import FundingPayment
 from libs.common.models.order import Fill, ProposedOrder
 from libs.common.models.portfolio import PortfolioSnapshot
 from libs.common.models.position import PerpPosition
+from libs.common.serialization import (
+    deserialize_proposed_order,
+    fill_to_dict,
+    funding_payment_to_dict,
+    portfolio_snapshot_to_dict,
+)
 from libs.common.utils import generate_id, utc_now
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
 from libs.storage.models import FillRecord
 from libs.storage.repository import TunerRepository
-
-from agents.reconciliation.main import (
-    funding_payment_to_dict,
-    portfolio_snapshot_to_dict,
-)
 
 logger = setup_logging("paper_simulator", json_output=False)
 
@@ -63,55 +63,6 @@ PAPER_INITIAL_EQUITY = Decimal("10000")
 
 # How often to publish periodic snapshots (seconds)
 SNAPSHOT_INTERVAL = 10
-
-
-# ---------------------------------------------------------------------------
-# Serialization helpers (inlined to avoid cross-agent import dependency)
-# ---------------------------------------------------------------------------
-
-
-def deserialize_proposed_order(payload: dict[str, Any]) -> ProposedOrder:
-    """Reconstruct a ProposedOrder from stream:approved_orders payload."""
-    return ProposedOrder(
-        order_id=payload["order_id"],
-        signal_id=payload["signal_id"],
-        instrument=payload["instrument"],
-        route=Route(payload["route"]),
-        side=OrderSide(payload["side"]),
-        size=Decimal(payload["size"]),
-        order_type=OrderType(payload["order_type"]),
-        conviction=float(payload["conviction"]),
-        sources=[SignalSource(s) for s in payload["sources"].split(",") if s],
-        estimated_margin_required_usdc=Decimal(payload["estimated_margin_required_usdc"]),
-        estimated_liquidation_price=Decimal(payload["estimated_liquidation_price"]),
-        estimated_fee_usdc=Decimal(payload["estimated_fee_usdc"]),
-        estimated_funding_cost_1h_usdc=Decimal(payload["estimated_funding_cost_1h_usdc"]),
-        proposed_at=datetime.fromisoformat(payload["proposed_at"]),
-        limit_price=Decimal(payload["limit_price"]) if payload.get("limit_price") else None,
-        stop_loss=Decimal(payload["stop_loss"]) if payload.get("stop_loss") else None,
-        take_profit=Decimal(payload["take_profit"]) if payload.get("take_profit") else None,
-        leverage=Decimal(payload["leverage"]),
-        reduce_only=payload["reduce_only"] == "True" if isinstance(payload["reduce_only"], str) else bool(payload["reduce_only"]),
-        status=OrderStatus(payload["status"]),
-        reasoning=payload.get("reasoning", ""),
-    )
-
-
-def fill_to_dict(fill: Fill) -> dict[str, Any]:
-    """Serialize a Fill for publishing to stream:exchange_events:*."""
-    return {
-        "fill_id": fill.fill_id,
-        "order_id": fill.order_id,
-        "route": fill.route.value,
-        "instrument": fill.instrument,
-        "side": fill.side.value,
-        "size": str(fill.size),
-        "price": str(fill.price),
-        "fee_usdc": str(fill.fee_usdc),
-        "is_maker": str(fill.is_maker),
-        "filled_at": fill.filled_at.isoformat(),
-        "trade_id": fill.trade_id,
-    }
 
 
 async def _persist_fill(repo: TunerRepository | None, fill: Fill) -> None:

@@ -50,6 +50,13 @@ from libs.storage.models import FillRecord, OrderSignalRecord
 from libs.storage.relational import RelationalStore, init_db
 from libs.storage.repository import TunerRepository
 
+from libs.common.serialization import (
+    deserialize_approved_order,
+    deserialize_fill,
+    deserialize_proposed_order,
+    fill_to_dict,
+)
+
 from agents.execution.algo_selector import select_algo
 from agents.execution.circuit_breaker import CircuitBreaker
 from agents.execution.config import ExecutionConfig, load_execution_config
@@ -61,103 +68,6 @@ from agents.execution.stop_loss_manager import (
 )
 
 logger = setup_logging("execution_agent", json_output=False)
-
-
-# ---------------------------------------------------------------------------
-# Serialization helpers
-# ---------------------------------------------------------------------------
-
-
-def deserialize_proposed_order(payload: dict[str, Any]) -> ProposedOrder:
-    """Reconstruct a ProposedOrder from stream:approved_orders:a payload.
-
-    This is the format produced by risk agent's order_to_dict().
-    """
-    return ProposedOrder(
-        order_id=payload["order_id"],
-        signal_id=payload["signal_id"],
-        instrument=payload["instrument"],
-        route=Route(payload["route"]),
-        side=OrderSide(payload["side"]),
-        size=Decimal(payload["size"]),
-        order_type=OrderType(payload["order_type"]),
-        conviction=float(payload["conviction"]),
-        sources=[SignalSource(s) for s in payload["sources"].split(",") if s],
-        estimated_margin_required_usdc=Decimal(
-            payload["estimated_margin_required_usdc"],
-        ),
-        estimated_liquidation_price=Decimal(payload["estimated_liquidation_price"]),
-        estimated_fee_usdc=Decimal(payload["estimated_fee_usdc"]),
-        estimated_funding_cost_1h_usdc=Decimal(
-            payload["estimated_funding_cost_1h_usdc"],
-        ),
-        proposed_at=datetime.fromisoformat(payload["proposed_at"]),
-        limit_price=Decimal(payload["limit_price"]) if payload.get("limit_price") else None,
-        stop_loss=Decimal(payload["stop_loss"]) if payload.get("stop_loss") else None,
-        take_profit=Decimal(payload["take_profit"]) if payload.get("take_profit") else None,
-        leverage=Decimal(payload["leverage"]),
-        reduce_only=payload["reduce_only"] == "True" if isinstance(payload["reduce_only"], str) else bool(payload["reduce_only"]),
-        status=OrderStatus(payload["status"]),
-        reasoning=payload.get("reasoning", ""),
-    )
-
-
-def deserialize_approved_order(payload: dict[str, Any]) -> ApprovedOrder:
-    """Reconstruct an ApprovedOrder from stream:confirmed_orders payload.
-
-    This is the format produced by confirmation agent's approved_order_to_dict().
-    """
-    return ApprovedOrder(
-        order_id=payload["order_id"],
-        route=Route(payload["route"]),
-        instrument=payload["instrument"],
-        side=OrderSide(payload["side"]),
-        size=Decimal(payload["size"]),
-        order_type=OrderType(payload["order_type"]),
-        limit_price=Decimal(payload["limit_price"]) if payload.get("limit_price") else None,
-        stop_loss=Decimal(payload["stop_loss"]) if payload.get("stop_loss") else None,
-        take_profit=Decimal(payload["take_profit"]) if payload.get("take_profit") else None,
-        leverage=Decimal(payload["leverage"]),
-        reduce_only=payload["reduce_only"] == "True" if isinstance(payload["reduce_only"], str) else bool(payload["reduce_only"]),
-        approved_at=datetime.fromisoformat(payload["approved_at"]),
-    )
-
-
-def fill_to_dict(fill: Fill) -> dict[str, Any]:
-    """Serialize a Fill to a dict for publishing to stream:exchange_events:*."""
-    return {
-        "fill_id": fill.fill_id,
-        "order_id": fill.order_id,
-        "route": fill.route.value,
-        "instrument": fill.instrument,
-        "side": fill.side.value,
-        "size": str(fill.size),
-        "price": str(fill.price),
-        "fee_usdc": str(fill.fee_usdc),
-        "is_maker": str(fill.is_maker),
-        "filled_at": fill.filled_at.isoformat(),
-        "trade_id": fill.trade_id,
-    }
-
-
-def deserialize_fill(payload: dict[str, Any]) -> Fill:
-    """Reconstruct a Fill from stream:exchange_events:* payload.
-
-    Used by the reconciliation agent.
-    """
-    return Fill(
-        fill_id=payload["fill_id"],
-        order_id=payload["order_id"],
-        route=Route(payload["route"]),
-        instrument=payload["instrument"],
-        side=OrderSide(payload["side"]),
-        size=Decimal(payload["size"]),
-        price=Decimal(payload["price"]),
-        fee_usdc=Decimal(payload["fee_usdc"]),
-        is_maker=payload["is_maker"] == "True" if isinstance(payload["is_maker"], str) else bool(payload["is_maker"]),
-        filled_at=datetime.fromisoformat(payload["filled_at"]),
-        trade_id=payload["trade_id"],
-    )
 
 
 # ---------------------------------------------------------------------------

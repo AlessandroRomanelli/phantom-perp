@@ -28,10 +28,15 @@ from libs.common.constants import (
     ROUTE_B_MAX_DRAWDOWN_PCT,
 )
 from libs.common.logging import setup_logging
-from libs.common.models.enums import OrderSide, Route, PositionSide
+from libs.common.models.enums import Route
 from libs.common.models.funding import FundingPayment
 from libs.common.models.order import Fill
 from libs.common.models.portfolio import PortfolioSnapshot
+from libs.common.serialization import (
+    deserialize_fill,
+    deserialize_funding_payment,
+    deserialize_portfolio_snapshot,
+)
 from libs.common.utils import utc_now
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
@@ -56,72 +61,6 @@ logger = setup_logging("monitoring", json_output=False)
 
 HEARTBEAT_LOG_INTERVAL = 60  # seconds
 PERFORMANCE_LOG_INTERVAL = 300  # 5 minutes
-
-
-# ---------------------------------------------------------------------------
-# Deserialization helpers — consume upstream agent formats
-# ---------------------------------------------------------------------------
-
-
-def deserialize_portfolio_snapshot(payload: dict[str, Any]) -> PortfolioSnapshot:
-    """Reconstruct a PortfolioSnapshot from stream:portfolio_state payload.
-
-    Matches the format produced by reconciliation agent's
-    portfolio_snapshot_to_dict().
-    """
-    return PortfolioSnapshot(
-        timestamp=datetime.fromisoformat(payload["timestamp"]),
-        route=Route(payload["route"]),
-        equity_usdc=Decimal(payload["equity_usdc"]),
-        used_margin_usdc=Decimal(payload["used_margin_usdc"]),
-        available_margin_usdc=Decimal(payload["available_margin_usdc"]),
-        margin_utilization_pct=float(payload["margin_utilization_pct"]),
-        positions=[],
-        unrealized_pnl_usdc=Decimal(payload["unrealized_pnl_usdc"]),
-        realized_pnl_today_usdc=Decimal(payload["realized_pnl_today_usdc"]),
-        funding_pnl_today_usdc=Decimal(payload["funding_pnl_today_usdc"]),
-        fees_paid_today_usdc=Decimal(payload["fees_paid_today_usdc"]),
-    )
-
-
-def deserialize_funding_payment(payload: dict[str, Any]) -> FundingPayment:
-    """Reconstruct a FundingPayment from stream:funding_payments payload.
-
-    Matches the format produced by reconciliation agent's
-    funding_payment_to_dict().
-    """
-    return FundingPayment(
-        timestamp=datetime.fromisoformat(payload["timestamp"]),
-        instrument=payload["instrument"],
-        route=Route(payload["route"]),
-        rate=Decimal(payload["rate"]),
-        payment_usdc=Decimal(payload["payment_usdc"]),
-        position_size=Decimal(payload["position_size"]),
-        position_side=PositionSide(payload["position_side"]),
-        cumulative_24h_usdc=Decimal(payload["cumulative_24h_usdc"]),
-    )
-
-
-def deserialize_fill(payload: dict[str, Any]) -> Fill:
-    """Reconstruct a Fill from stream:exchange_events payload.
-
-    Matches the format produced by execution agent's fill_to_dict().
-    """
-    return Fill(
-        fill_id=payload["fill_id"],
-        order_id=payload["order_id"],
-        route=Route(payload["route"]),
-        instrument=payload["instrument"],
-        side=OrderSide(payload["side"]),
-        size=Decimal(payload["size"]),
-        price=Decimal(payload["price"]),
-        fee_usdc=Decimal(payload["fee_usdc"]),
-        is_maker=payload["is_maker"] == "True"
-        if isinstance(payload["is_maker"], str)
-        else bool(payload["is_maker"]),
-        filled_at=datetime.fromisoformat(payload["filled_at"]),
-        trade_id=payload["trade_id"],
-    )
 
 
 # ---------------------------------------------------------------------------

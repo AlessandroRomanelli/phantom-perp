@@ -19,9 +19,6 @@ Publishes to:
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
-from decimal import Decimal
-from typing import Any
 
 from libs.coinbase.auth import CoinbaseAuth
 from libs.coinbase.models import PortfolioResponse, PositionResponse
@@ -30,15 +27,15 @@ from libs.coinbase.rest_client import CoinbaseRESTClient
 from libs.common.config import get_settings
 from libs.common.exceptions import CoinbaseAPIError, RateLimitExceededError
 from libs.common.logging import setup_logging
-from libs.common.models.enums import (
-    OrderSide,
-    Route,
-    PositionSide,
-)
-from libs.common.models.funding import FundingPayment
-from libs.common.models.order import Fill
-from libs.common.models.portfolio import PortfolioSnapshot
+from libs.common.models.enums import Route
 from libs.common.models.position import PerpPosition
+from libs.common.serialization import (
+    deserialize_fill,
+    deserialize_funding_payment,
+    deserialize_portfolio_snapshot,
+    funding_payment_to_dict,
+    portfolio_snapshot_to_dict,
+)
 from libs.common.utils import utc_now
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisPublisher
@@ -49,104 +46,6 @@ logger = setup_logging("reconciliation", json_output=False)
 
 # How often to poll each portfolio (seconds)
 POLL_INTERVAL = 30
-
-
-# ---------------------------------------------------------------------------
-# Serialization helpers (kept here for backward compat with existing tests)
-# ---------------------------------------------------------------------------
-
-
-def deserialize_fill(payload: dict[str, Any]) -> Fill:
-    """Reconstruct a Fill from stream:exchange_events payload."""
-    return Fill(
-        fill_id=payload["fill_id"],
-        order_id=payload["order_id"],
-        route=Route(payload["route"]),
-        instrument=payload["instrument"],
-        side=OrderSide(payload["side"]),
-        size=Decimal(payload["size"]),
-        price=Decimal(payload["price"]),
-        fee_usdc=Decimal(payload["fee_usdc"]),
-        is_maker=payload["is_maker"] == "True" if isinstance(payload["is_maker"], str) else bool(payload["is_maker"]),
-        filled_at=datetime.fromisoformat(payload["filled_at"]),
-        trade_id=payload["trade_id"],
-    )
-
-
-def portfolio_snapshot_to_dict(snap: PortfolioSnapshot) -> dict[str, Any]:
-    """Serialize a PortfolioSnapshot for stream:portfolio_state:*."""
-    return {
-        "timestamp": snap.timestamp.isoformat(),
-        "route": snap.route.value,
-        "equity_usdc": str(snap.equity_usdc),
-        "used_margin_usdc": str(snap.used_margin_usdc),
-        "available_margin_usdc": str(snap.available_margin_usdc),
-        "margin_utilization_pct": snap.margin_utilization_pct,
-        "unrealized_pnl_usdc": str(snap.unrealized_pnl_usdc),
-        "realized_pnl_today_usdc": str(snap.realized_pnl_today_usdc),
-        "funding_pnl_today_usdc": str(snap.funding_pnl_today_usdc),
-        "fees_paid_today_usdc": str(snap.fees_paid_today_usdc),
-        "position_count": len(snap.open_positions),
-        "positions": [
-            {
-                "instrument": p.instrument,
-                "side": p.side.value,
-                "size": str(p.size),
-                "entry_price": str(p.entry_price.quantize(Decimal("0.01"))),
-                "mark_price": str(p.mark_price.quantize(Decimal("0.01"))),
-                "unrealized_pnl_usdc": str(p.unrealized_pnl_usdc.quantize(Decimal("0.01"))),
-                "leverage": str(p.leverage),
-                "liquidation_price": str(p.liquidation_price.quantize(Decimal("0.01"))),
-            }
-            for p in snap.positions
-            if p.size > 0
-        ],
-    }
-
-
-def deserialize_portfolio_snapshot(payload: dict[str, Any]) -> PortfolioSnapshot:
-    """Reconstruct a PortfolioSnapshot from stream:portfolio_state payload."""
-    return PortfolioSnapshot(
-        timestamp=datetime.fromisoformat(payload["timestamp"]),
-        route=Route(payload["route"]),
-        equity_usdc=Decimal(payload["equity_usdc"]),
-        used_margin_usdc=Decimal(payload["used_margin_usdc"]),
-        available_margin_usdc=Decimal(payload["available_margin_usdc"]),
-        margin_utilization_pct=float(payload["margin_utilization_pct"]),
-        positions=[],
-        unrealized_pnl_usdc=Decimal(payload["unrealized_pnl_usdc"]),
-        realized_pnl_today_usdc=Decimal(payload["realized_pnl_today_usdc"]),
-        funding_pnl_today_usdc=Decimal(payload["funding_pnl_today_usdc"]),
-        fees_paid_today_usdc=Decimal(payload["fees_paid_today_usdc"]),
-    )
-
-
-def funding_payment_to_dict(payment: FundingPayment) -> dict[str, Any]:
-    """Serialize a FundingPayment for stream:funding_payments:*."""
-    return {
-        "timestamp": payment.timestamp.isoformat(),
-        "instrument": payment.instrument,
-        "route": payment.route.value,
-        "rate": str(payment.rate),
-        "payment_usdc": str(payment.payment_usdc),
-        "position_size": str(payment.position_size),
-        "position_side": payment.position_side.value,
-        "cumulative_24h_usdc": str(payment.cumulative_24h_usdc),
-    }
-
-
-def deserialize_funding_payment(payload: dict[str, Any]) -> FundingPayment:
-    """Reconstruct a FundingPayment from stream:funding_payments payload."""
-    return FundingPayment(
-        timestamp=datetime.fromisoformat(payload["timestamp"]),
-        instrument=payload["instrument"],
-        route=Route(payload["route"]),
-        rate=Decimal(payload["rate"]),
-        payment_usdc=Decimal(payload["payment_usdc"]),
-        position_size=Decimal(payload["position_size"]),
-        position_side=PositionSide(payload["position_side"]),
-        cumulative_24h_usdc=Decimal(payload["cumulative_24h_usdc"]),
-    )
 
 
 # ---------------------------------------------------------------------------

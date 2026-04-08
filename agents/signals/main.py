@@ -71,6 +71,7 @@ from libs.common.logging import setup_logging
 from libs.common.models.enums import Route, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal  # noqa: TC001
+from libs.common.serialization import deserialize_snapshot, signal_to_dict
 from libs.messaging.channels import Channel
 from libs.messaging.redis_streams import RedisConsumer, RedisPublisher
 from libs.storage.models import SignalRecord
@@ -298,28 +299,6 @@ def _apply_conviction_normalization(signal: StandardSignal) -> StandardSignal:
     )
 
 
-def deserialize_snapshot(payload: dict[str, Any]) -> MarketSnapshot:
-    """Rebuild a MarketSnapshot from a Redis stream payload dict."""
-    return MarketSnapshot(
-        timestamp=datetime.fromisoformat(payload["timestamp"]),
-        instrument=payload["instrument"],
-        mark_price=Decimal(payload["mark_price"]),
-        index_price=Decimal(payload["index_price"]),
-        last_price=Decimal(payload["last_price"]),
-        best_bid=Decimal(payload["best_bid"]),
-        best_ask=Decimal(payload["best_ask"]),
-        spread_bps=float(payload["spread_bps"]),
-        volume_24h=Decimal(payload["volume_24h"]),
-        open_interest=Decimal(payload["open_interest"]),
-        funding_rate=Decimal(payload["funding_rate"]),
-        next_funding_time=datetime.fromisoformat(payload["next_funding_time"]),
-        hours_since_last_funding=float(payload["hours_since_last_funding"]),
-        orderbook_imbalance=float(payload["orderbook_imbalance"]),
-        volatility_1h=float(payload["volatility_1h"] or 0.0),
-        volatility_24h=float(payload["volatility_24h"] or 0.0),
-    )
-
-
 def _json_safe(value: Any) -> Any:
     """Convert numpy types to native Python types for JSON serialization."""
     if isinstance(value, (np.floating, np.float64, np.float32)):
@@ -333,25 +312,6 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, list):
         return [_json_safe(v) for v in value]
     return value
-
-
-def signal_to_dict(signal: StandardSignal) -> dict[str, Any]:
-    """Serialize a StandardSignal to a JSON-compatible dict for Redis."""
-    return {
-        "signal_id": signal.signal_id,
-        "timestamp": signal.timestamp.isoformat(),
-        "instrument": signal.instrument,
-        "direction": signal.direction.value,
-        "conviction": float(signal.conviction),
-        "source": signal.source.value,
-        "time_horizon_seconds": int(signal.time_horizon.total_seconds()),
-        "reasoning": signal.reasoning,
-        "suggested_route": signal.suggested_route.value if signal.suggested_route else None,
-        "entry_price": str(signal.entry_price) if signal.entry_price else None,
-        "stop_loss": str(signal.stop_loss) if signal.stop_loss else None,
-        "take_profit": str(signal.take_profit) if signal.take_profit else None,
-        "metadata": _json_safe(signal.metadata),
-    }
 
 
 def build_strategies_for_instrument(instrument_id: str) -> list[SignalStrategy]:
@@ -728,9 +688,11 @@ async def run_agent() -> None:
                         signal = _apply_conviction_normalization(signal)
 
                         try:
+                            _payload = signal_to_dict(signal)
+                            _payload["metadata"] = _json_safe(_payload.get("metadata", {}))
                             await publisher.publish(
                                 Channel.SIGNALS,
-                                signal_to_dict(signal),
+                                _payload,
                             )
                         except Exception as exc:
                             logger.error(
