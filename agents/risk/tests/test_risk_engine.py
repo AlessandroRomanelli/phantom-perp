@@ -60,6 +60,7 @@ LIMITS_A = RiskLimits(
     max_concurrent_positions=3,
     max_funding_cost_per_day_usdc=Decimal("20"),
     conviction_power=1.0,
+    min_expected_move_pct=Decimal("0.005"),
 )
 
 LIMITS_B = RiskLimits(
@@ -74,6 +75,7 @@ LIMITS_B = RiskLimits(
     max_concurrent_positions=3,
     max_funding_cost_per_day_usdc=Decimal("100"),
     conviction_power=1.0,
+    min_expected_move_pct=Decimal("0.005"),
 )
 
 

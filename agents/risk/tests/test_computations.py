@@ -35,6 +35,7 @@ def _default_limits(**overrides: object) -> RiskLimits:
         max_concurrent_positions=3,
         max_funding_cost_per_day_usdc=Decimal("20"),
         conviction_power=1.0,
+        min_expected_move_pct=Decimal("0.005"),
     )
     defaults.update(overrides)
     return RiskLimits(**defaults)  # type: ignore[arg-type]

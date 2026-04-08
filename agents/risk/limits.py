@@ -42,6 +42,7 @@ class RiskLimits:
     max_concurrent_positions: int
     max_funding_cost_per_day_usdc: Decimal
     conviction_power: float = 2.0
+    min_expected_move_pct: Decimal = Decimal("0.005")
 
 
 def _d(value: object, default: str) -> Decimal:
@@ -103,4 +104,7 @@ def limits_for_route(
             section.get("max_funding_cost_per_day_usdc"), "20"
         ),
         conviction_power=float(risk.get("global", {}).get("conviction_power", 2.0)),
+        min_expected_move_pct=_d(
+            risk.get("global", {}).get("min_expected_move_pct"), "0.005"
+        ),
     )

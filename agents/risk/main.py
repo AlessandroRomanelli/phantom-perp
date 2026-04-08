@@ -487,6 +487,22 @@ class RiskEngine:
         fee = estimate_fee(size, entry_price, is_maker=is_maker)
 
         # ------------------------------------------------------------------
+        # 14. Fee-adjusted edge filter (PROF-05)
+        # ------------------------------------------------------------------
+        round_trip_fee = fee * 2  # entry + exit (both estimated as maker)
+        notional = size * entry_price
+        expected_gross = notional * Decimal(str(idea.conviction)) * limits.min_expected_move_pct
+        if round_trip_fee > expected_gross:
+            return RiskCheckResult(
+                approved=False,
+                rejection_reason=(
+                    f"Fee drag: round-trip {round_trip_fee:.4f} USDC > "
+                    f"expected edge {expected_gross:.4f} USDC "
+                    f"(conviction={idea.conviction:.2f}, notional={notional:.0f})"
+                ),
+            )
+
+        # ------------------------------------------------------------------
         # All checks passed — build ProposedOrder
         # ------------------------------------------------------------------
         maint_margin = compute_maintenance_margin(size, entry_price)

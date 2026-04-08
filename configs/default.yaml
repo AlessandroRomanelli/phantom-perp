@@ -95,6 +95,7 @@ risk:
   global:
     stale_data_halt_seconds: 30
     conviction_power: 1.0
+    min_expected_move_pct: 0.005
 
 execution:
   default_order_type: "limit"
