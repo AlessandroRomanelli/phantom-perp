@@ -76,6 +76,7 @@ class FundingRateResponse(BaseModel):
     funding_rate: Decimal
     mark_price: Decimal = Decimal("0")
     open_interest: Decimal = Decimal("0")
+    index_price: Decimal = Decimal("0")
 
 
 class OrderResponse(BaseModel):

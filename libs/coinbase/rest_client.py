@@ -271,11 +271,19 @@ class CoinbaseRESTClient:
         funding_rate = perp_details.get("funding_rate", "0")
         mark_price_str = data.get("price", "0")
         open_interest_str = perp_details.get("open_interest", "0")
+        # index_price may appear as "index_price" or "base_asset_index_price";
+        # default "0" signals unavailability to downstream consumers.
+        index_price_str = (
+            perp_details.get("index_price")
+            or perp_details.get("base_asset_index_price")
+            or "0"
+        )
         return FundingRateResponse(
             product_id=product_id,
             funding_rate=Decimal(str(funding_rate)),
             mark_price=Decimal(str(mark_price_str)),
             open_interest=Decimal(str(open_interest_str)),
+            index_price=Decimal(str(index_price_str)),
         )
 
     # -- Portfolio-scoped endpoints -----------------------------------------

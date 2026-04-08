@@ -53,10 +53,12 @@ async def poll_funding_once(
             state.has_funding = True
 
         # Advanced Trade WS ticker doesn't provide mark_price/index_price.
-        # Always update from the funding endpoint (best available source).
+        # Always update mark_price from the funding endpoint (best available source).
         state.mark_price = resp.mark_price
-        if state.index_price is None and state.last_price is not None:
-            state.index_price = state.last_price
+        # Only update index_price when the API actually provides one (non-zero sentinel).
+        # Do NOT fall back to last_price — that would make basis calculations meaningless.
+        if resp.index_price > 0:
+            state.index_price = resp.index_price
 
         # Open interest is not available from WS; update from product details.
         if resp.open_interest > 0:
