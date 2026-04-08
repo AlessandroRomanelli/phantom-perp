@@ -59,6 +59,7 @@ LIMITS_A = RiskLimits(
     stop_loss_required=True,
     max_concurrent_positions=3,
     max_funding_cost_per_day_usdc=Decimal("20"),
+    conviction_power=1.0,
 )
 
 LIMITS_B = RiskLimits(
@@ -72,6 +73,7 @@ LIMITS_B = RiskLimits(
     stop_loss_required=True,
     max_concurrent_positions=3,
     max_funding_cost_per_day_usdc=Decimal("100"),
+    conviction_power=1.0,
 )
 
 
@@ -719,3 +721,58 @@ class TestPaperPositionsInRiskGuards:
         assert result.approved is False
         reason = (result.rejection_reason or "").lower()
         assert any(kw in reason for kw in ("instrument", "stacking", "existing", "open"))
+
+
+# ---------------------------------------------------------------------------
+# Fee-Adjusted Edge Filter (PROF-05)
+# ---------------------------------------------------------------------------
+
+class TestFeeEdgeFilter:
+    """Fee drag filter: reject trades where round-trip fee > expected edge."""
+
+    def test_low_conviction_rejected_by_fee_filter(self) -> None:
+        """Low conviction (0.04) → round-trip fee exceeds expected edge → rejected."""
+        engine = _engine()
+        # conviction=0.04 < threshold (0.05 = 2*FEE_MAKER/min_expected_move_pct)
+        # size ≈ 0.12 ETH, notional ≈ 240 USDC
+        # round_trip_fee = 240 * 0.00025 = 0.06, expected_gross = 240 * 0.04 * 0.005 = 0.048
+        # 0.06 > 0.048 → rejected
+        result = engine.evaluate(
+            _idea(conviction=0.04),
+            _portfolio(),
+            MARKET_PRICE,
+            utc_now(),
+            FUNDING_RATE,
+        )
+        assert result.approved is False
+        assert "Fee drag" in (result.rejection_reason or "")
+
+    def test_high_conviction_passes_fee_filter(self) -> None:
+        """High conviction (0.8) → expected edge far exceeds round-trip fee → approved."""
+        engine = _engine()
+        result = engine.evaluate(
+            _idea(conviction=0.8),
+            _portfolio(),
+            MARKET_PRICE,
+            utc_now(),
+            FUNDING_RATE,
+        )
+        assert result.approved is True
+        assert result.proposed_order is not None
+
+    def test_rejection_reason_contains_details(self) -> None:
+        """Rejection reason includes conviction, notional, and USDC fee values."""
+        engine = _engine()
+        result = engine.evaluate(
+            _idea(conviction=0.04),
+            _portfolio(),
+            MARKET_PRICE,
+            utc_now(),
+            FUNDING_RATE,
+        )
+        assert result.approved is False
+        reason = result.rejection_reason or ""
+        assert "Fee drag" in reason
+        assert "conviction=" in reason
+        assert "notional=" in reason
+        assert "USDC" in reason
