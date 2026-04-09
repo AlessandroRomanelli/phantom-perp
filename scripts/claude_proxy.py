@@ -23,6 +23,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 _PORT = int(os.environ.get("CLAUDE_PROXY_PORT", "8484"))
 _CLI_TIMEOUT = int(os.environ.get("CLAUDE_PROXY_TIMEOUT", "300"))
+# Working directory for claude CLI — controls which CLAUDE.md is loaded.
+# Set to a directory containing a CLAUDE.md to customize Claude's behavior.
+_WORKDIR = os.environ.get("CLAUDE_PROXY_WORKDIR", os.getcwd())
 
 
 class ClaudeProxyHandler(BaseHTTPRequestHandler):
@@ -30,7 +33,7 @@ class ClaudeProxyHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if self.path == "/health":
-            self._json_response(200, {"status": "ok"})
+            self._json_response(200, {"status": "ok", "workdir": _WORKDIR})
         else:
             self._json_response(404, {"error": "not found"})
 
@@ -57,6 +60,8 @@ class ClaudeProxyHandler(BaseHTTPRequestHandler):
 
         model = body.get("model")
         max_tokens = body.get("max_tokens")
+        # Per-request workdir override — falls back to global _WORKDIR.
+        workdir = body.get("workdir", _WORKDIR)
 
         cmd = ["claude", "-p", prompt, "--output-format", "text"]
         if model:
@@ -70,6 +75,7 @@ class ClaudeProxyHandler(BaseHTTPRequestHandler):
                 capture_output=True,
                 text=True,
                 timeout=_CLI_TIMEOUT,
+                cwd=workdir,
             )
         except subprocess.TimeoutExpired:
             self._json_response(504, {"error": f"claude CLI timed out after {_CLI_TIMEOUT}s"})
