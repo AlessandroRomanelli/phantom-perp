@@ -24,7 +24,8 @@ Publishes to:
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+import random
+from dataclasses import dataclass, field
 from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -57,6 +58,104 @@ from libs.storage.models import FillRecord
 from libs.storage.repository import TunerRepository
 
 logger = setup_logging("paper_simulator", json_output=False)
+
+
+# ---------------------------------------------------------------------------
+# Probabilistic fill model
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class PaperSimulatorConfig:
+    """Configuration for the paper simulator's probabilistic fill model.
+
+    Defaults reproduce pre-fidelity behavior: all limit orders fill at the
+    exact limit price with no adverse selection.
+
+    Args:
+        fill_probability_base: Base fill probability for a limit order at mark
+            price. Range [0, 1]. Orders far from mark are discounted by a
+            proximity factor. Default 0.7 (matches typical liquidity).
+        adverse_selection_bps: Basis points of adverse price movement applied
+            to filled limit orders. BUY fills pay more; SELL fills receive
+            less. Range [0, 50]. Default 5 bps.
+        sl_slippage_bps: Basis points of slippage applied to stop-loss fills.
+            Range [0, 50]. Default 10 bps.
+    """
+
+    fill_probability_base: Decimal = Decimal("0.7")
+    adverse_selection_bps: Decimal = Decimal("5")
+    sl_slippage_bps: Decimal = Decimal("10")
+
+    def __post_init__(self) -> None:
+        if not (Decimal("0") <= self.fill_probability_base <= Decimal("1")):
+            raise ValueError(
+                f"fill_probability_base must be in [0, 1], got {self.fill_probability_base}"
+            )
+        if self.adverse_selection_bps < Decimal("0") or self.adverse_selection_bps > Decimal("50"):
+            raise ValueError(
+                f"adverse_selection_bps must be in [0, 50], got {self.adverse_selection_bps}"
+            )
+        if self.sl_slippage_bps < Decimal("0") or self.sl_slippage_bps > Decimal("50"):
+            raise ValueError(
+                f"sl_slippage_bps must be in [0, 50], got {self.sl_slippage_bps}"
+            )
+
+
+def _decide_fill(
+    side: OrderSide,
+    order_type: OrderType,
+    limit_price: Decimal | None,
+    mark_price: Decimal,
+    cfg: PaperSimulatorConfig,
+    rng: random.Random,
+) -> tuple[bool, Decimal]:
+    """Decide whether an order fills and at what effective price.
+
+    For MARKET orders (or when limit_price is None): always fills at mark price
+    with no adverse selection.
+
+    For LIMIT orders: fill probability is scaled by proximity to mark price.
+    Filled orders experience adverse selection (BUY pays more, SELL less).
+
+    Args:
+        side: Order side (BUY or SELL).
+        order_type: MARKET or LIMIT.
+        limit_price: Limit price for LIMIT orders; None for MARKET orders.
+        mark_price: Current mark price for the instrument.
+        cfg: Simulator configuration.
+        rng: Seeded random instance for deterministic tests.
+
+    Returns:
+        Tuple of (should_fill, effective_price). If should_fill is False,
+        effective_price is Decimal("0").
+    """
+    # MARKET or no limit_price: always fill at mark, no adverse selection
+    if order_type == OrderType.MARKET or limit_price is None:
+        return (True, mark_price)
+
+    # Guard against division by zero
+    if mark_price == Decimal("0"):
+        return (False, Decimal("0"))
+
+    # Compute fill probability scaled by price proximity
+    distance_bps = abs(limit_price - mark_price) / mark_price * Decimal("10000")
+    proximity_factor = Decimal("1") / (Decimal("1") + distance_bps / Decimal("100"))
+    probability = float(cfg.fill_probability_base * proximity_factor)
+
+    if rng.random() > probability:
+        return (False, Decimal("0"))
+
+    # Apply adverse selection to filled price
+    bps_factor = cfg.adverse_selection_bps / Decimal("10000")
+    if side == OrderSide.BUY:
+        effective_price = limit_price * (Decimal("1") + bps_factor)
+    else:
+        effective_price = limit_price * (Decimal("1") - bps_factor)
+
+    effective_price = effective_price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return (True, effective_price)
+
 
 # Default initial equity per portfolio in paper mode
 PAPER_INITIAL_EQUITY = Decimal("10000")

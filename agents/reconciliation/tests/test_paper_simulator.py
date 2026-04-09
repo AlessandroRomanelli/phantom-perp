@@ -12,16 +12,20 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
+import random
+
 from libs.common.constants import FEE_MAKER, FEE_TAKER
-from libs.common.models.enums import OrderSide, Route, PositionSide
+from libs.common.models.enums import OrderSide, OrderType, Route, PositionSide
 from libs.common.models.order import Fill
 from libs.common.utils import utc_now
 from libs.storage.models import Base, FillRecord
 
 from agents.reconciliation.paper_simulator import (
     PaperPortfolio,
+    PaperSimulatorConfig,
     PendingProtectiveOrder,
     SimulatedPosition,
+    _decide_fill,
     _persist_fill,
 )
 
@@ -780,3 +784,244 @@ class TestRestoreFromFills:
         ]
         restored = PaperPortfolio.restore_from_fills(Route.A, fills)
         assert restored.realized_pnl == direct.realized_pnl
+
+
+# ---------------------------------------------------------------------------
+# _decide_fill tests
+# ---------------------------------------------------------------------------
+
+
+class TestFillDecision:
+    def test_market_order_always_fills(self) -> None:
+        """MARKET order always fills at mark price regardless of price distance."""
+        cfg = PaperSimulatorConfig(
+            fill_probability_base=Decimal("0.0"),
+            adverse_selection_bps=Decimal("0"),
+            sl_slippage_bps=Decimal("0"),
+        )
+        rng = random.Random(42)
+        filled, price = _decide_fill(
+            side=OrderSide.BUY,
+            order_type=OrderType.MARKET,
+            limit_price=None,
+            mark_price=Decimal("2000"),
+            cfg=cfg,
+            rng=rng,
+        )
+        assert filled is True
+        assert price == Decimal("2000")
+
+    def test_limit_at_mark_fills_with_base_probability(self) -> None:
+        """LIMIT order at mark price: base=1.0 always fills, base=0.0 never fills."""
+        # base=1.0 always fills
+        cfg_full = PaperSimulatorConfig(
+            fill_probability_base=Decimal("1.0"),
+            adverse_selection_bps=Decimal("0"),
+            sl_slippage_bps=Decimal("0"),
+        )
+        rng = random.Random(42)
+        filled, _ = _decide_fill(
+            side=OrderSide.BUY,
+            order_type=OrderType.LIMIT,
+            limit_price=Decimal("2000"),
+            mark_price=Decimal("2000"),
+            cfg=cfg_full,
+            rng=rng,
+        )
+        assert filled is True
+
+        # base=0.0 never fills
+        cfg_none = PaperSimulatorConfig(
+            fill_probability_base=Decimal("0.0"),
+            adverse_selection_bps=Decimal("0"),
+            sl_slippage_bps=Decimal("0"),
+        )
+        rng2 = random.Random(42)
+        filled2, _ = _decide_fill(
+            side=OrderSide.BUY,
+            order_type=OrderType.LIMIT,
+            limit_price=Decimal("2000"),
+            mark_price=Decimal("2000"),
+            cfg=cfg_none,
+            rng=rng2,
+        )
+        assert filled2 is False
+
+    def test_limit_far_from_mark_lower_probability(self) -> None:
+        """LIMIT BUY 5% above mark has lower fill rate than at-mark order."""
+        cfg = PaperSimulatorConfig(
+            fill_probability_base=Decimal("0.7"),
+            adverse_selection_bps=Decimal("0"),
+            sl_slippage_bps=Decimal("0"),
+        )
+        mark = Decimal("2000")
+        # At mark: limit_price == mark_price
+        rng_at = random.Random(99)
+        at_fills = sum(
+            1
+            for _ in range(1000)
+            if _decide_fill(
+                side=OrderSide.BUY,
+                order_type=OrderType.LIMIT,
+                limit_price=mark,
+                mark_price=mark,
+                cfg=cfg,
+                rng=rng_at,
+            )[0]
+        )
+
+        # 5% above mark
+        rng_far = random.Random(99)
+        far_fills = sum(
+            1
+            for _ in range(1000)
+            if _decide_fill(
+                side=OrderSide.BUY,
+                order_type=OrderType.LIMIT,
+                limit_price=Decimal("2100"),  # 5% above
+                mark_price=mark,
+                cfg=cfg,
+                rng=rng_far,
+            )[0]
+        )
+
+        assert at_fills > far_fills
+
+    def test_zero_mark_price_returns_no_fill(self) -> None:
+        """When mark_price=0, return (False, Decimal('0')) without division error."""
+        cfg = PaperSimulatorConfig()
+        rng = random.Random(42)
+        filled, price = _decide_fill(
+            side=OrderSide.BUY,
+            order_type=OrderType.LIMIT,
+            limit_price=Decimal("2000"),
+            mark_price=Decimal("0"),
+            cfg=cfg,
+            rng=rng,
+        )
+        assert filled is False
+        assert price == Decimal("0")
+
+    def test_default_config_backward_compat(self) -> None:
+        """Default PaperSimulatorConfig with base=1.0, bps=0 fills all orders unchanged."""
+        cfg = PaperSimulatorConfig(
+            fill_probability_base=Decimal("1.0"),
+            adverse_selection_bps=Decimal("0"),
+            sl_slippage_bps=Decimal("0"),
+        )
+        rng = random.Random(42)
+        filled, price = _decide_fill(
+            side=OrderSide.BUY,
+            order_type=OrderType.LIMIT,
+            limit_price=Decimal("2000"),
+            mark_price=Decimal("2000"),
+            cfg=cfg,
+            rng=rng,
+        )
+        assert filled is True
+        assert price == Decimal("2000.00")
+
+
+class TestAdverseSelection:
+    def test_buy_adverse_selection_raises_price(self) -> None:
+        """LIMIT BUY filled with adverse_selection_bps=10 → effective_price > limit_price."""
+        cfg = PaperSimulatorConfig(
+            fill_probability_base=Decimal("1.0"),
+            adverse_selection_bps=Decimal("10"),
+            sl_slippage_bps=Decimal("0"),
+        )
+        rng = random.Random(42)
+        filled, price = _decide_fill(
+            side=OrderSide.BUY,
+            order_type=OrderType.LIMIT,
+            limit_price=Decimal("2000"),
+            mark_price=Decimal("2000"),
+            cfg=cfg,
+            rng=rng,
+        )
+        assert filled is True
+        assert price > Decimal("2000")
+
+    def test_sell_adverse_selection_lowers_price(self) -> None:
+        """LIMIT SELL filled with adverse_selection_bps=10 → effective_price < limit_price."""
+        cfg = PaperSimulatorConfig(
+            fill_probability_base=Decimal("1.0"),
+            adverse_selection_bps=Decimal("10"),
+            sl_slippage_bps=Decimal("0"),
+        )
+        rng = random.Random(42)
+        filled, price = _decide_fill(
+            side=OrderSide.SELL,
+            order_type=OrderType.LIMIT,
+            limit_price=Decimal("2000"),
+            mark_price=Decimal("2000"),
+            cfg=cfg,
+            rng=rng,
+        )
+        assert filled is True
+        assert price < Decimal("2000")
+
+    def test_market_order_no_adverse_selection(self) -> None:
+        """MARKET order returns mark_price exactly — no adverse adjustment."""
+        cfg = PaperSimulatorConfig(
+            fill_probability_base=Decimal("1.0"),
+            adverse_selection_bps=Decimal("20"),
+            sl_slippage_bps=Decimal("0"),
+        )
+        rng = random.Random(42)
+        filled, price = _decide_fill(
+            side=OrderSide.BUY,
+            order_type=OrderType.MARKET,
+            limit_price=None,
+            mark_price=Decimal("2000"),
+            cfg=cfg,
+            rng=rng,
+        )
+        assert filled is True
+        assert price == Decimal("2000")
+
+    def test_zero_bps_no_change(self) -> None:
+        """adverse_selection_bps=0 returns limit_price unchanged (quantized)."""
+        cfg = PaperSimulatorConfig(
+            fill_probability_base=Decimal("1.0"),
+            adverse_selection_bps=Decimal("0"),
+            sl_slippage_bps=Decimal("0"),
+        )
+        rng = random.Random(42)
+        filled, price = _decide_fill(
+            side=OrderSide.BUY,
+            order_type=OrderType.LIMIT,
+            limit_price=Decimal("2000"),
+            mark_price=Decimal("2000"),
+            cfg=cfg,
+            rng=rng,
+        )
+        assert filled is True
+        assert price == Decimal("2000.00")
+
+
+class TestConfigValidation:
+    def test_config_validation_rejects_out_of_range(self) -> None:
+        """PaperSimulatorConfig raises ValueError for out-of-range values."""
+        import pytest as _pytest
+
+        with _pytest.raises(ValueError, match="fill_probability_base"):
+            PaperSimulatorConfig(
+                fill_probability_base=Decimal("1.5"),
+                adverse_selection_bps=Decimal("5"),
+                sl_slippage_bps=Decimal("10"),
+            )
+
+        with _pytest.raises(ValueError, match="adverse_selection_bps"):
+            PaperSimulatorConfig(
+                fill_probability_base=Decimal("0.7"),
+                adverse_selection_bps=Decimal("-1"),
+                sl_slippage_bps=Decimal("10"),
+            )
+
+        with _pytest.raises(ValueError, match="sl_slippage_bps"):
+            PaperSimulatorConfig(
+                fill_probability_base=Decimal("0.7"),
+                adverse_selection_bps=Decimal("5"),
+                sl_slippage_bps=Decimal("100"),
+            )
