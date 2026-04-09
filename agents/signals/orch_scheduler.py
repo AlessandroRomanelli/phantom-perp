@@ -257,10 +257,18 @@ async def _run_tick(
             min_confidence_threshold=params.min_confidence_threshold,
         )
 
-    # Update gate map and param adjustments in-place
+    # Update param adjustments in-place (orchestrator can tune, not disable)
     for decision in accepted:
         key: tuple[str, str] = (decision["instrument"], decision["strategy"])
-        gate_map[key] = decision["enabled"]
+        # Orchestrator can only adjust parameters — not disable strategies.
+        # Strategy enablement is controlled by YAML config, not runtime AI decisions.
+        if not decision["enabled"]:
+            _logger.info(
+                "orchestrator_disable_ignored",
+                instrument=decision["instrument"],
+                strategy=decision["strategy"],
+                reasoning=decision.get("reasoning", "")[:120],
+            )
         adj: dict[str, Any] = decision.get("param_adjustments") or {}
         if adj:
             param_adjustments[key] = adj

@@ -166,9 +166,6 @@ class OrderbookImbalanceStrategy(SignalStrategy):
 
         conviction = round(min(imb_score + spread_score + vol_score, 1.0), 3)
 
-        if conviction < p.min_conviction:
-            return []
-
         # Route A only — short-horizon signals are not suitable for
         # user-confirmed Route B (opportunity gone before confirmation).
         if conviction < p.route_a_min_conviction:

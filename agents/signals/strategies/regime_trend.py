@@ -589,12 +589,12 @@ class RegimeTrendStrategy(SignalStrategy):
           - Spot-perp alignment:    0 - 0.20
           - Entry quality:          0 - 0.30
         """
-        # ADX: scales from 0 at threshold (22) to 0.30 at ADX=50+
-        adx_score = min((adx_value - 22.0) / 93.0, 0.3)
+        # ADX: scales from 0 at threshold (22) to 0.30 at ADX=50
+        adx_score = min((adx_value - 22.0) / 28.0, 1.0) * 0.3
         adx_score = max(adx_score, 0.0)
 
         # Vol expansion: ATR ratio 1.1 → 0, ratio 2.0+ → 0.20
-        vol_score = min((atr_ratio - 1.1) / 4.5, 0.2)
+        vol_score = min((atr_ratio - 1.1) / 0.9, 1.0) * 0.2
         vol_score = max(vol_score, 0.0)
 
         # Spot alignment: normalized by ATR so it's scale-independent
