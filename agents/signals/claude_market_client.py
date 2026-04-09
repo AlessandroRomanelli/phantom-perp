@@ -1,11 +1,11 @@
-"""Claude API integration for market analysis signals.
+"""Claude CLI integration for market analysis signals.
 
-Handles tool schema definition, context assembly from FeatureStore and
-MarketSnapshot data, async Anthropic API calls with forced tool use, and
-structured response validation before signals reach the pipeline.
+Handles context assembly from FeatureStore and MarketSnapshot data, async
+subprocess calls to the Claude CLI with a configurable timeout, and structured
+response validation before signals reach the pipeline.
 
 Key guarantees:
-- All inference is async (AsyncAnthropic) — signals agent runs under asyncio.
+- All inference is async (asyncio.create_subprocess_exec) — signals agent runs under asyncio.
 - Response validation rejects bad prices, clamps conviction, and computes
   ATR-based defaults when Claude omits entry/stop/TP prices.
 - NO_SIGNAL responses are silently converted to None (not an error).
@@ -14,16 +14,16 @@ Key guarantees:
 
 from __future__ import annotations
 
-import os
+import asyncio
 from decimal import Decimal
 from typing import Any
 
-import anthropic
 import numpy as np
 import structlog
 
 from agents.signals.feature_store import FeatureStore  # noqa: TC001
 from libs.common.instruments import get_instrument
+from libs.common.json_extractor import JsonExtractionError, extract_json
 from libs.common.models.enums import MarketRegime, PositionSide
 from libs.common.models.market_snapshot import MarketSnapshot  # noqa: TC001
 from libs.indicators.volatility import atr
@@ -31,14 +31,11 @@ from libs.indicators.volatility import atr
 _logger = structlog.get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Model alias
+# CLI timeout
 # ---------------------------------------------------------------------------
 
-# Stable alias — same as libs/tuner/claude_client.py
-_MODEL: str = "claude-sonnet-4-5"
-
-# Maximum output tokens for market analysis (compact JSON response)
-_MAX_TOKENS: int = 512
+# Market analysis is latency-sensitive — 90 seconds is the hard cap.
+_CLI_TIMEOUT_SECONDS: int = 90
 
 # Entry price tolerance: reject if more than ±5% from mark_price
 _ENTRY_PRICE_MAX_DEVIATION = Decimal("0.05")
@@ -47,84 +44,6 @@ _ENTRY_PRICE_MAX_DEVIATION = Decimal("0.05")
 _DEFAULT_STOP_ATR_MULT: float = 2.0
 _DEFAULT_TP_ATR_MULT: float = 3.0
 _ATR_PERIOD: int = 14
-
-# ---------------------------------------------------------------------------
-# Tool schema
-# ---------------------------------------------------------------------------
-
-MARKET_ANALYSIS_TOOL: dict[str, Any] = {
-    "name": "submit_market_analysis",
-    "description": (
-        "Submit your market analysis result for a perpetual futures instrument. "
-        "Use direction=NO_SIGNAL when there is no clear trade opportunity."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "instrument": {
-                "type": "string",
-                "description": "Instrument ID being analysed, e.g. 'ETH-PERP'.",
-            },
-            "direction": {
-                "type": "string",
-                "enum": ["LONG", "SHORT", "NO_SIGNAL"],
-                "description": (
-                    "Trade direction: LONG, SHORT, or NO_SIGNAL when no opportunity exists."
-                ),
-            },
-            "conviction": {
-                "type": "number",
-                "description": (
-                    "Signal conviction in [0, 1]. Higher values indicate higher confidence. "
-                    "Must be ≥ 0.50 to be acted upon."
-                ),
-            },
-            "entry_price": {
-                "type": ["number", "null"],
-                "description": (
-                    "Suggested entry price in USDC. Must be within ±5%% of current mark price. "
-                    "Pass null to use ATR-based default."
-                ),
-            },
-            "stop_loss": {
-                "type": ["number", "null"],
-                "description": (
-                    "Stop-loss price in USDC. For LONG: below entry. For SHORT: above entry. "
-                    "Pass null to use ATR-based default."
-                ),
-            },
-            "take_profit": {
-                "type": ["number", "null"],
-                "description": (
-                    "Take-profit price in USDC. For LONG: above entry. For SHORT: below entry. "
-                    "Pass null to use ATR-based default."
-                ),
-            },
-            "time_horizon_hours": {
-                "type": "number",
-                "description": "Expected holding period in hours (e.g. 1, 4, 24).",
-            },
-            "reasoning": {
-                "type": "string",
-                "description": (
-                    "Concise explanation of the trade thesis. Reference specific "
-                    "data points from the context (price, funding, OI, regime)."
-                ),
-            },
-        },
-        "required": [
-            "instrument",
-            "direction",
-            "conviction",
-            "entry_price",
-            "stop_loss",
-            "take_profit",
-            "time_horizon_hours",
-            "reasoning",
-        ],
-        "additionalProperties": False,
-    },
-}
 
 
 # ---------------------------------------------------------------------------
@@ -158,9 +77,23 @@ def build_system_prompt() -> str:
         "6. Reasoning must reference specific numbers from the context provided.\n"
         "7. Be conservative in HIGH_VOLATILITY regimes — widen stops or use NO_SIGNAL.\n"
         "8. Funding rate alignment is a strong confirming factor — note it explicitly.\n"
-        "9. Use the submit_market_analysis tool to return your analysis.\n\n"
+        "9. Respond with a JSON code block as shown in the Output Format section below.\n\n"
         "Output style: be concise — two or three sentences of reasoning referencing "
-        "specific price levels, timeframe alignment, and key indicators."
+        "specific price levels, timeframe alignment, and key indicators.\n\n"
+        "## Output Format\n"
+        "Respond with ONLY a JSON code block — no prose before or after.\n"
+        "```json\n"
+        "{\n"
+        '  "instrument": "string — instrument ID, e.g. \'ETH-PERP\'",\n'
+        '  "direction": "LONG | SHORT | NO_SIGNAL",\n'
+        '  "conviction": "number — 0.0 to 1.0",\n'
+        '  "entry_price": "number or null — within +/-5% of mark price, null for ATR default",\n'
+        '  "stop_loss": "number or null — below entry for LONG, above for SHORT, null for ATR default",\n'
+        '  "take_profit": "number or null — above entry for LONG, below for SHORT, null for ATR default",\n'
+        '  "time_horizon_hours": "number — expected holding period in hours",\n'
+        '  "reasoning": "string — concise trade thesis referencing specific data"\n'
+        "}\n"
+        "```"
     )
 
 
@@ -466,7 +399,7 @@ def validate_claude_response(
 
 
 # ---------------------------------------------------------------------------
-# Async API call
+# Async CLI call
 # ---------------------------------------------------------------------------
 
 
@@ -476,10 +409,12 @@ async def call_claude_analysis(
     snapshot: MarketSnapshot,
     regime: MarketRegime,
 ) -> dict[str, Any] | None:
-    """Call Claude API asynchronously and return a validated analysis dict.
+    """Call the Claude CLI asynchronously and return a validated analysis dict.
 
-    Uses ``anthropic.AsyncAnthropic()`` with forced ``submit_market_analysis``
-    tool use.  Validates the response before returning.
+    Uses ``asyncio.create_subprocess_exec("claude", "-p", ...)`` with a
+    ``_CLI_TIMEOUT_SECONDS`` hard cap to prevent event loop stalls.
+    Parses the CLI stdout via ``extract_json()`` and validates via
+    ``validate_claude_response()`` before returning.
 
     Args:
         instrument_id: Instrument being analysed (e.g. 'ETH-PERP').
@@ -491,16 +426,8 @@ async def call_claude_analysis(
         Validated dict with keys (instrument, direction, conviction,
         entry_price, stop_loss, take_profit, time_horizon_hours, reasoning),
         or None if Claude returned NO_SIGNAL, validation failed, or any
-        API/parsing error occurred.
+        subprocess/parsing error occurred.
     """
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        _logger.error(
-            "claude_api_key_missing",
-            instrument=instrument_id,
-        )
-        return None
-
     context = build_market_context(instrument_id, store, snapshot, regime)
     system_prompt = build_system_prompt()
     user_message = (
@@ -508,53 +435,66 @@ async def call_claude_analysis(
         f"whether there is a clear trade opportunity right now.\n\n{context}"
     )
 
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    full_prompt = f"{system_prompt}\n\n{user_message}"
+
     try:
-        response = await client.messages.create(
-            model=_MODEL,
-            max_tokens=_MAX_TOKENS,
-            system=[
-                {
-                    "type": "text",
-                    "text": system_prompt,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            tools=[MARKET_ANALYSIS_TOOL],
-            tool_choice={"type": "tool", "name": "submit_market_analysis"},
-            messages=[{"role": "user", "content": user_message}],
+        proc = await asyncio.create_subprocess_exec(
+            "claude", "-p", full_prompt,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-    except anthropic.APIError as exc:
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            proc.communicate(), timeout=_CLI_TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError:
         _logger.error(
-            "claude_api_error",
+            "claude_cli_timeout",
             instrument=instrument_id,
-            error=str(exc),
-            status_code=getattr(exc, "status_code", None),
+            timeout_seconds=_CLI_TIMEOUT_SECONDS,
+        )
+        return None
+    except OSError as e:
+        _logger.error(
+            "claude_cli_not_found",
+            instrument=instrument_id,
+            error=str(e),
         )
         return None
 
-    # Extract tool_use block — forced tool_choice guarantees its presence
-    tool_use_block = next(
-        (block for block in response.content if block.type == "tool_use"),
-        None,
-    )
-    if tool_use_block is None:
+    if proc.returncode != 0:
+        _logger.error(
+            "claude_cli_error",
+            instrument=instrument_id,
+            returncode=proc.returncode,
+            stderr=(stderr_bytes or b"").decode()[:500],
+        )
+        return None
+
+    stdout_text = (stdout_bytes or b"").decode()
+
+    try:
+        raw = extract_json(stdout_text)
+    except JsonExtractionError as e:
+        _logger.error(
+            "claude_parse_error",
+            instrument=instrument_id,
+            error=str(e),
+        )
+        return None
+
+    if not isinstance(raw, dict):
         _logger.warning(
-            "claude_no_tool_use_block",
+            "claude_unexpected_response_type",
             instrument=instrument_id,
+            type=type(raw).__name__,
         )
         return None
 
-    raw: dict[str, Any] = tool_use_block.input  # type: ignore[assignment]
     _logger.debug(
         "claude_raw_response",
         instrument=instrument_id,
         direction=raw.get("direction"),
         conviction=raw.get("conviction"),
-        input_tokens=response.usage.input_tokens,
-        output_tokens=response.usage.output_tokens,
-        cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0),
-        cache_creation_tokens=getattr(response.usage, "cache_creation_input_tokens", 0),
     )
 
     validated = validate_claude_response(raw, snapshot, store)
