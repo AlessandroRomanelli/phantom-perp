@@ -69,6 +69,7 @@ risk:
     max_funding_cost_per_day_usdc: 20
     correlation_enabled: true
     max_net_directional_exposure_pct: 100.0
+    hwm_drawdown_enabled: true
 
   route_b:
     max_leverage: 5.0
@@ -83,6 +84,7 @@ risk:
     max_funding_cost_per_day_usdc: 100
     correlation_enabled: true
     max_net_directional_exposure_pct: 80.0
+    hwm_drawdown_enabled: true
 
   regime_leverage:
     route_a:

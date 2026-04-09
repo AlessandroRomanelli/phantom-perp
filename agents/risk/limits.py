@@ -45,6 +45,7 @@ class RiskLimits:
     min_expected_move_pct: Decimal = Decimal("0.005")
     correlation_enabled: bool = True
     max_net_directional_exposure_pct: Decimal = Decimal("100.0")
+    hwm_drawdown_enabled: bool = True
 
 
 def _d(value: object, default: str) -> Decimal:
@@ -113,4 +114,5 @@ def limits_for_route(
         max_net_directional_exposure_pct=_d(
             section.get("max_net_directional_exposure_pct"), "100.0"
         ),
+        hwm_drawdown_enabled=bool(section.get("hwm_drawdown_enabled", True)),
     )

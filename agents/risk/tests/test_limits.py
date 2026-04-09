@@ -15,7 +15,7 @@ from libs.common.constants import (
 )
 from libs.common.models.enums import Route
 
-from agents.risk.limits import limits_for_route
+from agents.risk.limits import RiskLimits, limits_for_route
 
 # Mimics the relevant section from configs/default.yaml
 DEFAULT_CONFIG = {
@@ -211,3 +211,57 @@ class TestCorrelationLimits:
         limits = limits_for_route(Route.A, {"risk": {"route_a": {}}})
         assert limits.correlation_enabled is True
         assert limits.max_net_directional_exposure_pct == Decimal("100.0")
+
+
+class TestHWMLimits:
+    """Tests for hwm_drawdown_enabled field on RiskLimits."""
+
+    def _make_limits(self, **kwargs: object) -> RiskLimits:
+        return RiskLimits(
+            max_leverage=Decimal("5"),
+            max_position_notional_usdc=Decimal("6000"),
+            max_position_pct_equity=Decimal("40"),
+            max_margin_utilization_pct=Decimal("70"),
+            min_liquidation_distance_pct=Decimal("8"),
+            max_daily_loss_pct=Decimal("10"),
+            max_drawdown_pct=Decimal("25"),
+            stop_loss_required=True,
+            max_concurrent_positions=3,
+            max_funding_cost_per_day_usdc=Decimal("20"),
+            **kwargs,  # type: ignore[arg-type]
+        )
+
+    def test_hwm_drawdown_enabled_true(self) -> None:
+        limits = self._make_limits(hwm_drawdown_enabled=True)
+        assert limits.hwm_drawdown_enabled is True
+
+    def test_hwm_drawdown_enabled_false(self) -> None:
+        limits = self._make_limits(hwm_drawdown_enabled=False)
+        assert limits.hwm_drawdown_enabled is False
+
+    def test_hwm_drawdown_enabled_default_is_true(self) -> None:
+        """Default should be True so the check is active unless explicitly disabled."""
+        limits = limits_for_route(Route.A, {})
+        assert limits.hwm_drawdown_enabled is True
+
+    def test_limits_for_route_a_with_hwm_enabled(self) -> None:
+        config = {
+            "risk": {
+                "route_a": {"hwm_drawdown_enabled": True},
+            }
+        }
+        limits = limits_for_route(Route.A, config)
+        assert limits.hwm_drawdown_enabled is True
+
+    def test_limits_for_route_b_with_hwm_disabled(self) -> None:
+        config = {
+            "risk": {
+                "route_b": {"hwm_drawdown_enabled": False},
+            }
+        }
+        limits = limits_for_route(Route.B, config)
+        assert limits.hwm_drawdown_enabled is False
+
+    def test_limits_for_route_missing_hwm_key_uses_default(self) -> None:
+        limits = limits_for_route(Route.A, {"risk": {"route_a": {}}})
+        assert limits.hwm_drawdown_enabled is True
