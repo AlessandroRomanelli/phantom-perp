@@ -7,10 +7,10 @@ parameters:
   imbalance_threshold: 0.25
   max_spread_bps: 20.0
   atr_period: 14
-  stop_loss_atr_mult: 2.5
-  take_profit_atr_mult: 3.0
+  stop_loss_atr_mult: 3.0
+  take_profit_atr_mult: 5.0
   min_conviction: 0.45
-  cooldown_bars: 10
+  cooldown_bars: 15
   route_a_min_conviction: 0.7
 instruments:
   ETH-PERP:
@@ -18,9 +18,9 @@ instruments:
   BTC-PERP:
     imbalance_threshold: 0.3
     max_spread_bps: 10.0
-    stop_loss_atr_mult: 2.0
-    take_profit_atr_mult: 2.5
-    cooldown_bars: 20
+    stop_loss_atr_mult: 3.0
+    take_profit_atr_mult: 5.0
+    cooldown_bars: 30
   SOL-PERP:
     enabled: false
   QQQ-PERP:

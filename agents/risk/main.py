@@ -544,6 +544,8 @@ class RiskEngine:
         # ------------------------------------------------------------------
         round_trip_fee = fee * 2  # entry + exit (both estimated as maker)
         notional = size * entry_price
+
+        # 14a. Theoretical edge check (original)
         expected_gross = notional * Decimal(str(idea.conviction)) * limits.min_expected_move_pct
         if round_trip_fee > expected_gross:
             return RiskCheckResult(
@@ -554,6 +556,20 @@ class RiskEngine:
                     f"(conviction={idea.conviction:.2f}, notional={notional:.0f})"
                 ),
             )
+
+        # 14b. Actual TP distance check — reject if TP profit < 2x round-trip fees
+        if idea.take_profit is not None and entry_price > 0:
+            tp_distance = abs(idea.take_profit - entry_price)
+            tp_profit = size * tp_distance
+            if tp_profit < round_trip_fee * 2:
+                return RiskCheckResult(
+                    approved=False,
+                    rejection_reason=(
+                        f"TP too tight: TP profit {tp_profit:.4f} USDC < "
+                        f"2x round-trip fees {round_trip_fee * 2:.4f} USDC "
+                        f"(TP distance={tp_distance:.2f}, {tp_distance / entry_price * 100:.3f}%)"
+                    ),
+                )
 
         # ------------------------------------------------------------------
         # All checks passed — build ProposedOrder
