@@ -39,7 +39,7 @@ See MILESTONES.md for v1.4 accomplishments.
 </details>
 
 - [x] **Phase 26: JSON Extraction Foundation** - Shared utility and prompt engineering for structured CLI output (completed 2026-04-09)
-- [ ] **Phase 27: CLI Call Site Migration** - Replace all 3 Anthropic SDK call sites with claude -p subprocess calls
+- [x] **Phase 27: CLI Call Site Migration** - Replace all 3 Anthropic SDK call sites with claude -p subprocess calls (completed 2026-04-09)
 - [ ] **Phase 28: Dependency Cleanup** - Remove anthropic SDK, ANTHROPIC_API_KEY, and migrate tests
 
 ## Phase Details
@@ -207,10 +207,10 @@ Plans:
   3. `agents/signals/orch_client.py` invokes `claude -p` via `asyncio.create_subprocess_exec()` and returns the same decisions list shape — no changes required in the orchestrator consumer
   4. A subprocess timeout is configured on all three call sites so a hanging CLI process does not stall the trading pipeline indefinitely
   5. No `import anthropic` statements remain anywhere in the codebase
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
-- [ ] 27-01-PLAN.md — Migrate tuner call_claude() from Anthropic SDK to subprocess.run()
-- [ ] 27-02-PLAN.md — Migrate async signal call sites (claude_market_client, orch_client) to asyncio.create_subprocess_exec()
+- [x] 27-01-PLAN.md — Migrate tuner call_claude() from Anthropic SDK to subprocess.run()
+- [x] 27-02-PLAN.md — Migrate async signal call sites (claude_market_client, orch_client) to asyncio.create_subprocess_exec()
 **UI hint**: no
 
 ### Phase 28: Dependency Cleanup & Test Migration
@@ -224,8 +224,8 @@ Plans:
   4. The full test suite passes (`pytest`) with the anthropic package absent from the environment
 **Plans:** 2 plans
 Plans:
-- [ ] 27-01-PLAN.md — Migrate tuner call_claude() from Anthropic SDK to subprocess.run()
-- [ ] 27-02-PLAN.md — Migrate async signal call sites (claude_market_client, orch_client) to asyncio.create_subprocess_exec()
+- [ ] 28-01-PLAN.md — Remove anthropic dep, migrate tuner tests, update manual_tune.py
+- [ ] 28-02-PLAN.md — Migrate signal test files (test_claude_market_analysis, test_orch_client)
 
 ## Progress
 
@@ -245,5 +245,5 @@ Phases execute in numeric order: 16 -> 17 -> 18 -> 19 -> 20 -> 21 -> 22 -> 23 ->
 | 24. Risk Engine Enhancements | v1.4 | 2/2 | Complete    | 2026-04-09 |
 | 25. Paper Simulator Fidelity | v1.4 | 2/2 | Complete    | 2026-04-09 |
 | 26. JSON Extraction Foundation | v1.5 | 2/2 | Complete    | 2026-04-09 |
-| 27. CLI Call Site Migration | v1.5 | 0/? | Not started | - |
-| 28. Dependency Cleanup & Test Migration | v1.5 | 0/? | Not started | - |
+| 27. CLI Call Site Migration | v1.5 | 2/2 | Complete    | 2026-04-09 |
+| 28. Dependency Cleanup & Test Migration | v1.5 | 0/2 | Not started | - |
