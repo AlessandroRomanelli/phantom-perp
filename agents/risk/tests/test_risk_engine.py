@@ -778,3 +778,255 @@ class TestFeeEdgeFilter:
         assert "conviction=" in reason
         assert "notional=" in reason
         assert "USDC" in reason
+
+
+# ---------------------------------------------------------------------------
+# Correlation Exposure Check 5.5
+# ---------------------------------------------------------------------------
+
+# Re-register all instruments (load_instruments clears the registry; include ETH-PERP again)
+load_instruments({
+    "instruments": [
+        {
+            "id": "ETH-PERP",
+            "base_currency": "ETH",
+            "quote_currency": "USDC",
+            "tick_size": 0.01,
+            "min_order_size": 0.0001,
+        },
+        {
+            "id": "BTC-PERP",
+            "base_currency": "BTC",
+            "quote_currency": "USDC",
+            "tick_size": 1.0,
+            "min_order_size": 0.0001,
+        },
+        {
+            "id": "SOL-PERP",
+            "base_currency": "SOL",
+            "quote_currency": "USDC",
+            "tick_size": 0.01,
+            "min_order_size": 0.01,
+        },
+        {
+            "id": "QQQ-PERP",
+            "base_currency": "QQQ",
+            "quote_currency": "USDC",
+            "tick_size": 0.01,
+            "min_order_size": 0.01,
+        },
+    ]
+})
+
+_CORR_GROUPS = [["ETH-PERP", "BTC-PERP", "SOL-PERP"]]
+
+
+def _corr_engine() -> RiskEngine:
+    """Engine with correlation groups enabled (100% equity cap for Route A)."""
+    return RiskEngine(LIMITS_A, LIMITS_B, correlation_groups=_CORR_GROUPS)
+
+
+def _pos(
+    instrument: str,
+    side: PositionSide,
+    size: Decimal,
+    mark: Decimal,
+    target: Route = Route.A,
+) -> PerpPosition:
+    return PerpPosition(
+        instrument=instrument,
+        route=target,
+        side=side,
+        size=size,
+        entry_price=mark,
+        mark_price=mark,
+        unrealized_pnl_usdc=Decimal("0"),
+        realized_pnl_usdc=Decimal("0"),
+        leverage=Decimal("1"),
+        initial_margin_usdc=(size * mark / Decimal("1")).quantize(Decimal("0.01")),
+        maintenance_margin_usdc=Decimal("20"),
+        liquidation_price=Decimal("1"),
+        margin_ratio=0.04,
+        cumulative_funding_usdc=Decimal("0"),
+        total_fees_usdc=Decimal("0"),
+    )
+
+
+class TestCorrelationExposure:
+    """Check 5.5 — cross-instrument correlation exposure guard."""
+
+    def test_long_rejected_when_correlated_longs_exceed_threshold(self) -> None:
+        """LONG ETH rejected: existing BTC+SOL longs already near cap.
+
+        Setup: equity=10000, cap=100% → cap=10000 USDC
+        BTC LONG: 0.1 * 80000 = 8000 USDC
+        SOL LONG: 10 * 150 = 1500 USDC
+        net_existing = 8000 + 1500 = 9500 USDC (LONG direction)
+        new ETH max_notional = 10000 * 40% = 4000 USDC
+        projected_net = |9500 + 4000| = 13500 > 10000 → reject
+        """
+        engine = _corr_engine()
+        btc_pos = _pos("BTC-PERP", PositionSide.LONG, Decimal("0.1"), Decimal("80000"))
+        sol_pos = _pos("SOL-PERP", PositionSide.LONG, Decimal("10"), Decimal("150"))
+        portfolio = _portfolio(
+            equity=Decimal("10000"),
+            used_margin=Decimal("1000"),
+            positions=[btc_pos, sol_pos],
+        )
+        result = engine.evaluate(
+            _idea(direction=PositionSide.LONG, conviction=0.8),
+            portfolio,
+            MARKET_PRICE,
+            utc_now(),
+            FUNDING_RATE,
+        )
+        assert result.approved is False
+        assert "Correlation exposure" in (result.rejection_reason or "")
+
+    def test_long_approved_when_under_threshold(self) -> None:
+        """LONG ETH approved: existing positions leave enough room under cap."""
+        engine = _corr_engine()
+        # Small BTC position: 0.01 * 80000 = 800 USDC → well under cap
+        btc_pos = _pos("BTC-PERP", PositionSide.LONG, Decimal("0.01"), Decimal("80000"))
+        portfolio = _portfolio(
+            equity=Decimal("10000"),
+            used_margin=Decimal("100"),
+            positions=[btc_pos],
+        )
+        result = engine.evaluate(
+            _idea(direction=PositionSide.LONG, conviction=0.8),
+            portfolio,
+            MARKET_PRICE,
+            utc_now(),
+            FUNDING_RATE,
+        )
+        assert result.approved is True
+
+    def test_short_offsets_long_in_net_calculation(self) -> None:
+        """SHORT SOL offsets LONG BTC: net directional = 8000 - 1500 = 6500.
+
+        New LONG ETH max_notional=4000 → projected |6500+4000|=10500 > cap=10000 → reject.
+        But if SOL position size is bigger short, net goes negative and adding LONG ETH
+        reduces abs → approve. Let's use the offset case that passes.
+        LONG BTC 8000 + SHORT SOL 6500 = net 1500 USDC
+        new LONG ETH 4000 → |1500 + 4000| = 5500 < 10000 → approve
+        """
+        engine = _corr_engine()
+        btc_pos = _pos("BTC-PERP", PositionSide.LONG, Decimal("0.1"), Decimal("80000"))
+        sol_pos = _pos("SOL-PERP", PositionSide.SHORT, Decimal("43.33"), Decimal("150"))
+        # SOL short: 43.33 * 150 = ~6500
+        portfolio = _portfolio(
+            equity=Decimal("10000"),
+            used_margin=Decimal("1500"),
+            positions=[btc_pos, sol_pos],
+        )
+        result = engine.evaluate(
+            _idea(direction=PositionSide.LONG, conviction=0.8),
+            portfolio,
+            MARKET_PRICE,
+            utc_now(),
+            FUNDING_RATE,
+        )
+        assert result.approved is True
+
+    def test_instrument_not_in_group_skips_check(self) -> None:
+        """QQQ-PERP is not in the crypto group — correlation check skipped even if crypto positions exceed cap."""
+        # Only the crypto group is defined; QQQ-PERP is not in it
+        engine = RiskEngine(LIMITS_A, LIMITS_B, correlation_groups=[["ETH-PERP", "BTC-PERP", "SOL-PERP"]])
+        btc_pos = _pos("BTC-PERP", PositionSide.LONG, Decimal("0.1"), Decimal("80000"))
+        sol_pos = _pos("SOL-PERP", PositionSide.LONG, Decimal("10"), Decimal("150"))
+        portfolio = _portfolio(
+            equity=Decimal("10000"),
+            used_margin=Decimal("1000"),
+            positions=[btc_pos, sol_pos],
+        )
+        # Use a QQQ-PERP idea — not in any correlation group
+        qqq_idea = RankedTradeIdea(
+            idea_id="test-qqq-001",
+            timestamp=utc_now(),
+            instrument="QQQ-PERP",
+            route=Route.A,
+            direction=PositionSide.LONG,
+            conviction=0.8,
+            sources=[SignalSource.MOMENTUM],
+            time_horizon=timedelta(hours=4),
+            entry_price=Decimal("400"),
+            stop_loss=Decimal("380"),
+            take_profit=Decimal("440"),
+            reasoning="Test QQQ idea",
+        )
+        result = engine.evaluate(
+            qqq_idea,
+            portfolio,
+            Decimal("400"),
+            utc_now(),
+            FUNDING_RATE,
+        )
+        # Correlation is not the rejection reason (may reject for other reasons, but not correlation)
+        assert "Correlation exposure" not in (result.rejection_reason or "")
+
+    def test_correlation_disabled_skips_check(self) -> None:
+        """correlation_enabled=False: scenario that would reject is approved."""
+        limits_no_corr = RiskLimits(
+            max_leverage=Decimal("5"),
+            max_position_notional_usdc=Decimal("6000"),
+            max_position_pct_equity=Decimal("40"),
+            max_margin_utilization_pct=Decimal("70"),
+            min_liquidation_distance_pct=Decimal("8"),
+            max_daily_loss_pct=Decimal("10"),
+            max_drawdown_pct=Decimal("25"),
+            stop_loss_required=True,
+            max_concurrent_positions=3,
+            max_funding_cost_per_day_usdc=Decimal("20"),
+            conviction_power=1.0,
+            min_expected_move_pct=Decimal("0.005"),
+            correlation_enabled=False,
+        )
+        engine = RiskEngine(limits_no_corr, LIMITS_B, correlation_groups=_CORR_GROUPS)
+        btc_pos = _pos("BTC-PERP", PositionSide.LONG, Decimal("0.1"), Decimal("80000"))
+        sol_pos = _pos("SOL-PERP", PositionSide.LONG, Decimal("10"), Decimal("150"))
+        portfolio = _portfolio(
+            equity=Decimal("10000"),
+            used_margin=Decimal("1000"),
+            positions=[btc_pos, sol_pos],
+        )
+        result = engine.evaluate(
+            _idea(direction=PositionSide.LONG, conviction=0.8),
+            portfolio,
+            MARKET_PRICE,
+            utc_now(),
+            FUNDING_RATE,
+        )
+        assert "Correlation exposure" not in (result.rejection_reason or "")
+
+    def test_empty_correlation_groups_skips_check(self) -> None:
+        """No correlation groups → check skipped → idea not rejected for correlation."""
+        engine = RiskEngine(LIMITS_A, LIMITS_B, correlation_groups=None)
+        btc_pos = _pos("BTC-PERP", PositionSide.LONG, Decimal("0.1"), Decimal("80000"))
+        sol_pos = _pos("SOL-PERP", PositionSide.LONG, Decimal("10"), Decimal("150"))
+        portfolio = _portfolio(
+            equity=Decimal("10000"),
+            used_margin=Decimal("1000"),
+            positions=[btc_pos, sol_pos],
+        )
+        result = engine.evaluate(
+            _idea(direction=PositionSide.LONG, conviction=0.8),
+            portfolio,
+            MARKET_PRICE,
+            utc_now(),
+            FUNDING_RATE,
+        )
+        assert "Correlation exposure" not in (result.rejection_reason or "")
+
+    def test_no_open_positions_in_group_approved(self) -> None:
+        """No existing positions in the group → projected = new trade only → approved if under cap."""
+        engine = _corr_engine()
+        # Empty portfolio; new LONG ETH max_notional = 10000 * 40% = 4000 < cap=10000
+        result = engine.evaluate(
+            _idea(direction=PositionSide.LONG, conviction=0.8),
+            _portfolio(equity=Decimal("10000")),
+            MARKET_PRICE,
+            utc_now(),
+            FUNDING_RATE,
+        )
+        assert result.approved is True

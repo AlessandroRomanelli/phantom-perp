@@ -228,11 +228,17 @@ class RiskEngine:
         limits_b: Risk limits for Route B.
     """
 
-    def __init__(self, limits_a: RiskLimits, limits_b: RiskLimits) -> None:
+    def __init__(
+        self,
+        limits_a: RiskLimits,
+        limits_b: RiskLimits,
+        correlation_groups: list[list[str]] | None = None,
+    ) -> None:
         self._limits = {
             Route.A: limits_a,
             Route.B: limits_b,
         }
+        self._correlation_groups: list[list[str]] = correlation_groups or []
 
     def evaluate(
         self,
@@ -365,6 +371,49 @@ class RiskEngine:
                         f"{idea.instrument} (size={pos.size})"
                     ),
                 )
+
+        # ------------------------------------------------------------------
+        # 5.5. Correlation exposure check
+        # ------------------------------------------------------------------
+        if limits.correlation_enabled and self._correlation_groups:
+            instrument_group: list[str] | None = None
+            for group in self._correlation_groups:
+                if idea.instrument in group:
+                    instrument_group = group
+                    break
+
+            if instrument_group is not None:
+                # Sum signed net notional for existing positions in this group
+                net_existing = Decimal("0")
+                for pos in open_positions:
+                    if pos.instrument in instrument_group:
+                        signed = pos.size * pos.mark_price
+                        if pos.side == PositionSide.SHORT:
+                            signed = -signed
+                        net_existing += signed
+
+                # Conservative max new notional based on equity and position pct limit
+                max_new_notional = (
+                    portfolio_state.equity_usdc
+                    * limits.max_position_pct_equity
+                    / Decimal("100")
+                )
+                proposed_sign = Decimal("1") if idea.direction == PositionSide.LONG else Decimal("-1")
+                projected_net = abs(net_existing + proposed_sign * max_new_notional)
+                cap = (
+                    portfolio_state.equity_usdc
+                    * limits.max_net_directional_exposure_pct
+                    / Decimal("100")
+                )
+                if projected_net > cap:
+                    return RiskCheckResult(
+                        approved=False,
+                        rejection_reason=(
+                            f"Correlation exposure: projected net directional "
+                            f"{projected_net:.0f} USDC > cap {cap:.0f} USDC "
+                            f"({limits.max_net_directional_exposure_pct}% of equity)"
+                        ),
+                    )
 
         # ------------------------------------------------------------------
         # 7. Position sizing
@@ -556,7 +605,9 @@ async def run_agent() -> None:
 
     limits_a = limits_for_route(Route.A, config)
     limits_b = limits_for_route(Route.B, config)
-    engine = RiskEngine(limits_a, limits_b)
+    risk_cfg = config.get("risk", {})
+    correlation_groups: list[list[str]] | None = risk_cfg.get("correlation_groups", None)
+    engine = RiskEngine(limits_a, limits_b, correlation_groups=correlation_groups)
 
     log.info(
         "risk_agent_started",
