@@ -4,26 +4,28 @@ Coverage:
 - build_system_prompt: returns string with role and safety constraint references
 - build_user_message: contains all 4 required sections (CLAI-03)
 - build_user_message: insufficient data entries for None metrics
-- TOOL_SCHEMA: has required fields, strict mode enabled
-- call_claude: extracts tool input dict from success response
-- call_claude: returns None on anthropic.APIError (D-13)
-- call_claude: returns None when no tool_use block in response (D-14)
-- call_claude: passes correct model, system prompt, and max_tokens
+- DEFAULT_MODEL: stable alias
+- call_claude: extracts dict from subprocess stdout JSON code block
+- call_claude: passes combined prompt to CLI with correct args and timeout
+- call_claude: returns None on subprocess.TimeoutExpired
+- call_claude: returns None on non-zero returncode
+- call_claude: returns None on invalid JSON stdout
+- call_claude: returns None on OSError (claude not found)
+- call_claude: returns None when parsed result is not a dict
 """
 
 from __future__ import annotations
 
+import subprocess
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
-import anthropic
 import pytest
 
 from libs.metrics.engine import StrategyMetrics
 from libs.tuner.bounds import BoundsEntry
 from libs.tuner.claude_client import (
     DEFAULT_MODEL,
-    TOOL_SCHEMA,
     build_system_prompt,
     build_user_message,
     call_claude,
@@ -97,19 +99,6 @@ def sample_registry() -> dict[str, BoundsEntry]:
             value_type="int",
         ),
     }
-
-
-def _make_fake_response(
-    recommendations: list[dict],
-    summary: str = "test summary",
-) -> MagicMock:
-    """Build a fake anthropic Message response with a tool_use block."""
-    tool_block = MagicMock()
-    tool_block.type = "tool_use"
-    tool_block.input = {"summary": summary, "recommendations": recommendations}
-    msg = MagicMock()
-    msg.content = [tool_block]
-    return msg
 
 
 # ---------------------------------------------------------------------------
@@ -198,125 +187,116 @@ def test_build_user_message_insufficient_data_entries(
 
 
 # ---------------------------------------------------------------------------
-# TOOL_SCHEMA tests
-# ---------------------------------------------------------------------------
-
-
-def test_tool_schema_name() -> None:
-    """TOOL_SCHEMA has the correct tool name."""
-    assert TOOL_SCHEMA["name"] == "submit_recommendations"
-
-
-def test_tool_schema_has_required_root_fields() -> None:
-    """TOOL_SCHEMA input_schema requires 'summary' and 'recommendations'."""
-    required = TOOL_SCHEMA["input_schema"]["required"]
-    assert "summary" in required
-    assert "recommendations" in required
-
-
-def test_tool_schema_recommendation_item_required_fields() -> None:
-    """Each recommendation item requires strategy, param, value, reasoning."""
-    items_schema = TOOL_SCHEMA["input_schema"]["properties"]["recommendations"]["items"]
-    required = items_schema["required"]
-    assert "strategy" in required
-    assert "param" in required
-    assert "value" in required
-    assert "reasoning" in required
-
-
-def test_tool_schema_strict_mode() -> None:
-    """TOOL_SCHEMA has strict=True for schema enforcement (CLAI-02)."""
-    assert TOOL_SCHEMA.get("strict") is True
-
-
-# ---------------------------------------------------------------------------
 # call_claude tests
 # ---------------------------------------------------------------------------
 
 
 def test_call_claude_returns_tool_input_on_success() -> None:
-    """call_claude returns the tool input dict on a successful response."""
-    recs = [{"strategy": "momentum", "instrument": "ETH-PERP", "param": "min_conviction",
-             "value": 0.6, "reasoning": "test"}]
-    fake_response = _make_fake_response(recs, summary="good session")
+    """call_claude returns the parsed dict from subprocess stdout JSON block."""
+    recs = [
+        {
+            "strategy": "momentum",
+            "instrument": "ETH-PERP",
+            "param": "min_conviction",
+            "value": 0.6,
+            "reasoning": "test",
+        }
+    ]
+    stdout = '```json\n{"summary": "good session", "recommendations": ' + str(recs).replace("'", '"') + '}\n```'
+    fake_result = MagicMock()
+    fake_result.returncode = 0
+    fake_result.stdout = stdout
+    fake_result.stderr = ""
 
-    with patch("anthropic.Anthropic") as mock_cls:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.messages.create.return_value = fake_response
-
+    with patch("subprocess.run", return_value=fake_result):
         result = call_claude(DEFAULT_MODEL, "system prompt", "user message")
 
     assert result is not None
     assert result["summary"] == "good session"
-    assert result["recommendations"] == recs
+    assert len(result["recommendations"]) == 1
 
 
-def test_call_claude_uses_correct_model_and_tool_choice() -> None:
-    """call_claude passes correct model, tool_choice, and tools to SDK."""
-    fake_response = _make_fake_response([])
+def test_call_claude_passes_prompt_to_cli() -> None:
+    """call_claude calls subprocess.run(["claude", "-p", ...]) with combined prompt and timeout."""
+    fake_result = MagicMock()
+    fake_result.returncode = 0
+    fake_result.stdout = '```json\n{"summary": "ok", "recommendations": []}\n```'
+    fake_result.stderr = ""
 
-    with patch("anthropic.Anthropic") as mock_cls:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.messages.create.return_value = fake_response
+    with patch("subprocess.run", return_value=fake_result) as mock_run:
+        call_claude("model", "sys prompt", "user msg")
 
-        call_claude("claude-sonnet-4-5", "sys", "user")
-
-    call_kwargs = mock_client.messages.create.call_args
-    assert call_kwargs.kwargs["model"] == "claude-sonnet-4-5"
-    assert call_kwargs.kwargs["tools"] == [TOOL_SCHEMA]
-    assert call_kwargs.kwargs["tool_choice"] == {
-        "type": "tool",
-        "name": "submit_recommendations",
-    }
-
-
-def test_call_claude_passes_max_tokens_and_system() -> None:
-    """call_claude passes system prompt and max_tokens to SDK."""
-    fake_response = _make_fake_response([])
-
-    with patch("anthropic.Anthropic") as mock_cls:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.messages.create.return_value = fake_response
-
-        call_claude("claude-sonnet-4-5", "my system prompt", "user msg", max_tokens=4096)
-
-    call_kwargs = mock_client.messages.create.call_args
-    assert call_kwargs.kwargs["system"] == "my system prompt"
-    assert call_kwargs.kwargs["max_tokens"] == 4096
+    mock_run.assert_called_once()
+    call_args = mock_run.call_args
+    cmd = call_args.args[0]
+    assert cmd[0] == "claude"
+    assert cmd[1] == "-p"
+    # Combined prompt contains both system and user parts
+    combined_prompt = cmd[2]
+    assert "sys prompt" in combined_prompt
+    assert "user msg" in combined_prompt
+    # Timeout kwarg passed
+    assert call_args.kwargs.get("timeout") == 120
 
 
-def test_call_claude_returns_none_on_api_error() -> None:
-    """call_claude returns None when anthropic.APIError is raised (D-13)."""
-    with patch("anthropic.Anthropic") as mock_cls:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.messages.create.side_effect = anthropic.APIStatusError(
-            message="Internal server error",
-            response=MagicMock(status_code=500),
-            body=None,
-        )
-
+def test_call_claude_returns_none_on_timeout() -> None:
+    """call_claude returns None when subprocess.TimeoutExpired is raised."""
+    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=120)):
         result = call_claude(DEFAULT_MODEL, "sys", "user")
 
     assert result is None
 
 
-def test_call_claude_returns_none_on_no_tool_block() -> None:
-    """call_claude returns None when response has no tool_use block (D-14)."""
-    msg = MagicMock()
-    msg.content = []  # Empty content -- no tool_use block
+def test_call_claude_returns_none_on_nonzero_exit() -> None:
+    """call_claude returns None when subprocess returncode is non-zero."""
+    fake_result = MagicMock()
+    fake_result.returncode = 1
+    fake_result.stderr = "error output"
+    fake_result.stdout = ""
 
-    with patch("anthropic.Anthropic") as mock_cls:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.messages.create.return_value = msg
-
+    with patch("subprocess.run", return_value=fake_result):
         result = call_claude(DEFAULT_MODEL, "sys", "user")
 
     assert result is None
+
+
+def test_call_claude_returns_none_on_invalid_json() -> None:
+    """call_claude returns None when stdout is not valid JSON."""
+    fake_result = MagicMock()
+    fake_result.returncode = 0
+    fake_result.stdout = "not json at all"
+    fake_result.stderr = ""
+
+    with patch("subprocess.run", return_value=fake_result):
+        result = call_claude(DEFAULT_MODEL, "sys", "user")
+
+    assert result is None
+
+
+def test_call_claude_returns_none_on_oserror() -> None:
+    """call_claude returns None when OSError is raised (claude not found)."""
+    with patch("subprocess.run", side_effect=OSError("claude not found")):
+        result = call_claude(DEFAULT_MODEL, "sys", "user")
+
+    assert result is None
+
+
+def test_call_claude_returns_none_on_non_dict_response() -> None:
+    """call_claude returns None when parsed JSON is not a dict (e.g. a list)."""
+    fake_result = MagicMock()
+    fake_result.returncode = 0
+    fake_result.stdout = "```json\n[1, 2, 3]\n```"
+    fake_result.stderr = ""
+
+    with patch("subprocess.run", return_value=fake_result):
+        result = call_claude(DEFAULT_MODEL, "sys", "user")
+
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# DEFAULT_MODEL test
+# ---------------------------------------------------------------------------
 
 
 def test_default_model_is_correct() -> None:
