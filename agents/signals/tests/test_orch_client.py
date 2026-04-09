@@ -1,23 +1,22 @@
 """Unit tests for Claude orchestrator client (orch_client.py).
 
-All tests mock the Anthropic API and filesystem — no real HTTP calls or
-file I/O outside the project's bounds.yaml.
+All tests mock asyncio.create_subprocess_exec and filesystem — no real HTTP calls,
+no Anthropic SDK dependency required.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from agents.signals.orch_client import (
-    ORCHESTRATOR_TOOL,
     OrchestratorParams,
     build_orchestrator_context,
     call_claude_orchestrator,
@@ -89,25 +88,10 @@ def _build_store(
     return store
 
 
-def _make_tool_use_block(raw: dict[str, Any]) -> SimpleNamespace:
-    """Fake a tool_use content block from the Anthropic SDK."""
-    block = SimpleNamespace()
-    block.type = "tool_use"
-    block.input = raw
-    return block
-
-
-def _make_claude_response(
-    decisions: list[dict[str, Any]],
-    summary: str = "ok",
-    input_tokens: int = 150,
-    output_tokens: int = 80,
-) -> SimpleNamespace:
-    """Wrap decisions in a mock Anthropic message response."""
-    resp = SimpleNamespace()
-    resp.content = [_make_tool_use_block({"decisions": decisions, "summary": summary})]
-    resp.usage = SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens)
-    return resp
+def _mock_cli_response(decisions: list[dict[str, Any]], summary: str = "ok") -> bytes:
+    """Build mock CLI stdout with orchestrator JSON in a code block."""
+    payload = {"decisions": decisions, "summary": summary}
+    return f"```json\n{json.dumps(payload)}\n```".encode()
 
 
 def _make_regime_detector(regimes: dict[str, str] | None = None) -> MagicMock:
@@ -122,53 +106,6 @@ def _make_regime_detector(regimes: dict[str, str] | None = None) -> MagicMock:
     det.regime_for.side_effect = _regime_for
     det.current_regime = MarketRegime.RANGING
     return det
-
-
-# ---------------------------------------------------------------------------
-# TestOrchestratorTool
-# ---------------------------------------------------------------------------
-
-
-class TestOrchestratorTool:
-    """Validate ORCHESTRATOR_TOOL schema structure."""
-
-    def test_tool_name(self) -> None:
-        assert ORCHESTRATOR_TOOL["name"] == "submit_orchestrator_decisions"
-
-    def test_top_level_schema(self) -> None:
-        schema = ORCHESTRATOR_TOOL["input_schema"]
-        assert schema["type"] == "object"
-        assert "decisions" in schema["properties"]
-        assert "summary" in schema["properties"]
-
-    def test_required_top_level_fields(self) -> None:
-        schema = ORCHESTRATOR_TOOL["input_schema"]
-        assert "decisions" in schema["required"]
-        assert "summary" in schema["required"]
-
-    def test_decisions_array_type(self) -> None:
-        decisions_schema = ORCHESTRATOR_TOOL["input_schema"]["properties"]["decisions"]
-        assert decisions_schema["type"] == "array"
-
-    def test_decision_item_required_fields(self) -> None:
-        item_schema = ORCHESTRATOR_TOOL["input_schema"]["properties"]["decisions"]["items"]
-        required = item_schema["required"]
-        assert "instrument" in required
-        assert "strategy" in required
-        assert "enabled" in required
-        assert "reasoning" in required
-
-    def test_decision_item_properties(self) -> None:
-        item_props = ORCHESTRATOR_TOOL["input_schema"]["properties"]["decisions"]["items"]["properties"]
-        assert item_props["instrument"]["type"] == "string"
-        assert item_props["strategy"]["type"] == "string"
-        assert item_props["enabled"]["type"] == "boolean"
-        assert item_props["param_adjustments"]["type"] == "object"
-        assert item_props["reasoning"]["type"] == "string"
-
-    def test_param_adjustments_additionalProperties(self) -> None:
-        item_props = ORCHESTRATOR_TOOL["input_schema"]["properties"]["decisions"]["items"]["properties"]
-        assert item_props["param_adjustments"]["additionalProperties"]["type"] == "number"
 
 
 # ---------------------------------------------------------------------------
@@ -308,7 +245,14 @@ class TestBuildOrchestratorContext:
 
 
 class TestCallClaudeOrchestrator:
-    """Test async Claude API call with various mock scenarios."""
+    """Test async Claude CLI call with various mock scenarios."""
+
+    def _make_mock_proc(self, stdout: bytes, returncode: int = 0) -> MagicMock:
+        """Build a mock asyncio subprocess process."""
+        proc = MagicMock()
+        proc.returncode = returncode
+        proc.communicate = AsyncMock(return_value=(stdout, b""))
+        return proc
 
     def test_valid_response_returns_decisions(self) -> None:
         decisions = [
@@ -320,18 +264,16 @@ class TestCallClaudeOrchestrator:
                 "param_adjustments": {},
             }
         ]
-        mock_resp = _make_claude_response(decisions)
+        proc = self._make_mock_proc(_mock_cli_response(decisions))
         params = OrchestratorParams()
 
-        with patch("agents.signals.orch_client.anthropic.AsyncAnthropic") as mock_cls:
-            mock_client = AsyncMock()
-            mock_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_resp)
-
-            with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
-                result = asyncio.new_event_loop().run_until_complete(
-                    call_claude_orchestrator("context", params)
-                )
+        with patch(
+            "agents.signals.orch_client.asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=proc),
+        ):
+            result = asyncio.new_event_loop().run_until_complete(
+                call_claude_orchestrator("context", params)
+            )
 
         assert result is not None
         assert len(result) == 1
@@ -339,72 +281,67 @@ class TestCallClaudeOrchestrator:
         assert result[0]["strategy"] == "momentum"
         assert result[0]["enabled"] is True
 
-    def test_missing_api_key_returns_none(self) -> None:
+    def test_cli_timeout_returns_none(self) -> None:
+        """asyncio.TimeoutError during communicate() → returns None."""
+        proc = MagicMock()
+        proc.returncode = None
+        proc.communicate = AsyncMock(side_effect=asyncio.TimeoutError)
         params = OrchestratorParams()
-        env = {k: v for k, v in __import__("os").environ.items() if k != "ANTHROPIC_API_KEY"}
 
-        with patch.dict("os.environ", env, clear=True):
+        with patch(
+            "agents.signals.orch_client.asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=proc),
+        ):
             result = asyncio.new_event_loop().run_until_complete(
                 call_claude_orchestrator("context", params)
             )
 
         assert result is None
 
-    def test_api_error_returns_none(self) -> None:
-        import anthropic as anth
-
+    def test_cli_nonzero_exit_returns_none(self) -> None:
+        """Non-zero returncode from CLI → returns None without raising."""
+        proc = MagicMock()
+        proc.returncode = 1
+        proc.communicate = AsyncMock(return_value=(b"", b"error"))
         params = OrchestratorParams()
 
-        with patch("agents.signals.orch_client.anthropic.AsyncAnthropic") as mock_cls:
-            mock_client = AsyncMock()
-            mock_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(
-                side_effect=anth.APIError("server error", request=MagicMock(), body=None)
+        with patch(
+            "agents.signals.orch_client.asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=proc),
+        ):
+            result = asyncio.new_event_loop().run_until_complete(
+                call_claude_orchestrator("context", params)
             )
-
-            with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
-                result = asyncio.new_event_loop().run_until_complete(
-                    call_claude_orchestrator("context", params)
-                )
 
         assert result is None
 
-    def test_missing_tool_use_block_returns_none(self) -> None:
-        """If Claude returns no tool_use block, return None."""
-        mock_resp = SimpleNamespace()
-        text_block = SimpleNamespace()
-        text_block.type = "text"
-        text_block.text = "Sorry, I cannot help."
-        mock_resp.content = [text_block]
-
+    def test_cli_invalid_json_returns_none(self) -> None:
+        """CLI stdout with no JSON code block → returns None."""
+        proc = self._make_mock_proc(b"Sorry, I cannot help.")
         params = OrchestratorParams()
 
-        with patch("agents.signals.orch_client.anthropic.AsyncAnthropic") as mock_cls:
-            mock_client = AsyncMock()
-            mock_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_resp)
-
-            with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
-                result = asyncio.new_event_loop().run_until_complete(
-                    call_claude_orchestrator("context", params)
-                )
+        with patch(
+            "agents.signals.orch_client.asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=proc),
+        ):
+            result = asyncio.new_event_loop().run_until_complete(
+                call_claude_orchestrator("context", params)
+            )
 
         assert result is None
 
     def test_empty_decisions_list_returned(self) -> None:
         """Claude returning empty decisions list is valid."""
-        mock_resp = _make_claude_response([], summary="No changes needed.")
+        proc = self._make_mock_proc(_mock_cli_response([], summary="No changes needed."))
         params = OrchestratorParams()
 
-        with patch("agents.signals.orch_client.anthropic.AsyncAnthropic") as mock_cls:
-            mock_client = AsyncMock()
-            mock_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_resp)
-
-            with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
-                result = asyncio.new_event_loop().run_until_complete(
-                    call_claude_orchestrator("context", params)
-                )
+        with patch(
+            "agents.signals.orch_client.asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=proc),
+        ):
+            result = asyncio.new_event_loop().run_until_complete(
+                call_claude_orchestrator("context", params)
+            )
 
         assert result == []
 
@@ -678,27 +615,8 @@ class TestOrchestratorParams:
 
 
 # ---------------------------------------------------------------------------
-# T02 additions: confidence schema, token logging, param defaults, validate pass-through
+# T02 additions: param defaults and validate confidence pass-through
 # ---------------------------------------------------------------------------
-
-
-class TestOrchestratorToolConfidenceSchema:
-    """T02: Verify confidence field in ORCHESTRATOR_TOOL schema."""
-
-    def test_confidence_property_present(self) -> None:
-        """ORCHESTRATOR_TOOL schema has confidence property in decision items."""
-        item_props = ORCHESTRATOR_TOOL["input_schema"]["properties"]["decisions"]["items"]["properties"]
-        assert "confidence" in item_props
-
-    def test_confidence_type_is_number(self) -> None:
-        """confidence schema property has type: number."""
-        item_props = ORCHESTRATOR_TOOL["input_schema"]["properties"]["decisions"]["items"]["properties"]
-        assert item_props["confidence"]["type"] == "number"
-
-    def test_confidence_not_in_required(self) -> None:
-        """confidence is optional — not in required list (backward compatible)."""
-        item_required = ORCHESTRATOR_TOOL["input_schema"]["properties"]["decisions"]["items"]["required"]
-        assert "confidence" not in item_required
 
 
 class TestOrchestratorParamsT02:
@@ -727,42 +645,6 @@ class TestOrchestratorParamsT02:
         assert p.enabled is True
         assert p.min_interval_seconds == 3600
         assert p.max_tokens == 1024
-
-
-class TestCallClaudeOrchestratorTokenLogging:
-    """T02: Verify input_tokens and output_tokens appear in log event."""
-
-    def test_token_counts_logged_on_success(self) -> None:
-        """call_claude_orchestrator logs input_tokens and output_tokens."""
-        import structlog.testing
-
-        decisions = [
-            {
-                "instrument": "ETH-PERP",
-                "strategy": "momentum",
-                "enabled": True,
-                "reasoning": "trending",
-                "param_adjustments": {},
-            }
-        ]
-        mock_resp = _make_claude_response(decisions, input_tokens=250, output_tokens=95)
-
-        with structlog.testing.capture_logs() as cap_logs:
-            with patch("agents.signals.orch_client.anthropic.AsyncAnthropic") as mock_cls:
-                mock_client = AsyncMock()
-                mock_cls.return_value = mock_client
-                mock_client.messages.create = AsyncMock(return_value=mock_resp)
-
-                with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
-                    asyncio.new_event_loop().run_until_complete(
-                        call_claude_orchestrator("context", OrchestratorParams())
-                    )
-
-        decision_logs = [e for e in cap_logs if e.get("event") == "orchestrator_decisions_received"]
-        assert len(decision_logs) == 1
-        log_entry = decision_logs[0]
-        assert log_entry["input_tokens"] == 250
-        assert log_entry["output_tokens"] == 95
 
 
 class TestValidateOrchestratorResponseT02:
