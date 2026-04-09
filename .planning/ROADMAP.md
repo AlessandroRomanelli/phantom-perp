@@ -44,8 +44,8 @@ See MILESTONES.md for v1.1 accomplishments.
 
 - [x] **Phase 21: Safety Critical Fixes** - Eliminate double execution, wire real P&L into kill switches, restore safety constants, fix credential routing (completed 2026-04-08)
 - [x] **Phase 22: Data Pipeline Fixes** - Fix corrupted bar_volumes, ADX NaN bug, Bollinger ddof, and index price sourcing (completed 2026-04-08)
-- [ ] **Phase 23: Sizing & Execution Optimization** - Recalibrate conviction sizing, switch SL to maker fees, add fee filter, cap BTC notional
-- [ ] **Phase 24: Risk Engine Enhancements** - Add cross-instrument correlation check and equity HWM drawdown tracking
+- [x] **Phase 23: Sizing & Execution Optimization** - Recalibrate conviction sizing, switch SL to maker fees, add fee filter, cap BTC notional (completed 2026-04-08)
+- [x] **Phase 24: Risk Engine Enhancements** - Add cross-instrument correlation check and equity HWM drawdown tracking (completed 2026-04-09)
 - [ ] **Phase 25: Paper Simulator Fidelity** - Probabilistic fill model with adverse selection and SL slippage
 
 ## Phase Details
@@ -247,8 +247,8 @@ Plans:
   4. BTC-PERP either has a higher max_position_notional_usdc cap or OBI strategy has a longer cooldown — whichever is configured, the result is fewer fee-negative high-frequency BTC trades
 **Plans**: 2 plans
 Plans:
-- [ ] 23-01-PLAN.md — Config changes (conviction_power, OBI cooldown) and STOP_LIMIT stop-loss with maker fees
-- [ ] 23-02-PLAN.md — Fee-adjusted signal filter in risk engine
+- [x] 23-01-PLAN.md — Config changes (conviction_power, OBI cooldown) and STOP_LIMIT stop-loss with maker fees
+- [x] 23-02-PLAN.md — Fee-adjusted signal filter in risk engine
 
 ### Phase 24: Risk Engine Enhancements
 **Goal**: The risk engine prevents concentrated directional bets across correlated instruments and tracks true peak-to-trough drawdown for kill switch decisions
@@ -260,8 +260,8 @@ Plans:
   3. The correlation exposure check and HWM drawdown are both configurable via YAML and can be disabled per-route without code changes
 **Plans**: 2 plans
 Plans:
-- [ ] 21-01-PLAN.md — Fix double execution (SAFE-01), metadata serialization (SAFE-03), leverage constant (SAFE-04)
-- [ ] 21-02-PLAN.md — Kill switch regression test (SAFE-02), Route B credentials (SAFE-05)
+- [x] 24-01-PLAN.md — Correlation exposure check (ROBU-01)
+- [x] 24-02-PLAN.md — HWM drawdown tracking (ROBU-04)
 
 ### Phase 25: Paper Simulator Fidelity
 **Goal**: Paper mode results approximate real-world execution quality — fills are not guaranteed, adverse selection is modeled, and stop-loss orders experience realistic slippage
@@ -273,8 +273,8 @@ Plans:
   3. Stop-loss orders in paper mode experience configurable slippage (e.g., 0.05-0.15%) reflecting real-world stop execution in fast markets
 **Plans**: 2 plans
 Plans:
-- [ ] 21-01-PLAN.md — Fix double execution (SAFE-01), metadata serialization (SAFE-03), leverage constant (SAFE-04)
-- [ ] 21-02-PLAN.md — Kill switch regression test (SAFE-02), Route B credentials (SAFE-05)
+- [ ] 25-01-PLAN.md — Probabilistic fill model with adverse selection (TDD)
+- [ ] 25-02-PLAN.md — Stop-loss slippage in protective order monitor (TDD)
 
 ## Progress
 
@@ -296,6 +296,6 @@ Phases execute in numeric order: 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17 ->
 | 20. Risk & Indicator Tests | v1.3 | 2/2 | Complete    | 2026-04-08 |
 | 21. Safety Critical Fixes | v1.4 | 2/2 | Complete    | 2026-04-08 |
 | 22. Data Pipeline Fixes | v1.4 | 2/2 | Complete    | 2026-04-08 |
-| 23. Sizing & Execution Optimization | v1.4 | 0/? | Not started | - |
-| 24. Risk Engine Enhancements | v1.4 | 0/? | Not started | - |
+| 23. Sizing & Execution Optimization | v1.4 | 2/2 | Complete    | 2026-04-08 |
+| 24. Risk Engine Enhancements | v1.4 | 2/2 | Complete    | 2026-04-09 |
 | 25. Paper Simulator Fidelity | v1.4 | 0/? | Not started | - |
