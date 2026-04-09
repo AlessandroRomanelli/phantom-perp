@@ -171,3 +171,8 @@ monitoring:
     include_route_breakdown: true
     include_funding_attribution: true
     include_fee_breakdown: true
+
+paper_simulator:
+  fill_probability_base: 0.7
+  adverse_selection_bps: 5
+  sl_slippage_bps: 10

@@ -235,7 +235,11 @@ async def run_agent() -> None:
     publisher = RedisPublisher(redis_url=settings.infra.redis_url)
 
     if is_paper:
-        from agents.reconciliation.paper_simulator import run_paper_simulator
+        from decimal import Decimal
+
+        import yaml
+
+        from agents.reconciliation.paper_simulator import PaperSimulatorConfig, run_paper_simulator
 
         from libs.storage.relational import RelationalStore, init_db
         from libs.storage.repository import TunerRepository
@@ -245,6 +249,21 @@ async def run_agent() -> None:
         await init_db(db_store.engine)
         repo = TunerRepository(db_store)
         logger.info("reconciliation_db_initialized", mode="paper")
+
+        # Load paper simulator config from default.yaml
+        sim_cfg = PaperSimulatorConfig()
+        try:
+            with open("configs/default.yaml") as f:
+                yaml_cfg = yaml.safe_load(f) or {}
+            ps_section = yaml_cfg.get("paper_simulator", {})
+            if ps_section:
+                sim_cfg = PaperSimulatorConfig(
+                    fill_probability_base=Decimal(str(ps_section.get("fill_probability_base", "0.7"))),
+                    adverse_selection_bps=Decimal(str(ps_section.get("adverse_selection_bps", "5"))),
+                    sl_slippage_bps=Decimal(str(ps_section.get("sl_slippage_bps", "10"))),
+                )
+        except (FileNotFoundError, yaml.YAMLError) as e:
+            logger.warning("paper_sim_config_load_failed", error=str(e))
 
         logger.info(
             "reconciliation_agent_started",
@@ -258,6 +277,7 @@ async def run_agent() -> None:
                 publisher=publisher,
                 include_route_b=True,
                 repo=repo,
+                cfg=sim_cfg,
             )
         finally:
             await db_store.close()

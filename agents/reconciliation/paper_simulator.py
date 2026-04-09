@@ -598,6 +598,7 @@ async def run_paper_simulator(
     *,
     include_route_b: bool = True,
     repo: TunerRepository | None = None,
+    cfg: PaperSimulatorConfig | None = None,
 ) -> None:
     """Run the paper trading simulator.
 
@@ -611,7 +612,11 @@ async def run_paper_simulator(
         repo: Optional TunerRepository for persisting fills to PostgreSQL.
             When provided, every fill (entry and SL/TP exit) is written to
             the fills table for historical tracking.
+        cfg: Optional fill-fidelity config. Defaults to PaperSimulatorConfig()
+            which preserves backward-compatible behavior (all orders fill).
     """
+    sim_cfg = cfg or PaperSimulatorConfig()
+    rng = random.Random()
     # Restore portfolio state from persisted fill history so equity and
     # positions survive container restarts.  Falls back to a fresh portfolio
     # on any DB error so a missing or empty DB never blocks startup.
@@ -713,14 +718,29 @@ async def run_paper_simulator(
                 await order_consumer.ack(channel, "paper_sim_exec", msg_id)
                 continue
 
-            # Fill at limit price (if set and order is LIMIT), otherwise instrument mark price
+            # Probabilistic fill decision with adverse selection
             instrument_mark = mark_prices.get(order.instrument, Decimal("0"))
-            is_maker = order.order_type == OrderType.LIMIT
-            fill_price = (
-                order.limit_price
-                if is_maker and order.limit_price
-                else instrument_mark
+            should_fill, fill_price = _decide_fill(
+                side=order.side,
+                order_type=order.order_type,
+                limit_price=order.limit_price,
+                mark_price=instrument_mark,
+                cfg=sim_cfg,
+                rng=rng,
             )
+            is_maker = order.order_type == OrderType.LIMIT
+
+            if not should_fill:
+                logger.debug(
+                    "paper_fill_skipped",
+                    instrument=order.instrument,
+                    side=order.side.value,
+                    order_type=order.order_type.value,
+                    limit_price=str(order.limit_price),
+                    mark_price=str(instrument_mark),
+                )
+                await order_consumer.ack(channel, "paper_sim_exec", msg_id)
+                continue
 
             if fill_price == 0:
                 logger.warning("paper_no_instrument_price", instrument=order.instrument)
