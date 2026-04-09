@@ -1,24 +1,21 @@
 """Unit tests for Claude Market Analysis — strategy, client, scheduler, validation.
 
-All tests mock the Anthropic API; no real HTTP calls are made.
-Pre-existing 4 test failures (unrelated files) are not affected by this module.
+All tests mock asyncio.create_subprocess_exec; no real HTTP calls or Anthropic SDK
+dependency required.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import anthropic
-import httpx
 import pytest
 
 from agents.signals.claude_market_client import (
-    MARKET_ANALYSIS_TOOL,
     build_market_context,
     build_system_prompt,
     call_claude_analysis,
@@ -94,25 +91,9 @@ def _build_store_with_prices(
     return store
 
 
-def _make_tool_use_block(raw: dict[str, Any]) -> SimpleNamespace:
-    """Fake a tool_use response block from the Anthropic SDK."""
-    block = SimpleNamespace()
-    block.type = "tool_use"
-    block.input = raw
-    return block
-
-
-def _make_claude_response(raw: dict[str, Any]) -> SimpleNamespace:
-    """Wrap a tool_use block in a mock Anthropic message response."""
-    resp = SimpleNamespace()
-    resp.content = [_make_tool_use_block(raw)]
-    resp.usage = SimpleNamespace(
-        input_tokens=100,
-        output_tokens=20,
-        cache_read_input_tokens=0,
-        cache_creation_input_tokens=0,
-    )
-    return resp
+def _mock_cli_response(raw: dict[str, Any]) -> bytes:
+    """Build mock CLI stdout with JSON in a code block."""
+    return f"```json\n{json.dumps(raw)}\n```".encode()
 
 
 def _make_regime_detector(regime: MarketRegime = MarketRegime.RANGING) -> MagicMock:
@@ -466,14 +447,7 @@ class TestBuildMarketContext:
         prompt = build_system_prompt()
         assert isinstance(prompt, str)
         assert len(prompt) > 100
-        assert "submit_market_analysis" in prompt
-
-    def test_market_analysis_tool_schema(self) -> None:
-        """MARKET_ANALYSIS_TOOL has required fields in schema."""
-        schema = MARKET_ANALYSIS_TOOL["input_schema"]
-        required = schema["required"]
-        for field in ("instrument", "direction", "conviction", "reasoning"):
-            assert field in required
+        assert "JSON" in prompt
 
 
 # ---------------------------------------------------------------------------
@@ -482,11 +456,18 @@ class TestBuildMarketContext:
 
 
 class TestCallClaudeAnalysis:
-    """Tests for call_claude_analysis() with mocked AsyncAnthropic."""
+    """Tests for call_claude_analysis() with mocked asyncio.create_subprocess_exec."""
 
     def _store(self) -> FeatureStore:
         prices = [2200.0 + i * 0.5 for i in range(20)]
         return _build_store_with_prices(prices)
+
+    def _make_mock_proc(self, stdout: bytes, returncode: int = 0) -> MagicMock:
+        """Build a mock asyncio subprocess process."""
+        proc = MagicMock()
+        proc.returncode = returncode
+        proc.communicate = AsyncMock(return_value=(stdout, b""))
+        return proc
 
     @pytest.mark.asyncio
     async def test_valid_long_response_returns_signal_dict(self) -> None:
@@ -501,18 +482,12 @@ class TestCallClaudeAnalysis:
             "time_horizon_hours": 4.0,
             "reasoning": "Strong upward momentum with positive funding.",
         }
-        mock_response = _make_claude_response(raw_response)
+        proc = self._make_mock_proc(_mock_cli_response(raw_response))
 
-        with (
-            patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}),
-            patch(
-                "agents.signals.claude_market_client.anthropic.AsyncAnthropic",
-            ) as mock_client,
+        with patch(
+            "agents.signals.claude_market_client.asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=proc),
         ):
-            mock_instance = MagicMock()
-            mock_instance.messages.create = AsyncMock(return_value=mock_response)
-            mock_client.return_value = mock_instance
-
             result = await call_claude_analysis(
                 instrument_id=TEST_INSTRUMENT,
                 store=self._store(),
@@ -538,18 +513,12 @@ class TestCallClaudeAnalysis:
             "time_horizon_hours": 4.0,
             "reasoning": "No clear opportunity.",
         }
-        mock_response = _make_claude_response(raw_response)
+        proc = self._make_mock_proc(_mock_cli_response(raw_response))
 
-        with (
-            patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}),
-            patch(
-                "agents.signals.claude_market_client.anthropic.AsyncAnthropic",
-            ) as mock_client,
+        with patch(
+            "agents.signals.claude_market_client.asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=proc),
         ):
-            mock_instance = MagicMock()
-            mock_instance.messages.create = AsyncMock(return_value=mock_response)
-            mock_client.return_value = mock_instance
-
             result = await call_claude_analysis(
                 instrument_id=TEST_INSTRUMENT,
                 store=self._store(),
@@ -562,13 +531,16 @@ class TestCallClaudeAnalysis:
         assert result["reasoning"] == "No clear opportunity."
 
     @pytest.mark.asyncio
-    async def test_missing_api_key_returns_none(self) -> None:
-        """No ANTHROPIC_API_KEY env var → returns None without calling API."""
-        with patch.dict("os.environ", {}, clear=True):
-            # Ensure ANTHROPIC_API_KEY is absent
-            import os
-            os.environ.pop("ANTHROPIC_API_KEY", None)
+    async def test_cli_timeout_returns_none(self) -> None:
+        """asyncio.TimeoutError during communicate() → call returns None."""
+        proc = MagicMock()
+        proc.returncode = None
+        proc.communicate = AsyncMock(side_effect=asyncio.TimeoutError)
 
+        with patch(
+            "agents.signals.claude_market_client.asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=proc),
+        ):
             result = await call_claude_analysis(
                 instrument_id=TEST_INSTRUMENT,
                 store=self._store(),
@@ -579,24 +551,16 @@ class TestCallClaudeAnalysis:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_api_error_returns_none_and_does_not_raise(self) -> None:
-        """anthropic.APIError → call_claude_analysis returns None (logged, continues)."""
-        fake_request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
-        api_error = anthropic.APIError(
-            "Internal Server Error", fake_request, body=None
-        )
+    async def test_cli_nonzero_exit_returns_none(self) -> None:
+        """Non-zero returncode from CLI → call returns None without raising."""
+        proc = MagicMock()
+        proc.returncode = 1
+        proc.communicate = AsyncMock(return_value=(b"", b"error: something went wrong"))
 
-        with (
-            patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}),
-            patch(
-                "agents.signals.claude_market_client.anthropic.AsyncAnthropic",
-            ) as mock_client,
+        with patch(
+            "agents.signals.claude_market_client.asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=proc),
         ):
-            mock_instance = MagicMock()
-            mock_instance.messages.create = AsyncMock(side_effect=api_error)
-            mock_client.return_value = mock_instance
-
-            # Must NOT raise; must return None
             result = await call_claude_analysis(
                 instrument_id=TEST_INSTRUMENT,
                 store=self._store(),
@@ -607,26 +571,30 @@ class TestCallClaudeAnalysis:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_missing_tool_use_block_returns_none(self) -> None:
-        """Response with no tool_use block → returns None."""
-        # Response with a text block only (no tool_use)
-        text_block = SimpleNamespace()
-        text_block.type = "text"
-        text_block.text = "I cannot call the tool."
+    async def test_cli_invalid_json_returns_none(self) -> None:
+        """CLI stdout with no JSON code block → call returns None."""
+        proc = self._make_mock_proc(b"I cannot help you with that.")
 
-        mock_response = SimpleNamespace()
-        mock_response.content = [text_block]
-
-        with (
-            patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}),
-            patch(
-                "agents.signals.claude_market_client.anthropic.AsyncAnthropic",
-            ) as mock_client,
+        with patch(
+            "agents.signals.claude_market_client.asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=proc),
         ):
-            mock_instance = MagicMock()
-            mock_instance.messages.create = AsyncMock(return_value=mock_response)
-            mock_client.return_value = mock_instance
+            result = await call_claude_analysis(
+                instrument_id=TEST_INSTRUMENT,
+                store=self._store(),
+                snapshot=_snap(),
+                regime=MarketRegime.RANGING,
+            )
 
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_cli_oserror_returns_none(self) -> None:
+        """OSError when spawning subprocess → call returns None."""
+        with patch(
+            "agents.signals.claude_market_client.asyncio.create_subprocess_exec",
+            new=AsyncMock(side_effect=OSError("claude not found")),
+        ):
             result = await call_claude_analysis(
                 instrument_id=TEST_INSTRUMENT,
                 store=self._store(),
@@ -866,7 +834,7 @@ class TestProcessInstrument:
 
     @pytest.mark.asyncio
     async def test_api_error_logs_and_continues(self) -> None:
-        """anthropic.APIError during scheduler call is logged, does not raise."""
+        """call_claude_analysis() returning None is logged, does not raise."""
         store = _build_store_with_prices([2200.0] * 5)
         queue = self._make_queue()
         snap = _snap()
@@ -876,12 +844,10 @@ class TestProcessInstrument:
         last_call_time: dict[str, float] = {}
         now = 1_000_000_400.0
 
-        # Simulate API error (we don't need to raise anthropic.APIError here;
-        # call_claude_analysis() itself catches it and returns None, so the
-        # scheduler receives None and logs "no_signal")
+        # Simulate error path — call_claude_analysis returns None
         with patch(
             "agents.signals.claude_scheduler.call_claude_analysis",
-            new=AsyncMock(return_value=None),  # API error path returns None
+            new=AsyncMock(return_value=None),
         ):
             # This must not raise
             await _process_instrument(
