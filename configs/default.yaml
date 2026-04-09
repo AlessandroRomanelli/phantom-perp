@@ -52,6 +52,10 @@ alpha:
     - claude_market_analysis
 
 risk:
+  correlation_groups:
+    - ["ETH-PERP", "BTC-PERP", "SOL-PERP"]
+    - ["QQQ-PERP", "SPY-PERP"]
+
   route_a:
     max_leverage: 10.0
     max_position_notional_usdc: 12000
@@ -63,6 +67,8 @@ risk:
     stop_loss_required: true
     max_concurrent_positions: 3
     max_funding_cost_per_day_usdc: 20
+    correlation_enabled: true
+    max_net_directional_exposure_pct: 100.0
 
   route_b:
     max_leverage: 5.0
@@ -75,6 +81,8 @@ risk:
     stop_loss_required: true
     max_concurrent_positions: 3
     max_funding_cost_per_day_usdc: 100
+    correlation_enabled: true
+    max_net_directional_exposure_pct: 80.0
 
   regime_leverage:
     route_a:

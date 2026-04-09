@@ -134,3 +134,80 @@ class TestLimitsForRoute:
         assert limits.max_leverage <= Decimal("5.0"), (
             f"SAFE-04: Route A leverage {limits.max_leverage} exceeds hard cap of 5.0"
         )
+
+
+class TestCorrelationLimits:
+    """Tests for correlation_enabled and max_net_directional_exposure_pct fields."""
+
+    def test_correlation_enabled_true(self) -> None:
+        from agents.risk.limits import RiskLimits
+        limits = RiskLimits(
+            max_leverage=Decimal("5"),
+            max_position_notional_usdc=Decimal("6000"),
+            max_position_pct_equity=Decimal("40"),
+            max_margin_utilization_pct=Decimal("70"),
+            min_liquidation_distance_pct=Decimal("8"),
+            max_daily_loss_pct=Decimal("10"),
+            max_drawdown_pct=Decimal("25"),
+            stop_loss_required=True,
+            max_concurrent_positions=3,
+            max_funding_cost_per_day_usdc=Decimal("20"),
+            correlation_enabled=True,
+        )
+        assert limits.correlation_enabled is True
+
+    def test_correlation_enabled_false(self) -> None:
+        from agents.risk.limits import RiskLimits
+        limits = RiskLimits(
+            max_leverage=Decimal("5"),
+            max_position_notional_usdc=Decimal("6000"),
+            max_position_pct_equity=Decimal("40"),
+            max_margin_utilization_pct=Decimal("70"),
+            min_liquidation_distance_pct=Decimal("8"),
+            max_daily_loss_pct=Decimal("10"),
+            max_drawdown_pct=Decimal("25"),
+            stop_loss_required=True,
+            max_concurrent_positions=3,
+            max_funding_cost_per_day_usdc=Decimal("20"),
+            correlation_enabled=False,
+        )
+        assert limits.correlation_enabled is False
+
+    def test_correlation_enabled_default_is_true(self) -> None:
+        limits = limits_for_route(Route.A, {})
+        assert limits.correlation_enabled is True
+
+    def test_max_net_directional_exposure_pct_default(self) -> None:
+        limits = limits_for_route(Route.A, {})
+        assert limits.max_net_directional_exposure_pct == Decimal("100.0")
+
+    def test_limits_for_route_a_with_correlation_config(self) -> None:
+        config = {
+            "risk": {
+                "route_a": {
+                    "correlation_enabled": True,
+                    "max_net_directional_exposure_pct": 100.0,
+                }
+            }
+        }
+        limits = limits_for_route(Route.A, config)
+        assert limits.correlation_enabled is True
+        assert limits.max_net_directional_exposure_pct == Decimal("100.0")
+
+    def test_limits_for_route_b_with_correlation_config(self) -> None:
+        config = {
+            "risk": {
+                "route_b": {
+                    "correlation_enabled": True,
+                    "max_net_directional_exposure_pct": 80.0,
+                }
+            }
+        }
+        limits = limits_for_route(Route.B, config)
+        assert limits.correlation_enabled is True
+        assert limits.max_net_directional_exposure_pct == Decimal("80.0")
+
+    def test_limits_for_route_missing_correlation_keys_uses_defaults(self) -> None:
+        limits = limits_for_route(Route.A, {"risk": {"route_a": {}}})
+        assert limits.correlation_enabled is True
+        assert limits.max_net_directional_exposure_pct == Decimal("100.0")

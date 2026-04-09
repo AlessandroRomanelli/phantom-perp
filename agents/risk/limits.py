@@ -43,6 +43,8 @@ class RiskLimits:
     max_funding_cost_per_day_usdc: Decimal
     conviction_power: float = 2.0
     min_expected_move_pct: Decimal = Decimal("0.005")
+    correlation_enabled: bool = True
+    max_net_directional_exposure_pct: Decimal = Decimal("100.0")
 
 
 def _d(value: object, default: str) -> Decimal:
@@ -106,5 +108,9 @@ def limits_for_route(
         conviction_power=float(risk.get("global", {}).get("conviction_power", 2.0)),
         min_expected_move_pct=_d(
             risk.get("global", {}).get("min_expected_move_pct"), "0.005"
+        ),
+        correlation_enabled=bool(section.get("correlation_enabled", True)),
+        max_net_directional_exposure_pct=_d(
+            section.get("max_net_directional_exposure_pct"), "100.0"
         ),
     )
