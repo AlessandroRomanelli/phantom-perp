@@ -157,6 +157,41 @@ def _decide_fill(
     return (True, effective_price)
 
 
+def _apply_sl_slippage(
+    fill_price: Decimal,
+    side: OrderSide,
+    is_stop_loss: bool,
+    cfg: PaperSimulatorConfig,
+) -> Decimal:
+    """Apply slippage to stop-loss fill price.
+
+    SL slippage models fast-market execution degradation. Direction is always
+    adverse to the trader: BUY-to-close (closing short) fills higher,
+    SELL-to-close (closing long) fills lower.
+
+    Take-profit orders are returned unchanged.
+
+    Args:
+        fill_price: The nominal fill price before slippage.
+        side: Order side (BUY or SELL).
+        is_stop_loss: True for stop-loss orders, False for take-profit.
+        cfg: Simulator configuration (provides sl_slippage_bps).
+
+    Returns:
+        Slippage-adjusted fill price quantized to 2 decimal places.
+    """
+    if not is_stop_loss or cfg.sl_slippage_bps == 0:
+        return fill_price
+
+    bps = cfg.sl_slippage_bps / Decimal("10000")
+    if side == OrderSide.BUY:
+        slipped = fill_price * (Decimal("1") + bps)
+    else:
+        slipped = fill_price * (Decimal("1") - bps)
+
+    return slipped.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
 # Default initial equity per portfolio in paper mode
 PAPER_INITIAL_EQUITY = Decimal("10000")
 
@@ -914,12 +949,20 @@ async def run_paper_simulator(
                 # Close size is the smaller of order size and current position
                 close_size = min(order.size, pos.size)
 
+                # Apply SL slippage for stop-loss orders (adverse to trader)
+                effective_fill_price = _apply_sl_slippage(
+                    fill_price=order.fill_price,
+                    side=order.side,
+                    is_stop_loss=order.is_stop_loss,
+                    cfg=sim_cfg,
+                )
+
                 fill = portfolio.apply_fill(
                     order_id=order.order_id,
                     instrument=order.instrument,
                     side=order.side,
                     size=close_size,
-                    fill_price=order.fill_price,
+                    fill_price=effective_fill_price,
                     is_maker=not order.is_stop_loss,
                 )
 
@@ -940,8 +983,9 @@ async def run_paper_simulator(
                     instrument=order.instrument,
                     side=order.side.value,
                     size=str(close_size),
-                    fill_price=str(order.fill_price),
+                    fill_price=str(effective_fill_price),
                     trigger_price=str(order.trigger_price),
+                    slippage_bps=str(sim_cfg.sl_slippage_bps) if order.is_stop_loss else "0",
                     realized_pnl=str(portfolio.realized_pnl),
                     equity=str(snapshot.equity_usdc),
                 )
