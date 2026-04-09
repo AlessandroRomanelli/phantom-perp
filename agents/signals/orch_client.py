@@ -1,11 +1,11 @@
-"""Claude orchestrator client for dynamic strategy enable/disable and parameter adjustment.
+"""Claude CLI orchestrator client for dynamic strategy enable/disable and parameter adjustment.
 
-Handles tool schema definition, multi-instrument context assembly from FeatureStore
-and MarketSnapshot data, async Anthropic API calls with forced tool use, and
-response validation that clips parameter adjustments against bounds.yaml.
+Handles multi-instrument context assembly from FeatureStore and MarketSnapshot data,
+async subprocess calls to the Claude CLI with a configurable timeout, and response
+validation that clips parameter adjustments against bounds.yaml.
 
 Key guarantees:
-- All inference is async (AsyncAnthropic) — signals agent runs under asyncio.
+- All inference is async (asyncio.create_subprocess_exec) — signals agent runs under asyncio.
 - Parameter adjustments are hard-clipped against bounds.yaml before returning.
 - Unknown parameters are rejected with a warning (not silently accepted).
 - All errors are logged and return None — never propagate exceptions.
@@ -13,14 +13,14 @@ Key guarantees:
 
 from __future__ import annotations
 
-import os
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import anthropic
 import structlog
 
+from libs.common.json_extractor import JsonExtractionError, extract_json
 from libs.tuner.bounds import clip_value, load_bounds_registry
 
 if TYPE_CHECKING:
@@ -32,51 +32,16 @@ if TYPE_CHECKING:
 _logger = structlog.get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Model alias
+# CLI timeout
 # ---------------------------------------------------------------------------
 
-_MODEL: str = "claude-sonnet-4-20250514"
+# Orchestrator context is larger than market analysis — allow more time.
+_CLI_TIMEOUT_SECONDS: int = 120
 
 # Default bounds path — same relative pattern as load_strategy_matrix() in main.py
 _DEFAULT_BOUNDS_PATH: Path = (
     Path(__file__).resolve().parent.parent.parent / "configs" / "bounds.yaml"
 )
-
-# ---------------------------------------------------------------------------
-# Tool schema
-# ---------------------------------------------------------------------------
-
-ORCHESTRATOR_TOOL: dict[str, Any] = {
-    "name": "submit_orchestrator_decisions",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "decisions": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "instrument": {"type": "string"},
-                        "strategy": {"type": "string"},
-                        "enabled": {"type": "boolean"},
-                        "param_adjustments": {
-                            "type": "object",
-                            "additionalProperties": {"type": "number"},
-                        },
-                        "reasoning": {"type": "string"},
-                        "confidence": {
-                            "type": "number",
-                            "description": "Confidence in this decision (0.0–1.0).",
-                        },
-                    },
-                    "required": ["instrument", "strategy", "enabled", "reasoning"],
-                },
-            },
-            "summary": {"type": "string"},
-        },
-        "required": ["decisions", "summary"],
-    },
-}
 
 
 # ---------------------------------------------------------------------------
@@ -126,12 +91,29 @@ def _build_orchestrator_system_prompt() -> str:
         "6. Be conservative: in HIGH_VOLATILITY regimes, prefer disabling aggressive strategies.\n"
         "7. Include a confidence field (0.0–1.0) for each decision: 1.0 = very confident, "
         "0.0 = highly uncertain.\n"
-        "8. Use the submit_orchestrator_decisions tool to return all your decisions.\n"
+        "8. Respond with a JSON code block as shown in the Output Format section below.\n"
         "9. If high-impact macro events (FOMC, CPI, NFP) are scheduled within 24h, "
         "prefer disabling momentum and breakout strategies to avoid false breakouts.\n"
         "10. If crypto headlines contain tail-risk keywords (hack, exploit, regulatory, "
         "SEC, ban), reduce enabled strategies and lower conviction thresholds.\n\n"
-        "Output: one decision entry per (instrument, strategy) combination you wish to change."
+        "Output: one decision entry per (instrument, strategy) combination you wish to change.\n\n"
+        "## Output Format\n"
+        "Respond with ONLY a JSON code block — no prose before or after.\n"
+        "```json\n"
+        "{\n"
+        '  "decisions": [\n'
+        "    {\n"
+        '      "instrument": "string — instrument ID",\n'
+        '      "strategy": "string — strategy name",\n'
+        '      "enabled": "boolean — whether to enable this strategy",\n'
+        '      "param_adjustments": {"param_name": "number"},\n'
+        '      "reasoning": "string — referencing specific market data",\n'
+        '      "confidence": "number — 0.0 to 1.0"\n'
+        "    }\n"
+        "  ],\n"
+        '  "summary": "string — overall orchestration assessment"\n'
+        "}\n"
+        "```"
     )
 
 
@@ -273,7 +255,7 @@ def build_orchestrator_context(
 
 
 # ---------------------------------------------------------------------------
-# Async API call
+# Async CLI call
 # ---------------------------------------------------------------------------
 
 
@@ -281,24 +263,22 @@ async def call_claude_orchestrator(
     context_str: str,
     params: OrchestratorParams,
 ) -> list[dict[str, Any]] | None:
-    """Call Claude API asynchronously for strategy orchestration decisions.
+    """Call the Claude CLI asynchronously for strategy orchestration decisions.
 
-    Uses ``anthropic.AsyncAnthropic()`` with forced ``submit_orchestrator_decisions``
-    tool use.  Returns the raw decisions list from Claude's tool input.
+    Uses ``asyncio.create_subprocess_exec("claude", "-p", ...)`` with a
+    ``_CLI_TIMEOUT_SECONDS`` hard cap to prevent event loop stalls.
+    Parses CLI stdout via ``extract_json()`` and extracts the ``decisions``
+    list from the top-level JSON object.
 
     Args:
         context_str: Multi-instrument context string from build_orchestrator_context().
-        params: OrchestratorParams controlling model behaviour (max_tokens).
+        params: OrchestratorParams controlling model behaviour (unused by CLI directly;
+            kept for interface compatibility with callers).
 
     Returns:
-        List of raw decision dicts from Claude's tool input, or None if the API
-        key is missing, an API error occurs, or no tool_use block is found.
+        List of raw decision dicts from Claude's JSON output, or None if a
+        subprocess/parsing error occurs.
     """
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        _logger.error("orchestrator_api_key_missing")
-        return None
-
     system_prompt = _build_orchestrator_system_prompt()
     user_message = (
         "Evaluate the following multi-instrument market context and decide which "
@@ -306,50 +286,62 @@ async def call_claude_orchestrator(
         f"adjustments are warranted.\n\n{context_str}"
     )
 
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    full_prompt = f"{system_prompt}\n\n{user_message}"
+
     try:
-        response = await client.messages.create(  # type: ignore[call-overload]
-            model=_MODEL,
-            max_tokens=params.max_tokens,
-            system=[
-                {
-                    "type": "text",
-                    "text": system_prompt,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            tools=[ORCHESTRATOR_TOOL],
-            tool_choice={"type": "tool", "name": "submit_orchestrator_decisions"},
-            messages=[{"role": "user", "content": user_message}],
+        proc = await asyncio.create_subprocess_exec(
+            "claude", "-p", full_prompt,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-    except anthropic.APIError as exc:
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            proc.communicate(), timeout=_CLI_TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError:
         _logger.error(
-            "orchestrator_api_error",
-            error=str(exc),
-            status_code=getattr(exc, "status_code", None),
+            "orchestrator_cli_timeout",
+            timeout_seconds=_CLI_TIMEOUT_SECONDS,
+        )
+        return None
+    except OSError as e:
+        _logger.error(
+            "orchestrator_cli_not_found",
+            error=str(e),
         )
         return None
 
-    # Extract tool_use block — forced tool_choice guarantees its presence
-    tool_use_block = next(
-        (block for block in response.content if block.type == "tool_use"),
-        None,
-    )
-    if tool_use_block is None:
-        _logger.warning("orchestrator_no_tool_use_block")
+    if proc.returncode != 0:
+        _logger.error(
+            "orchestrator_cli_error",
+            returncode=proc.returncode,
+            stderr=(stderr_bytes or b"").decode()[:500],
+        )
         return None
 
-    raw: dict[str, Any] = tool_use_block.input
-    decisions: list[dict[str, Any]] = raw.get("decisions", [])
+    stdout_text = (stdout_bytes or b"").decode()
+
+    try:
+        parsed = extract_json(stdout_text)
+    except JsonExtractionError as e:
+        _logger.error(
+            "orchestrator_parse_error",
+            error=str(e),
+        )
+        return None
+
+    if not isinstance(parsed, dict):
+        _logger.warning(
+            "orchestrator_unexpected_response_type",
+            type=type(parsed).__name__,
+        )
+        return None
+
+    decisions: list[dict[str, Any]] = parsed.get("decisions", [])
 
     _logger.info(
         "orchestrator_decisions_received",
         num_decisions=len(decisions),
-        summary=raw.get("summary", "")[:120],
-        input_tokens=response.usage.input_tokens,
-        output_tokens=response.usage.output_tokens,
-        cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0),
-        cache_creation_tokens=getattr(response.usage, "cache_creation_input_tokens", 0),
+        summary=parsed.get("summary", "")[:120],
     )
 
     return decisions
