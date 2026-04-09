@@ -158,9 +158,23 @@ def build_system_prompt() -> str:
         "6. Reasoning must reference specific numbers from the context provided.\n"
         "7. Be conservative in HIGH_VOLATILITY regimes — widen stops or use NO_SIGNAL.\n"
         "8. Funding rate alignment is a strong confirming factor — note it explicitly.\n"
-        "9. Use the submit_market_analysis tool to return your analysis.\n\n"
+        "9. Respond with a JSON code block as shown in the Output Format section below.\n\n"
         "Output style: be concise — two or three sentences of reasoning referencing "
-        "specific price levels, timeframe alignment, and key indicators."
+        "specific price levels, timeframe alignment, and key indicators.\n\n"
+        "## Output Format\n"
+        "Respond with ONLY a JSON code block — no prose before or after.\n"
+        "```json\n"
+        "{\n"
+        '  "instrument": "string — instrument ID, e.g. \'ETH-PERP\'",\n'
+        '  "direction": "LONG | SHORT | NO_SIGNAL",\n'
+        '  "conviction": "number — 0.0 to 1.0",\n'
+        '  "entry_price": "number or null — within +/-5% of mark price, null for ATR default",\n'
+        '  "stop_loss": "number or null — below entry for LONG, above for SHORT, null for ATR default",\n'
+        '  "take_profit": "number or null — above entry for LONG, below for SHORT, null for ATR default",\n'
+        '  "time_horizon_hours": "number — expected holding period in hours",\n'
+        '  "reasoning": "string — concise trade thesis referencing specific data"\n'
+        "}\n"
+        "```"
     )
 
 

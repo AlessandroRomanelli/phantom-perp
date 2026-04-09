@@ -107,10 +107,27 @@ def build_system_prompt() -> str:
         "that support the change.\n"
         "4. If no changes are warranted (e.g., insufficient data or already well-tuned), "
         "return an empty recommendations list with a summary explaining why.\n"
-        "5. Use the submit_recommendations tool to return your analysis. "
+        "5. Respond with a JSON code block as shown in the Output Format section below. "
         "Include a top-level summary of your overall assessment.\n\n"
         "Focus on: improving expectancy, reducing drawdown, and increasing win rate "
-        "for strategies and instruments with sufficient data (>= 10 completed round-trips)."
+        "for strategies and instruments with sufficient data (>= 10 completed round-trips).\n\n"
+        "## Output Format\n"
+        "Respond with ONLY a JSON code block — no prose before or after.\n"
+        "```json\n"
+        "{\n"
+        '  "summary": "string — overall assessment of portfolio performance",\n'
+        '  "recommendations": [\n'
+        "    {\n"
+        '      "strategy": "string — strategy name",\n'
+        '      "instrument": "string or null — instrument ID or null for base-level",\n'
+        '      "param": "string — parameter name from bounds registry",\n'
+        '      "value": "number — new value within bounds",\n'
+        '      "reasoning": "string — why this change, referencing metrics"\n'
+        "    }\n"
+        "  ]\n"
+        "}\n"
+        "```\n"
+        "Return an empty recommendations array if no changes are warranted."
     )
 
 
@@ -253,8 +270,8 @@ def call_claude(
     """Call Claude API with forced tool use and return the tool input dict.
 
     Uses the sync anthropic.Anthropic() client (appropriate for a run-to-completion
-    tuner container -- no event loop needed). Forces the submit_recommendations tool
-    call via tool_choice, guaranteeing a structured response.
+    tuner container -- no event loop needed). Forces the submit_recommendations
+    tool call via tool_choice, guaranteeing a structured response.
 
     Args:
         model: Anthropic model ID (e.g. DEFAULT_MODEL).

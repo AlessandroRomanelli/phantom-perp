@@ -126,12 +126,29 @@ def _build_orchestrator_system_prompt() -> str:
         "6. Be conservative: in HIGH_VOLATILITY regimes, prefer disabling aggressive strategies.\n"
         "7. Include a confidence field (0.0–1.0) for each decision: 1.0 = very confident, "
         "0.0 = highly uncertain.\n"
-        "8. Use the submit_orchestrator_decisions tool to return all your decisions.\n"
+        "8. Respond with a JSON code block as shown in the Output Format section below.\n"
         "9. If high-impact macro events (FOMC, CPI, NFP) are scheduled within 24h, "
         "prefer disabling momentum and breakout strategies to avoid false breakouts.\n"
         "10. If crypto headlines contain tail-risk keywords (hack, exploit, regulatory, "
         "SEC, ban), reduce enabled strategies and lower conviction thresholds.\n\n"
-        "Output: one decision entry per (instrument, strategy) combination you wish to change."
+        "Output: one decision entry per (instrument, strategy) combination you wish to change.\n\n"
+        "## Output Format\n"
+        "Respond with ONLY a JSON code block — no prose before or after.\n"
+        "```json\n"
+        "{\n"
+        '  "decisions": [\n'
+        "    {\n"
+        '      "instrument": "string — instrument ID",\n'
+        '      "strategy": "string — strategy name",\n'
+        '      "enabled": "boolean — whether to enable this strategy",\n'
+        '      "param_adjustments": {"param_name": "number"},\n'
+        '      "reasoning": "string — referencing specific market data",\n'
+        '      "confidence": "number — 0.0 to 1.0"\n'
+        "    }\n"
+        "  ],\n"
+        '  "summary": "string — overall orchestration assessment"\n'
+        "}\n"
+        "```"
     )
 
 
