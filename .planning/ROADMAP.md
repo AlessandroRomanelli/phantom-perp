@@ -4,9 +4,9 @@
 
 - ✅ **v1.0 Strategy Enhancement** - Phases 1-5 (shipped 2026-03-22)
 - ✅ **v1.1 Multi-Instrument Ingestion** - Phases 6-9.1 (shipped 2026-03-23)
-- 🚧 **v1.2 AI-Powered Parameter Tuner** - Phases 10-15 (in progress)
 - ✅ **v1.3 Concerns Resolution** - Phases 16-20 (shipped 2026-04-08)
-- 🚧 **v1.4 Forensic Audit Fixes** - Phases 21-25
+- ✅ **v1.4 Forensic Audit Fixes** - Phases 21-25 (shipped 2026-04-09)
+- 🔄 **v1.5 Local Claude CLI Integration** - Phases 26-28 (in progress)
 
 ## Phases
 
@@ -24,122 +24,29 @@ See MILESTONES.md for v1.1 accomplishments.
 
 </details>
 
-### 🚧 v1.2 AI-Powered Parameter Tuner (In Progress)
+<details>
+<summary>✅ v1.3 Concerns Resolution (Phases 16-20) — SHIPPED 2026-04-08</summary>
 
-**Milestone Goal:** Add a daily tuner container that uses Claude to analyze Portfolio A's trading performance and intelligently adjust strategy + risk parameters — closing the gap between Portfolio A (-$204) and Portfolio B (+$120) by learning from trade history.
+See MILESTONES.md for v1.3 accomplishments.
 
-### ✅ v1.3 Concerns Resolution (Shipped 2026-04-08)
+</details>
 
-**Milestone Goal:** Fix critical bugs, security gaps, and tech debt identified in the codebase audit — hardening the system for reliable paper and live trading.
+<details>
+<summary>✅ v1.4 Forensic Audit Fixes (Phases 21-25) — SHIPPED 2026-04-09</summary>
 
-- [x] **Phase 16: Centralized Deserialization** - Build shared deserialization module in libs (completed 2026-04-08)
-- [x] **Phase 17: Bug Fixes** - Apply all three bug fixes using centralized module (completed 2026-04-08)
-- [x] **Phase 18: Messaging Infrastructure** - Add XAUTOCLAIM-based PEL cleanup for crashed consumers (completed 2026-04-08)
-- [x] **Phase 19: Core Infrastructure Tests** - Unit tests for libs/messaging and libs/portfolio/router (completed 2026-04-08)
-- [x] **Phase 20: Risk & Indicator Tests** - Unit tests for risk submodules and indicator modules (completed 2026-04-08)
+See MILESTONES.md for v1.4 accomplishments.
 
-### 🚧 v1.4 Forensic Audit Fixes
+</details>
 
-**Milestone Goal:** Fix structural profitability issues identified by the 5-agent forensic audit — eliminate bugs causing financial loss, recalibrate sizing/execution to overcome fee drag, and fix corrupted data inputs degrading signal quality.
-
-- [x] **Phase 21: Safety Critical Fixes** - Eliminate double execution, wire real P&L into kill switches, restore safety constants, fix credential routing (completed 2026-04-08)
-- [x] **Phase 22: Data Pipeline Fixes** - Fix corrupted bar_volumes, ADX NaN bug, Bollinger ddof, and index price sourcing (completed 2026-04-08)
-- [x] **Phase 23: Sizing & Execution Optimization** - Recalibrate conviction sizing, switch SL to maker fees, add fee filter, cap BTC notional (completed 2026-04-08)
-- [x] **Phase 24: Risk Engine Enhancements** - Add cross-instrument correlation check and equity HWM drawdown tracking (completed 2026-04-09)
-- [ ] **Phase 25: Paper Simulator Fidelity** - Probabilistic fill model with adverse selection and SL slippage
+- [x] **Phase 26: JSON Extraction Foundation** - Shared utility and prompt engineering for structured CLI output (completed 2026-04-09)
+- [ ] **Phase 27: CLI Call Site Migration** - Replace all 3 Anthropic SDK call sites with claude -p subprocess calls
+- [ ] **Phase 28: Dependency Cleanup** - Remove anthropic SDK, ANTHROPIC_API_KEY, and migrate tests
 
 ## Phase Details
 
-### Phase 10: PostgreSQL Data Pipeline
-**Goal**: Tuner can query Portfolio A fills with verified strategy attribution from PostgreSQL
-**Depends on**: Phase 9.1 (v1.1 shipped)
-**Requirements**: DATA-01, DATA-02, DATA-03, DATA-04
-**Success Criteria** (what must be TRUE):
-  1. Tuner queries Portfolio A fill records filtered by `portfolio_target=A` and returns typed results
-  2. Every fill record carries a `signal_source` column identifying the originating strategy (column added and backfilled if absent)
-  3. Tuner produces per-strategy performance data across all 5 instruments from a single query run
-  4. Tuner produces per-instrument performance data across all strategies from the same data set
-**Plans:** 2/2 plans complete
-Plans:
-- [x] 10-01-PLAN.md — ORM models, RelationalStore refactor, repository query layer, unit tests
-- [x] 10-02-PLAN.md — Agent write injections (signals, risk, execution agents)
-
-### Phase 11: Metrics Engine
-**Goal**: Tuner computes expectancy-first performance metrics per (strategy, instrument) with minimum-count gates
-**Depends on**: Phase 10
-**Requirements**: METR-01, METR-02, METR-03, METR-04
-**Success Criteria** (what must be TRUE):
-  1. Tuner computes expectancy (avg_win x win_rate - avg_loss x loss_rate) as primary metric for each (strategy, instrument) pair
-  2. Tuner computes profit factor (gross profit / gross loss) per strategy per instrument
-  3. Tuner computes max drawdown amount and duration per strategy
-  4. All P&L metrics are fee-adjusted (trading fees and funding costs subtracted)
-  5. Strategy/instrument combinations below minimum trade count return null, not a computed percentage
-**Plans**: 2 plans
-Plans:
-- [x] 11-01-PLAN.md — Round-trip reconstruction: VWAP aggregation, FIFO pairing, P&L computation (TDD)
-- [x] 11-02-PLAN.md — Metrics computation: expectancy, profit factor, drawdown, min-count gate (TDD)
-
-### Phase 12: Safety & Bounds
-**Goal**: Every tunable parameter has hard-coded bounds and YAML writes are atomic, validated, and audited — all safety guarantees proven before Claude produces any output
-**Depends on**: Phase 11
-**Requirements**: SAFE-01, SAFE-02, SAFE-03, SAFE-04
-**Success Criteria** (what must be TRUE):
-  1. A bounds registry YAML defines hard min/max for every tunable parameter, and applying any value outside bounds raises an error
-  2. YAML config writes use atomic rename (`os.replace`) — no partial writes possible even if the process is killed mid-write
-  3. After every write, the tuner re-parses the written YAML and confirms all values match intent; mismatches leave the original file untouched
-  4. Every parameter change (or no-change) produces a structured log entry with before/after values, strategy, instrument, and timestamp
-**Plans**: 2 plans
-Plans:
-- [x] 12-01-PLAN.md — Bounds registry + audit logging: bounds.yaml, BoundsEntry, validate_value, ParameterChange, structlog wrappers (TDD)
-- [x] 12-02-PLAN.md — Atomic YAML writer: apply_parameter_changes with os.replace, post-write validation, rollback, Schema A/B handling (TDD)
-
-### Phase 13: Claude Integration
-**Goal**: Tuner calls Claude API with performance metrics and bounds context, validates all recommendations before applying
-**Depends on**: Phase 12
-**Requirements**: CLAI-01, CLAI-02, CLAI-03, CLAI-04
-**Success Criteria** (what must be TRUE):
-  1. Tuner sends metrics summary to Claude via Anthropic SDK and receives a structured JSON response
-  2. Claude response contains typed parameter recommendations with a per-parameter reasoning string
-  3. Claude prompt includes current parameter values, hard bounds, and recent performance context for each recommendation slot
-  4. Every Claude recommendation is clipped to hard bounds before being applied — no recommendation can bypass the bounds layer
-**Plans**: 2 plans
-Plans:
-- [x] 13-01-PLAN.md — Claude client: prompt builder, Anthropic SDK caller with forced tool use, response parser (TDD)
-- [ ] 13-02-PLAN.md — Recommender: validation pipeline (clip/reject/coerce), tuning cycle orchestrator, audit logging (TDD)
-**UI hint**: no
-
-### Phase 14: Docker Infrastructure
-**Goal**: Tuner runs as a self-contained run-to-completion container sharing a config volume with the signals agent, triggered daily by cron
-**Depends on**: Phase 13
-**Requirements**: INFR-01, INFR-02, INFR-03, INFR-04
-**Success Criteria** (what must be TRUE):
-  1. Tuner container starts, runs to completion, and exits with a zero code — it does not run as a daemon
-  2. YAML files written by the tuner container are readable by the signals container via a shared Docker named volume
-  3. A daily cron job triggers the tuner container and restarts the signals agent after completion
-  4. Tuner Dockerfile builds successfully using the same Python 3.13-slim base and layer-caching pattern as existing agent images
-**Plans**: 2 plans
-Plans:
-- [x] 14-01-PLAN.md — Tuner entrypoint (bootstrap, DB fetch, exit codes), Dockerfile (python:3.13-slim, no TA-Lib), pyproject.toml tuner dep group
-- [ ] 14-02-PLAN.md — Scheduler container (alpine + crond + docker-cli), compose integration (tuner + scheduler + strategy_configs volume)
-
-### Phase 15: Telegram Notifications & End-to-End Acceptance
-**Goal**: Operator receives a Telegram message each day with every parameter change and Claude's reasoning, and the full pipeline passes end-to-end acceptance
-**Depends on**: Phase 14
-**Requirements**: NOTF-01, NOTF-02, NOTF-03
-**Success Criteria** (what must be TRUE):
-  1. Operator receives a Telegram message after each tuning run listing every changed parameter with Claude's reasoning
-  2. Telegram message shows before and after values for each changed parameter (or an explicit no-change message when nothing changed)
-  3. Every tuning run produces a structured log entry regardless of whether changes were applied
-  4. End-to-end pipeline — data -> metrics -> bounds -> Claude -> config write -> Telegram — completes successfully against live PostgreSQL data
-**Plans**: 2 plans
-Plans:
-- [ ] 15-01-PLAN.md — Telegram notification module: report formatter, TunerNotifier, entrypoint hook (TDD)
-- [ ] 15-02-PLAN.md — E2E smoke test, milestone documentation wrap-up
-**UI hint**: no
-
 ### Phase 16: Centralized Deserialization
 **Goal**: All agent deserialization logic is consolidated into a single shared module in libs, eliminating copy-paste drift across 5 agents
-**Depends on**: Phase 15 (v1.2 milestone; v1.3 work is independent and can start in parallel)
+**Depends on**: Phase 9.1 (v1.1 shipped)
 **Requirements**: BUG-04
 **Success Criteria** (what must be TRUE):
   1. A single `libs/common/serialization.py` module (or equivalent) provides `deserialize_position`, `deserialize_order`, and related helpers used by all agents
@@ -273,22 +180,60 @@ Plans:
   3. Stop-loss orders in paper mode experience configurable slippage (e.g., 0.05-0.15%) reflecting real-world stop execution in fast markets
 **Plans**: 2 plans
 Plans:
-- [ ] 25-01-PLAN.md — Probabilistic fill model with adverse selection (TDD)
-- [ ] 25-02-PLAN.md — Stop-loss slippage in protective order monitor (TDD)
+- [x] 25-01-PLAN.md — Probabilistic fill model with adverse selection (TDD)
+- [x] 25-02-PLAN.md — Stop-loss slippage in protective order monitor (TDD)
+
+### Phase 26: JSON Extraction Foundation
+**Goal**: A shared, tested utility extracts and validates JSON from Claude CLI text output, and all three call site prompts are engineered to produce JSON code blocks
+**Depends on**: Phase 25 (v1.4 shipped)
+**Requirements**: PROMPT-02, PROMPT-01
+**Success Criteria** (what must be TRUE):
+  1. A shared `extract_json` utility (e.g., `libs/tuner/json_extractor.py` or equivalent) parses JSON from markdown-fenced code blocks in CLI text output, handling extraneous prose before and after the block
+  2. The utility raises a descriptive exception (not a silent `None`) when no valid JSON block is found, enabling callers to distinguish parse failure from a valid empty result
+  3. Each of the three call site prompts explicitly instructs Claude to respond with a JSON code block matching the expected schema — the prompt text is committed and verifiable in the source files
+  4. Unit tests for the extraction utility cover: clean JSON block, fenced with ```json, extraneous prose around the block, multiple blocks (first wins), and no block present
+**Plans**: 2 plans
+Plans:
+- [x] 26-01-PLAN.md — JSON extraction utility with TDD test suite (libs/common/json_extractor.py)
+- [x] 26-02-PLAN.md — Update all 3 call site prompts with JSON code block output instructions
+
+### Phase 27: CLI Call Site Migration
+**Goal**: All three Anthropic SDK call sites are replaced with claude -p subprocess calls that return identical data structures to their callers
+**Depends on**: Phase 26
+**Requirements**: CLI-01, CLI-02, CLI-03
+**Success Criteria** (what must be TRUE):
+  1. `libs/tuner/claude_client.py` invokes `claude -p` via `subprocess.run()` and returns a `dict` with `summary` and `recommendations` keys — the calling code in the tuner is unchanged
+  2. `agents/signals/claude_market_client.py` invokes `claude -p` via `asyncio.create_subprocess_exec()` and returns the same validated analysis dict the strategy evaluation code already expects
+  3. `agents/signals/orch_client.py` invokes `claude -p` via `asyncio.create_subprocess_exec()` and returns the same decisions list shape — no changes required in the orchestrator consumer
+  4. A subprocess timeout is configured on all three call sites so a hanging CLI process does not stall the trading pipeline indefinitely
+  5. No `import anthropic` statements remain anywhere in the codebase
+**Plans:** 2 plans
+Plans:
+- [ ] 27-01-PLAN.md — Migrate tuner call_claude() from Anthropic SDK to subprocess.run()
+- [ ] 27-02-PLAN.md — Migrate async signal call sites (claude_market_client, orch_client) to asyncio.create_subprocess_exec()
+**UI hint**: no
+
+### Phase 28: Dependency Cleanup & Test Migration
+**Goal**: The anthropic package and its API key requirement are fully removed from the project, and all affected tests mock subprocess instead of the SDK
+**Depends on**: Phase 27
+**Requirements**: DEP-01, DEP-02, DEP-03
+**Success Criteria** (what must be TRUE):
+  1. `pyproject.toml` has no reference to `anthropic` in any dependency group — `pip install` of the project does not install the Anthropic SDK
+  2. `ANTHROPIC_API_KEY` does not appear in any Dockerfile, `.env` template, `docker-compose.yml`, or documentation file
+  3. All tests for the three migrated call sites mock `subprocess.run` (tuner) and `asyncio.create_subprocess_exec` (signals) — no test imports or patches `anthropic`
+  4. The full test suite passes (`pytest`) with the anthropic package absent from the environment
+**Plans:** 2 plans
+Plans:
+- [ ] 27-01-PLAN.md — Migrate tuner call_claude() from Anthropic SDK to subprocess.run()
+- [ ] 27-02-PLAN.md — Migrate async signal call sites (claude_market_client, orch_client) to asyncio.create_subprocess_exec()
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17 -> 18 -> 19 -> 20 -> 21 -> 22 -> 23 -> 24 -> 25
+Phases execute in numeric order: 16 -> 17 -> 18 -> 19 -> 20 -> 21 -> 22 -> 23 -> 24 -> 25 -> 26 -> 27 -> 28
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 10. PostgreSQL Data Pipeline | v1.2 | 2/2 | Complete    | 2026-03-29 |
-| 11. Metrics Engine | v1.2 | 2/2 | Complete    | 2026-03-25 |
-| 12. Safety & Bounds | v1.2 | 2/2 | Complete    | 2026-03-25 |
-| 13. Claude Integration | v1.2 | 1/2 | Complete    | 2026-03-25 |
-| 14. Docker Infrastructure | v1.2 | 1/2 | Complete    | 2026-03-25 |
-| 15. Telegram Notifications & End-to-End Acceptance | v1.2 | 0/2 | Not started | - |
 | 16. Centralized Deserialization | v1.3 | 2/2 | Complete    | 2026-04-08 |
 | 17. Bug Fixes | v1.3 | 2/2 | Complete    | 2026-04-08 |
 | 18. Messaging Infrastructure | v1.3 | 1/1 | Complete    | 2026-04-08 |
@@ -298,4 +243,7 @@ Phases execute in numeric order: 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17 ->
 | 22. Data Pipeline Fixes | v1.4 | 2/2 | Complete    | 2026-04-08 |
 | 23. Sizing & Execution Optimization | v1.4 | 2/2 | Complete    | 2026-04-08 |
 | 24. Risk Engine Enhancements | v1.4 | 2/2 | Complete    | 2026-04-09 |
-| 25. Paper Simulator Fidelity | v1.4 | 0/? | Not started | - |
+| 25. Paper Simulator Fidelity | v1.4 | 2/2 | Complete    | 2026-04-09 |
+| 26. JSON Extraction Foundation | v1.5 | 2/2 | Complete    | 2026-04-09 |
+| 27. CLI Call Site Migration | v1.5 | 0/? | Not started | - |
+| 28. Dependency Cleanup & Test Migration | v1.5 | 0/? | Not started | - |
