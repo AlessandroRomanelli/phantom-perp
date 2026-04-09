@@ -1,11 +1,11 @@
-"""Claude CLI orchestrator client for dynamic strategy enable/disable and parameter adjustment.
+"""Claude proxy orchestrator client for dynamic strategy enable/disable and parameter adjustment.
 
 Handles multi-instrument context assembly from FeatureStore and MarketSnapshot data,
-async subprocess calls to the Claude CLI with a configurable timeout, and response
+async HTTP calls to the Claude proxy with a configurable timeout, and response
 validation that clips parameter adjustments against bounds.yaml.
 
 Key guarantees:
-- All inference is async (asyncio.create_subprocess_exec) — signals agent runs under asyncio.
+- All inference is async (httpx.AsyncClient) — signals agent runs under asyncio.
 - Parameter adjustments are hard-clipped against bounds.yaml before returning.
 - Unknown parameters are rejected with a warning (not silently accepted).
 - All errors are logged and return None — never propagate exceptions.
@@ -13,11 +13,12 @@ Key guarantees:
 
 from __future__ import annotations
 
-import asyncio
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import httpx
 import structlog
 
 from libs.common.json_extractor import JsonExtractionError, extract_json
@@ -32,11 +33,11 @@ if TYPE_CHECKING:
 _logger = structlog.get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# CLI timeout
+# Proxy config
 # ---------------------------------------------------------------------------
 
-# Orchestrator context is larger than market analysis — allow more time.
-_CLI_TIMEOUT_SECONDS: int = 120
+_PROXY_URL: str = os.environ.get("CLAUDE_PROXY_URL", "http://host.docker.internal:8484")
+_PROXY_TIMEOUT_SECONDS: int = 300
 
 # Default bounds path — same relative pattern as load_strategy_matrix() in main.py
 _DEFAULT_BOUNDS_PATH: Path = (
@@ -263,11 +264,10 @@ async def call_claude_orchestrator(
     context_str: str,
     params: OrchestratorParams,
 ) -> list[dict[str, Any]] | None:
-    """Call the Claude CLI asynchronously for strategy orchestration decisions.
+    """Call the Claude proxy asynchronously for strategy orchestration decisions.
 
-    Uses ``asyncio.create_subprocess_exec("claude", "-p", ...)`` with a
-    ``_CLI_TIMEOUT_SECONDS`` hard cap to prevent event loop stalls.
-    Parses CLI stdout via ``extract_json()`` and extracts the ``decisions``
+    Posts the prompt to the Claude proxy via ``httpx.AsyncClient`` and
+    parses the response via ``extract_json()``, extracting the ``decisions``
     list from the top-level JSON object.
 
     Args:
@@ -289,39 +289,33 @@ async def call_claude_orchestrator(
     full_prompt = f"{system_prompt}\n\n{user_message}"
 
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "claude", "-p", full_prompt,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout_bytes, stderr_bytes = await asyncio.wait_for(
-            proc.communicate(), timeout=_CLI_TIMEOUT_SECONDS
-        )
-    except asyncio.TimeoutError:
-        _logger.error(
-            "orchestrator_cli_timeout",
-            timeout_seconds=_CLI_TIMEOUT_SECONDS,
-        )
+        async with httpx.AsyncClient(timeout=_PROXY_TIMEOUT_SECONDS) as client:
+            resp = await client.post(
+                f"{_PROXY_URL}/ask",
+                json={"prompt": full_prompt},
+            )
+    except httpx.ConnectError:
+        _logger.error("orchestrator_proxy_unreachable", url=_PROXY_URL)
         return None
-    except OSError as e:
+    except httpx.TimeoutException:
         _logger.error(
-            "orchestrator_cli_not_found",
-            error=str(e),
+            "orchestrator_proxy_timeout",
+            timeout_seconds=_PROXY_TIMEOUT_SECONDS,
         )
         return None
 
-    if proc.returncode != 0:
+    if resp.status_code != 200:
         _logger.error(
-            "orchestrator_cli_error",
-            returncode=proc.returncode,
-            stderr=(stderr_bytes or b"").decode()[:500],
+            "orchestrator_proxy_error",
+            status_code=resp.status_code,
+            detail=resp.text[:500],
         )
         return None
 
-    stdout_text = (stdout_bytes or b"").decode()
+    output = resp.json().get("output", "")
 
     try:
-        parsed = extract_json(stdout_text)
+        parsed = extract_json(output)
     except JsonExtractionError as e:
         _logger.error(
             "orchestrator_parse_error",

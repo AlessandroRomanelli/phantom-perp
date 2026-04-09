@@ -1,11 +1,11 @@
-"""Claude CLI integration for market analysis signals.
+"""Claude proxy integration for market analysis signals.
 
 Handles context assembly from FeatureStore and MarketSnapshot data, async
-subprocess calls to the Claude CLI with a configurable timeout, and structured
+HTTP calls to the Claude proxy with a configurable timeout, and structured
 response validation before signals reach the pipeline.
 
 Key guarantees:
-- All inference is async (asyncio.create_subprocess_exec) — signals agent runs under asyncio.
+- All inference is async (httpx.AsyncClient) — signals agent runs under asyncio.
 - Response validation rejects bad prices, clamps conviction, and computes
   ATR-based defaults when Claude omits entry/stop/TP prices.
 - NO_SIGNAL responses are silently converted to None (not an error).
@@ -14,10 +14,11 @@ Key guarantees:
 
 from __future__ import annotations
 
-import asyncio
+import os
 from decimal import Decimal
 from typing import Any
 
+import httpx
 import numpy as np
 import structlog
 
@@ -31,11 +32,11 @@ from libs.indicators.volatility import atr
 _logger = structlog.get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# CLI timeout
+# Proxy config
 # ---------------------------------------------------------------------------
 
-# Market analysis is latency-sensitive — 90 seconds is the hard cap.
-_CLI_TIMEOUT_SECONDS: int = 90
+_PROXY_URL: str = os.environ.get("CLAUDE_PROXY_URL", "http://host.docker.internal:8484")
+_PROXY_TIMEOUT_SECONDS: int = 300
 
 # Entry price tolerance: reject if more than ±5% from mark_price
 _ENTRY_PRICE_MAX_DEVIATION = Decimal("0.05")
@@ -411,9 +412,8 @@ async def call_claude_analysis(
 ) -> dict[str, Any] | None:
     """Call the Claude CLI asynchronously and return a validated analysis dict.
 
-    Uses ``asyncio.create_subprocess_exec("claude", "-p", ...)`` with a
-    ``_CLI_TIMEOUT_SECONDS`` hard cap to prevent event loop stalls.
-    Parses the CLI stdout via ``extract_json()`` and validates via
+    Posts the prompt to the Claude proxy via ``httpx.AsyncClient`` and
+    parses the response via ``extract_json()`` and validates via
     ``validate_claude_response()`` before returning.
 
     Args:
@@ -438,42 +438,35 @@ async def call_claude_analysis(
     full_prompt = f"{system_prompt}\n\n{user_message}"
 
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "claude", "-p", full_prompt,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout_bytes, stderr_bytes = await asyncio.wait_for(
-            proc.communicate(), timeout=_CLI_TIMEOUT_SECONDS
-        )
-    except asyncio.TimeoutError:
-        _logger.error(
-            "claude_cli_timeout",
-            instrument=instrument_id,
-            timeout_seconds=_CLI_TIMEOUT_SECONDS,
-        )
+        async with httpx.AsyncClient(timeout=_PROXY_TIMEOUT_SECONDS) as client:
+            resp = await client.post(
+                f"{_PROXY_URL}/ask",
+                json={"prompt": full_prompt},
+            )
+    except httpx.ConnectError:
+        _logger.error("claude_proxy_unreachable", instrument=instrument_id, url=_PROXY_URL)
         return None
-    except OSError as e:
+    except httpx.TimeoutException:
         _logger.error(
-            "claude_cli_not_found",
+            "claude_proxy_timeout",
             instrument=instrument_id,
-            error=str(e),
+            timeout_seconds=_PROXY_TIMEOUT_SECONDS,
         )
         return None
 
-    if proc.returncode != 0:
+    if resp.status_code != 200:
         _logger.error(
-            "claude_cli_error",
+            "claude_proxy_error",
             instrument=instrument_id,
-            returncode=proc.returncode,
-            stderr=(stderr_bytes or b"").decode()[:500],
+            status_code=resp.status_code,
+            detail=resp.text[:500],
         )
         return None
 
-    stdout_text = (stdout_bytes or b"").decode()
+    output = resp.json().get("output", "")
 
     try:
-        raw = extract_json(stdout_text)
+        raw = extract_json(output)
     except JsonExtractionError as e:
         _logger.error(
             "claude_parse_error",

@@ -1,17 +1,19 @@
-"""Claude CLI integration for the strategy parameter tuner.
+"""Claude proxy integration for the strategy parameter tuner.
 
-Provides prompt construction, subprocess-based Claude CLI call, and structured
+Provides prompt construction, HTTP-based Claude proxy call, and structured
 response parsing via shared JSON extraction utility.
 
-Implements CLI-01: replaces Anthropic SDK call with subprocess.run(["claude", "-p", ...])
-so the tuner container requires no ANTHROPIC_API_KEY and no SDK import.
+The tuner container sends prompts to a lightweight HTTP proxy running on the
+host (scripts/claude_proxy.py) which forwards them to the locally installed
+Claude CLI. Containers reach the proxy via CLAUDE_PROXY_URL.
 """
 
 from __future__ import annotations
 
-import subprocess
+import os
 from typing import Any
 
+import httpx
 import structlog
 
 from libs.common.json_extractor import JsonExtractionError, extract_json
@@ -21,11 +23,13 @@ from libs.tuner.bounds import BoundsEntry
 _logger = structlog.get_logger(__name__)
 
 # Stable alias kept for backward compatibility with recommender.py which imports DEFAULT_MODEL.
-# The value is unused by the CLI path — claude -p uses its own default model.
 DEFAULT_MODEL: str = "claude-sonnet-4-5"
 
-# Subprocess hard timeout (seconds). Prevents indefinite blocking (T-27-02).
-_CLI_TIMEOUT_SECONDS: int = 120
+# Proxy URL — containers use host.docker.internal, host uses localhost.
+_PROXY_URL: str = os.environ.get("CLAUDE_PROXY_URL", "http://host.docker.internal:8484")
+
+# HTTP request timeout (seconds).
+_PROXY_TIMEOUT_SECONDS: int = 300
 
 
 def build_system_prompt() -> str:
@@ -230,35 +234,34 @@ def call_claude(
     full_prompt = f"{system_prompt}\n\n{user_message}"
 
     try:
-        result = subprocess.run(
-            ["claude", "-p", full_prompt],
-            capture_output=True,
-            text=True,
-            timeout=_CLI_TIMEOUT_SECONDS,
+        resp = httpx.post(
+            f"{_PROXY_URL}/ask",
+            json={"prompt": full_prompt},
+            timeout=_PROXY_TIMEOUT_SECONDS,
         )
-    except subprocess.TimeoutExpired:
-        _logger.error("tuner_claude_cli_timeout", timeout_seconds=_CLI_TIMEOUT_SECONDS)
+    except httpx.ConnectError:
+        _logger.error("tuner_proxy_unreachable", url=_PROXY_URL)
         return None
-    except OSError as e:
-        _logger.error("tuner_claude_cli_not_found", error=str(e))
+    except httpx.TimeoutException:
+        _logger.error("tuner_proxy_timeout", timeout_seconds=_PROXY_TIMEOUT_SECONDS)
         return None
 
-    if result.returncode != 0:
+    if resp.status_code != 200:
         _logger.error(
-            "tuner_claude_cli_error",
-            returncode=result.returncode,
-            # Truncate stderr to avoid leaking large error output (T-27-03).
-            stderr=result.stderr[:500] if result.stderr else "",
+            "tuner_proxy_error",
+            status_code=resp.status_code,
+            detail=resp.text[:500],
         )
         return None
+
+    output = resp.json().get("output", "")
 
     try:
-        parsed = extract_json(result.stdout)
+        parsed = extract_json(output)
     except JsonExtractionError as e:
         _logger.error("tuner_claude_parse_error", error=str(e))
         return None
 
-    # Only dict responses are valid — reject list output (T-27-01).
     if not isinstance(parsed, dict):
         _logger.warning("tuner_claude_unexpected_type", type=type(parsed).__name__)
         return None
