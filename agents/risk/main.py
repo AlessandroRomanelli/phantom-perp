@@ -239,6 +239,7 @@ class RiskEngine:
             Route.B: limits_b,
         }
         self._correlation_groups: list[list[str]] = correlation_groups or []
+        self._hwm: dict[Route, Decimal] = {Route.A: Decimal("0"), Route.B: Decimal("0")}
 
     def evaluate(
         self,
@@ -332,21 +333,24 @@ class RiskEngine:
                 )
 
         # ------------------------------------------------------------------
-        # 5. Max drawdown kill switch
+        # 5. Max drawdown kill switch (HWM-based, ROBU-04)
         # ------------------------------------------------------------------
-        # Drawdown check — uses net_pnl_today as proxy for peak-to-trough
-        # (full drawdown tracking requires historical peak in monitoring agent;
-        # here we use daily P&L as a conservative approximation)
-        if portfolio_state.equity_usdc > 0:
-            drawdown_pct = daily_loss_pct if daily_loss_pct > 0 else Decimal("0")
-            if drawdown_pct > limits.max_drawdown_pct:
-                return RiskCheckResult(
-                    approved=False,
-                    rejection_reason=(
-                        f"Drawdown kill switch: {drawdown_pct:.2f}% "
-                        f"> limit {limits.max_drawdown_pct}%"
-                    ),
-                )
+        if limits.hwm_drawdown_enabled:
+            equity = portfolio_state.equity_usdc
+            if equity > self._hwm[target]:
+                self._hwm[target] = equity
+            hwm = self._hwm[target]
+            if hwm > 0:
+                true_drawdown_pct = (hwm - equity) / hwm * Decimal("100")
+                if true_drawdown_pct > limits.max_drawdown_pct:
+                    return RiskCheckResult(
+                        approved=False,
+                        rejection_reason=(
+                            f"Drawdown kill switch: {true_drawdown_pct:.2f}% "
+                            f"> limit {limits.max_drawdown_pct}% "
+                            f"(HWM={hwm:.2f}, current={equity:.2f})"
+                        ),
+                    )
 
         # ------------------------------------------------------------------
         # 6. Max concurrent positions + same-instrument stacking guard

@@ -1030,3 +1030,134 @@ class TestCorrelationExposure:
             FUNDING_RATE,
         )
         assert result.approved is True
+
+
+# ---------------------------------------------------------------------------
+# HWM Drawdown (Check 5) — ROBU-04
+# ---------------------------------------------------------------------------
+
+class TestHWMDrawdown:
+    """True high-water mark drawdown tracking in RiskEngine (check 5)."""
+
+    def _limits_a(self, **kwargs: object) -> RiskLimits:
+        base = dict(
+            max_leverage=Decimal("5"),
+            max_position_notional_usdc=Decimal("6000"),
+            max_position_pct_equity=Decimal("40"),
+            max_margin_utilization_pct=Decimal("70"),
+            min_liquidation_distance_pct=Decimal("8"),
+            max_daily_loss_pct=Decimal("10"),
+            max_drawdown_pct=Decimal("25"),
+            stop_loss_required=True,
+            max_concurrent_positions=3,
+            max_funding_cost_per_day_usdc=Decimal("20"),
+            conviction_power=1.0,
+            min_expected_move_pct=Decimal("0.005"),
+        )
+        base.update(kwargs)  # type: ignore[arg-type]
+        return RiskLimits(**base)  # type: ignore[arg-type]
+
+    def test_first_evaluate_sets_hwm_no_rejection(self) -> None:
+        """First evaluate() with equity=10000 sets HWM to 10000; no drawdown rejection."""
+        limits = self._limits_a()
+        engine = RiskEngine(limits, LIMITS_B)
+        result = engine.evaluate(
+            _idea(), _portfolio(equity=Decimal("10000")), MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        assert "Drawdown kill switch" not in (result.rejection_reason or "")
+
+    def test_equity_rise_then_small_drop_approved(self) -> None:
+        """Equity 10000 -> 12000 -> 10500: drawdown 12.5% < 25% limit -> approved."""
+        limits = self._limits_a()
+        engine = RiskEngine(limits, LIMITS_B)
+        engine.evaluate(
+            _idea(), _portfolio(equity=Decimal("12000")), MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        result = engine.evaluate(
+            _idea(), _portfolio(equity=Decimal("10500")), MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        assert "Drawdown kill switch" not in (result.rejection_reason or "")
+
+    def test_equity_rise_then_large_drop_rejected(self) -> None:
+        """Equity 10000 -> 12000 -> 8500: drawdown 29.2% > 25% limit -> REJECTED."""
+        limits = self._limits_a()
+        engine = RiskEngine(limits, LIMITS_B)
+        engine.evaluate(
+            _idea(), _portfolio(equity=Decimal("12000")), MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        result = engine.evaluate(
+            _idea(), _portfolio(equity=Decimal("8500")), MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        assert result.approved is False
+        assert "Drawdown kill switch" in (result.rejection_reason or "")
+        assert "HWM=12000" in (result.rejection_reason or "")
+
+    def test_hwm_drawdown_disabled_skips_check(self) -> None:
+        """hwm_drawdown_enabled=False: 29.2% drawdown scenario is approved (check skipped)."""
+        limits = self._limits_a(hwm_drawdown_enabled=False)
+        engine = RiskEngine(limits, LIMITS_B)
+        engine.evaluate(
+            _idea(), _portfolio(equity=Decimal("12000")), MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        result = engine.evaluate(
+            _idea(), _portfolio(equity=Decimal("8500")), MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        assert "Drawdown kill switch" not in (result.rejection_reason or "")
+
+    def test_hwm_tracked_independently_per_route(self) -> None:
+        """Route A HWM does not affect Route B evaluation."""
+        limits_a = self._limits_a()
+        limits_b = self._limits_a(max_drawdown_pct=Decimal("25"), max_daily_loss_pct=Decimal("10"))
+        engine = RiskEngine(limits_a, limits_b)
+
+        # Set Route A HWM to 12000 then drop
+        engine.evaluate(
+            _idea(target=Route.A), _portfolio(target=Route.A, equity=Decimal("12000")),
+            MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        engine.evaluate(
+            _idea(target=Route.A), _portfolio(target=Route.A, equity=Decimal("8500")),
+            MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+
+        # Route B has only seen equity=10000 -> HWM=10000, no big drop -> approved
+        result = engine.evaluate(
+            _idea(target=Route.B), _portfolio(target=Route.B, equity=Decimal("10000")),
+            MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        assert "Drawdown kill switch" not in (result.rejection_reason or "")
+
+    def test_hwm_never_decreases(self) -> None:
+        """HWM stays at 12000 even after equity drops then partially recovers."""
+        limits = self._limits_a()
+        engine = RiskEngine(limits, LIMITS_B)
+        engine.evaluate(
+            _idea(), _portfolio(equity=Decimal("10000")), MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        engine.evaluate(
+            _idea(), _portfolio(equity=Decimal("12000")), MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        engine.evaluate(
+            _idea(), _portfolio(equity=Decimal("10500")), MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        # After partial recovery to 11000, HWM still 12000 -> drawdown 8.3% < 25%
+        result = engine.evaluate(
+            _idea(), _portfolio(equity=Decimal("11000")), MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        assert "Drawdown kill switch" not in (result.rejection_reason or "")
+        assert engine._hwm[Route.A] == Decimal("12000")
+
+    def test_daily_loss_kill_switch_still_works_independently(self) -> None:
+        """Check 4 (daily loss) fires independently of HWM check 5."""
+        limits = self._limits_a()
+        engine = RiskEngine(limits, LIMITS_B)
+        # net_pnl=-1500 on equity=10000 -> 15% > 10% daily loss limit
+        result = engine.evaluate(
+            _idea(),
+            _portfolio(equity=Decimal("10000"), net_pnl_today=Decimal("-1500")),
+            MARKET_PRICE,
+            utc_now(),
+            FUNDING_RATE,
+        )
+        assert result.approved is False
+        assert "Daily loss kill switch" in (result.rejection_reason or "")
