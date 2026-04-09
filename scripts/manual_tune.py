@@ -23,11 +23,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from libs.common.config import load_strategy_config
 from libs.tuner.audit import log_no_change, log_parameter_change
 from libs.tuner.bounds import load_bounds_registry
-from libs.tuner.claude_client import call_claude, DEFAULT_MODEL, TOOL_SCHEMA
+from libs.tuner.claude_client import DEFAULT_MODEL, call_claude
 from libs.tuner.recommender import _group_recommendations
 from libs.tuner.writer import apply_parameter_changes
 import dataclasses
-import anthropic
 import structlog
 
 structlog.configure(
