@@ -25,6 +25,7 @@ from agents.reconciliation.paper_simulator import (
     PaperSimulatorConfig,
     PendingProtectiveOrder,
     SimulatedPosition,
+    _apply_sl_slippage,
     _decide_fill,
     _persist_fill,
 )
@@ -1025,3 +1026,83 @@ class TestConfigValidation:
                 adverse_selection_bps=Decimal("5"),
                 sl_slippage_bps=Decimal("100"),
             )
+
+
+class TestSLSlippage:
+    def test_sl_buy_to_close_slippage_raises_price(self) -> None:
+        """SL BUY-to-close (closing a short) fills higher than trigger price."""
+        cfg = PaperSimulatorConfig(
+            fill_probability_base=Decimal("0.7"),
+            adverse_selection_bps=Decimal("5"),
+            sl_slippage_bps=Decimal("10"),
+        )
+        result = _apply_sl_slippage(
+            fill_price=Decimal("2000.00"),
+            side=OrderSide.BUY,
+            is_stop_loss=True,
+            cfg=cfg,
+        )
+        # trigger * (1 + 10/10000) = 2000 * 1.001 = 2002.00
+        assert result == Decimal("2002.00")
+
+    def test_sl_sell_to_close_slippage_lowers_price(self) -> None:
+        """SL SELL-to-close (closing a long) fills lower than trigger price."""
+        cfg = PaperSimulatorConfig(
+            fill_probability_base=Decimal("0.7"),
+            adverse_selection_bps=Decimal("5"),
+            sl_slippage_bps=Decimal("10"),
+        )
+        result = _apply_sl_slippage(
+            fill_price=Decimal("2000.00"),
+            side=OrderSide.SELL,
+            is_stop_loss=True,
+            cfg=cfg,
+        )
+        # trigger * (1 - 10/10000) = 2000 * 0.999 = 1998.00
+        assert result == Decimal("1998.00")
+
+    def test_tp_no_slippage(self) -> None:
+        """Take-profit order (is_stop_loss=False) returns fill_price unchanged."""
+        cfg = PaperSimulatorConfig(
+            fill_probability_base=Decimal("0.7"),
+            adverse_selection_bps=Decimal("5"),
+            sl_slippage_bps=Decimal("10"),
+        )
+        result = _apply_sl_slippage(
+            fill_price=Decimal("2000.00"),
+            side=OrderSide.SELL,
+            is_stop_loss=False,
+            cfg=cfg,
+        )
+        assert result == Decimal("2000.00")
+
+    def test_zero_slippage_bps_no_change(self) -> None:
+        """sl_slippage_bps=0 produces fill_price == trigger_price for SL orders."""
+        cfg = PaperSimulatorConfig(
+            fill_probability_base=Decimal("0.7"),
+            adverse_selection_bps=Decimal("5"),
+            sl_slippage_bps=Decimal("0"),
+        )
+        result = _apply_sl_slippage(
+            fill_price=Decimal("2000.00"),
+            side=OrderSide.SELL,
+            is_stop_loss=True,
+            cfg=cfg,
+        )
+        assert result == Decimal("2000.00")
+
+    def test_slippage_quantized(self) -> None:
+        """Fill price after slippage is quantized to 2 decimal places."""
+        cfg = PaperSimulatorConfig(
+            fill_probability_base=Decimal("0.7"),
+            adverse_selection_bps=Decimal("5"),
+            sl_slippage_bps=Decimal("15"),
+        )
+        result = _apply_sl_slippage(
+            fill_price=Decimal("1999.99"),
+            side=OrderSide.BUY,
+            is_stop_loss=True,
+            cfg=cfg,
+        )
+        # Verify at most 2 decimal places
+        assert result == result.quantize(Decimal("0.01"))
