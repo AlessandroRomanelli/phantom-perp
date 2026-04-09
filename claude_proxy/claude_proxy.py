@@ -4,13 +4,17 @@ Runs on the host machine and forwards prompts from Docker containers
 to the locally installed `claude -p` CLI. Containers reach this proxy
 via http://host.docker.internal:8484.
 
+The proxy runs claude from a configurable working directory (default: the
+claude_proxy/ folder alongside this script). Place a CLAUDE.md in that
+directory to customize Claude's system behavior for all trading AI calls.
+
 Usage:
-    python scripts/claude_proxy.py              # default port 8484
-    CLAUDE_PROXY_PORT=9000 python scripts/claude_proxy.py
+    python claude_proxy/claude_proxy.py                        # default port 8484
+    CLAUDE_PROXY_PORT=9000 python claude_proxy/claude_proxy.py
 
 Endpoints:
     POST /ask   — {"prompt": "..."} → {"output": "..."} or {"error": "..."}
-    GET  /health — {"status": "ok"}
+    GET  /health — {"status": "ok", "workdir": "..."}
 """
 
 from __future__ import annotations
@@ -24,8 +28,11 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 _PORT = int(os.environ.get("CLAUDE_PROXY_PORT", "8484"))
 _CLI_TIMEOUT = int(os.environ.get("CLAUDE_PROXY_TIMEOUT", "300"))
 # Working directory for claude CLI — controls which CLAUDE.md is loaded.
-# Set to a directory containing a CLAUDE.md to customize Claude's behavior.
-_WORKDIR = os.environ.get("CLAUDE_PROXY_WORKDIR", os.getcwd())
+# Defaults to this script's directory (claude_proxy/) which contains CLAUDE.md.
+_WORKDIR = os.environ.get(
+    "CLAUDE_PROXY_WORKDIR",
+    os.path.dirname(os.path.abspath(__file__)),
+)
 
 
 class ClaudeProxyHandler(BaseHTTPRequestHandler):
