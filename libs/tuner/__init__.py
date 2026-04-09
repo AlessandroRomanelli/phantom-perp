@@ -6,7 +6,6 @@ from libs.tuner.audit import ParameterChange, log_no_change, log_parameter_chang
 from libs.tuner.bounds import BoundsEntry, clip_value, load_bounds_registry, validate_value
 from libs.tuner.claude_client import (
     DEFAULT_MODEL,
-    TOOL_SCHEMA,
     build_system_prompt,
     build_user_message,
     call_claude,
@@ -25,7 +24,6 @@ __all__ = [
     "log_parameter_change",
     "log_no_change",
     "apply_parameter_changes",
-    "TOOL_SCHEMA",
     "DEFAULT_MODEL",
     "build_system_prompt",
     "build_user_message",

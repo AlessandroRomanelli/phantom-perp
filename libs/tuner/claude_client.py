@@ -1,90 +1,31 @@
-"""Claude API integration for the strategy parameter tuner.
+"""Claude CLI integration for the strategy parameter tuner.
 
-Provides prompt construction, Anthropic SDK call with forced tool use,
-and structured response parsing. This module is the intelligence interface:
-it sends performance data to Claude and receives typed parameter recommendations.
+Provides prompt construction, subprocess-based Claude CLI call, and structured
+response parsing via shared JSON extraction utility.
 
-Implements CLAI-01 (SDK call with structured output), CLAI-02 (typed JSON with
-per-parameter reasoning), and CLAI-03 (prompt includes params, bounds, metrics).
+Implements CLI-01: replaces Anthropic SDK call with subprocess.run(["claude", "-p", ...])
+so the tuner container requires no ANTHROPIC_API_KEY and no SDK import.
 """
 
 from __future__ import annotations
 
+import subprocess
 from typing import Any
 
-import anthropic
 import structlog
 
+from libs.common.json_extractor import JsonExtractionError, extract_json
 from libs.metrics.engine import StrategyMetrics
 from libs.tuner.bounds import BoundsEntry
 
 _logger = structlog.get_logger(__name__)
 
-# Stable alias -- resolves to claude-sonnet-4-5-20250929
-# Never use the invalid date-stamped ID claude-sonnet-4-5-20250514
+# Stable alias kept for backward compatibility with recommender.py which imports DEFAULT_MODEL.
+# The value is unused by the CLI path — claude -p uses its own default model.
 DEFAULT_MODEL: str = "claude-sonnet-4-5"
 
-# Tool schema enforcing structured recommendation output (CLAI-02).
-# strict=True guarantees all required fields are present in the response.
-TOOL_SCHEMA: dict[str, Any] = {
-    "name": "submit_recommendations",
-    "description": (
-        "Submit parameter tuning recommendations after analyzing strategy performance. "
-        "Return an empty recommendations list if no changes are warranted."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "summary": {
-                "type": "string",
-                "description": (
-                    "Overall assessment of portfolio performance and key observations. "
-                    "Summarize what is working, what is not, and the overall direction of changes."
-                ),
-            },
-            "recommendations": {
-                "type": "array",
-                "description": "List of parameter change recommendations. May be empty if no changes are warranted.",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "strategy": {
-                            "type": "string",
-                            "description": "Strategy name (e.g. 'momentum', 'mean_reversion').",
-                        },
-                        "instrument": {
-                            "type": ["string", "null"],
-                            "description": (
-                                "Instrument ID (e.g. 'ETH-PERP') or null for base-level params "
-                                "that apply across all instruments."
-                            ),
-                        },
-                        "param": {
-                            "type": "string",
-                            "description": "Parameter name matching a key in the bounds registry.",
-                        },
-                        "value": {
-                            "type": "number",
-                            "description": "Recommended new value. Must be within the registered min/max bounds.",
-                        },
-                        "reasoning": {
-                            "type": "string",
-                            "description": (
-                                "Explanation of why this change is recommended, "
-                                "referencing specific performance data that supports the decision."
-                            ),
-                        },
-                    },
-                    "required": ["strategy", "instrument", "param", "value", "reasoning"],
-                    "additionalProperties": False,
-                },
-            },
-        },
-        "required": ["summary", "recommendations"],
-        "additionalProperties": False,
-    },
-    "strict": True,
-}
+# Subprocess hard timeout (seconds). Prevents indefinite blocking (T-27-02).
+_CLI_TIMEOUT_SECONDS: int = 120
 
 
 def build_system_prompt() -> str:
@@ -267,54 +208,59 @@ def call_claude(
     user_message: str,
     max_tokens: int = 4096,
 ) -> dict[str, Any] | None:
-    """Call Claude API with forced tool use and return the tool input dict.
+    """Call the Claude CLI and return the parsed JSON response dict.
 
-    Uses the sync anthropic.Anthropic() client (appropriate for a run-to-completion
-    tuner container -- no event loop needed). Forces the submit_recommendations
-    tool call via tool_choice, guaranteeing a structured response.
+    Invokes ``claude -p`` via subprocess.run(), passing the combined prompt as
+    the positional argument. The ``model`` and ``max_tokens`` parameters are
+    accepted for backward compatibility with recommender.py but are ignored —
+    the Claude CLI uses its own default model.
 
     Args:
-        model: Anthropic model ID (e.g. DEFAULT_MODEL).
+        model: Ignored. Accepted for interface compatibility with recommender.py.
         system_prompt: System prompt from build_system_prompt().
         user_message: User message from build_user_message().
-        max_tokens: Maximum output tokens (default 4096 -- generous for 35 strategy/instrument pairs).
+        max_tokens: Ignored. Accepted for interface compatibility with recommender.py.
 
     Returns:
-        Tool input dict with 'summary' and 'recommendations' keys, or None on any error.
+        Parsed dict with 'summary' and 'recommendations' keys, or None on any error.
 
     Raises:
-        Never -- all errors are caught and returned as None per D-13/D-14.
+        Never -- all errors are caught and returned as None.
     """
-    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
+    full_prompt = f"{system_prompt}\n\n{user_message}"
 
     try:
-        response = client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            system=system_prompt,
-            tools=[TOOL_SCHEMA],
-            tool_choice={"type": "tool", "name": "submit_recommendations"},
-            messages=[{"role": "user", "content": user_message}],
+        result = subprocess.run(
+            ["claude", "-p", full_prompt],
+            capture_output=True,
+            text=True,
+            timeout=_CLI_TIMEOUT_SECONDS,
         )
-    except anthropic.APIError as e:
+    except subprocess.TimeoutExpired:
+        _logger.error("tuner_claude_cli_timeout", timeout_seconds=_CLI_TIMEOUT_SECONDS)
+        return None
+    except OSError as e:
+        _logger.error("tuner_claude_cli_not_found", error=str(e))
+        return None
+
+    if result.returncode != 0:
         _logger.error(
-            "tuner_claude_api_error",
-            error=str(e),
-            status_code=getattr(e, "status_code", None),
+            "tuner_claude_cli_error",
+            returncode=result.returncode,
+            # Truncate stderr to avoid leaking large error output (T-27-03).
+            stderr=result.stderr[:500] if result.stderr else "",
         )
         return None
 
-    # With forced tool_choice, response should always contain a tool_use block.
-    # Guard defensively anyway -- strict mode is a best-effort guarantee.
-    tool_use_block = next(
-        (block for block in response.content if block.type == "tool_use"), None
-    )
-    if tool_use_block is None:
-        _logger.warning(
-            "tuner_parse_error",
-            reason="no tool_use block in response despite forced tool_choice",
-        )
+    try:
+        parsed = extract_json(result.stdout)
+    except JsonExtractionError as e:
+        _logger.error("tuner_claude_parse_error", error=str(e))
         return None
 
-    # tool_use_block.input is already a Python dict -- no json.loads() needed
-    return tool_use_block.input  # type: ignore[no-any-return]
+    # Only dict responses are valid — reject list output (T-27-01).
+    if not isinstance(parsed, dict):
+        _logger.warning("tuner_claude_unexpected_type", type=type(parsed).__name__)
+        return None
+
+    return parsed
