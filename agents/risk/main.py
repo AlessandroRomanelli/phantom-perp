@@ -365,16 +365,18 @@ class RiskEngine:
                 ),
             )
 
-        # Reject if there is already an open position on the same instrument
-        for pos in open_positions:
-            if pos.instrument == idea.instrument:
-                return RiskCheckResult(
-                    approved=False,
-                    rejection_reason=(
-                        f"Already have open {pos.side.value} position on "
-                        f"{idea.instrument} (size={pos.size})"
-                    ),
-                )
+        # Same-instrument stacking guard — allow up to max_positions_per_instrument
+        same_instrument_count = sum(
+            1 for pos in open_positions if pos.instrument == idea.instrument
+        )
+        if same_instrument_count >= limits.max_positions_per_instrument:
+            return RiskCheckResult(
+                approved=False,
+                rejection_reason=(
+                    f"Max positions per instrument: {same_instrument_count} "
+                    f">= limit {limits.max_positions_per_instrument} on {idea.instrument}"
+                ),
+            )
 
         # ------------------------------------------------------------------
         # 5.5. Correlation exposure check
