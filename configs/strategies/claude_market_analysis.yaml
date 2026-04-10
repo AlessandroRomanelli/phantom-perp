@@ -6,8 +6,8 @@ strategy:
 parameters:
   # How often Claude re-analyses each instrument (seconds)
   # Reactive triggers (vol spike, OI shift, regime change) cover intraday moves —
-  # the base interval only needs to refresh macro market structure.
-  analysis_interval_seconds: 7200
+  # the base interval refreshes macro market structure every 30 minutes.
+  analysis_interval_seconds: 1800
   # Upper bound for the in-process signal queue
   max_queue_size: 50
   # Signals below this conviction are dropped before enqueueing
@@ -20,22 +20,22 @@ parameters:
 instruments:
   ETH-PERP:
     parameters:
-      analysis_interval_seconds: 7200
+      analysis_interval_seconds: 1800
       min_conviction: 0.45
       route_a_min_conviction: 0.55
       default_time_horizon_hours: 3.0
 
   BTC-PERP:
     parameters:
-      analysis_interval_seconds: 7200
+      analysis_interval_seconds: 1800
       min_conviction: 0.50
       route_a_min_conviction: 0.55
       default_time_horizon_hours: 4.0
 
   SOL-PERP:
     parameters:
-      # SOL moves fastest — 1h base cadence, reactive triggers cover the rest
-      analysis_interval_seconds: 3600
+      # SOL moves fastest — 30-min base cadence matches default, reactive triggers cover the rest
+      analysis_interval_seconds: 1800
       min_conviction: 0.45
       route_a_min_conviction: 0.55
       default_time_horizon_hours: 2.0
