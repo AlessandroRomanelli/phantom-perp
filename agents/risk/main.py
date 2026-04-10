@@ -365,18 +365,31 @@ class RiskEngine:
                 ),
             )
 
-        # Same-instrument stacking guard — allow up to max_positions_per_instrument
-        same_instrument_count = sum(
-            1 for pos in open_positions if pos.instrument == idea.instrument
-        )
-        if same_instrument_count >= limits.max_positions_per_instrument:
-            return RiskCheckResult(
-                approved=False,
-                rejection_reason=(
-                    f"Max positions per instrument: {same_instrument_count} "
-                    f">= limit {limits.max_positions_per_instrument} on {idea.instrument}"
-                ),
-            )
+        # Same-instrument stacking guard — allow up to max_positions_per_instrument,
+        # but only in the same direction. Opposite-direction stacking is always blocked
+        # to prevent paying double round-trip fees on a hedged-to-nothing position.
+        same_instrument_positions = [
+            pos for pos in open_positions if pos.instrument == idea.instrument
+        ]
+        if same_instrument_positions:
+            for pos in same_instrument_positions:
+                if pos.side != idea.direction:
+                    return RiskCheckResult(
+                        approved=False,
+                        rejection_reason=(
+                            f"Opposite-direction stacking blocked: existing "
+                            f"{pos.side.value} on {idea.instrument}, "
+                            f"new idea is {idea.direction.value}"
+                        ),
+                    )
+            if len(same_instrument_positions) >= limits.max_positions_per_instrument:
+                return RiskCheckResult(
+                    approved=False,
+                    rejection_reason=(
+                        f"Max positions per instrument: {len(same_instrument_positions)} "
+                        f">= limit {limits.max_positions_per_instrument} on {idea.instrument}"
+                    ),
+                )
 
         # ------------------------------------------------------------------
         # 5.5. Correlation exposure check

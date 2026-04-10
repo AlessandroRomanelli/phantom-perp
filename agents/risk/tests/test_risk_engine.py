@@ -727,19 +727,34 @@ class TestPaperPositionsInRiskGuards:
         assert any(kw in reason for kw in ("instrument", "stacking", "per instrument", "limit", "open"))
 
     def test_same_instrument_stacking_allowed_when_under_limit(self) -> None:
-        """When max_positions_per_instrument=2, a second position on same instrument is allowed."""
+        """When max_positions_per_instrument=2, a second same-direction position is allowed."""
         from dataclasses import replace
         limits_stacking = replace(LIMITS_A, max_positions_per_instrument=2)
         engine = _engine(limits_a=limits_stacking)
         existing = _make_position(size=Decimal("1"), mark=Decimal("2000"), side=PositionSide.LONG)
         state = _portfolio(positions=[existing], used_margin=Decimal("400"))
         result = engine.evaluate(
-            _idea(target=Route.A), state, MARKET_PRICE, utc_now(), FUNDING_RATE,
+            _idea(target=Route.A, direction=PositionSide.LONG),
+            state, MARKET_PRICE, utc_now(), FUNDING_RATE,
         )
         # Should NOT be rejected for stacking (may be rejected for other reasons)
         if not result.approved:
             reason = (result.rejection_reason or "").lower()
             assert "per instrument" not in reason and "instrument" not in reason
+
+    def test_opposite_direction_stacking_blocked(self) -> None:
+        """Opposite-direction stacking is always blocked to avoid double fees."""
+        from dataclasses import replace
+        limits_stacking = replace(LIMITS_A, max_positions_per_instrument=2)
+        engine = _engine(limits_a=limits_stacking)
+        existing = _make_position(size=Decimal("1"), mark=Decimal("2000"), side=PositionSide.LONG)
+        state = _portfolio(positions=[existing], used_margin=Decimal("400"))
+        result = engine.evaluate(
+            _idea(target=Route.A, direction=PositionSide.SHORT),
+            state, MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        assert result.approved is False
+        assert "opposite" in (result.rejection_reason or "").lower()
 
 
 # ---------------------------------------------------------------------------

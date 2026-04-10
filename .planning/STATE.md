@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 Phase: 21 — Safety Critical Fixes (not started)
 Plan: —
 Status: Roadmap created, ready for phase planning
-Last activity: 2026-04-08 — v1.4 roadmap created
+Last activity: 2026-04-10 - Completed quick task 260410-dcp: Fix position sizing bottlenecks
 
 ```
 Progress: [                    ] 0/5 phases
@@ -92,6 +92,12 @@ Progress: [                    ] 0/5 phases
 ### Blockers/Concerns
 
 None yet.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260410-dcp | Fix position sizing bottlenecks: concurrent positions, instrument stacking, regime leverage, notional cap, fee filter | 2026-04-10 | 897c1de | [260410-dcp-fix-position-sizing-bottlenecks-concurre](./quick/260410-dcp-fix-position-sizing-bottlenecks-concurre/) |
 
 ### Pending Todos
 
