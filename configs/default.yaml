@@ -58,14 +58,15 @@ risk:
 
   route_a:
     max_leverage: 10.0
-    max_position_notional_usdc: 12000
+    max_position_notional_usdc: 20000
     max_position_pct_equity: 40.0
     max_margin_utilization_pct: 70.0
     min_liquidation_distance_pct: 8.0
     max_daily_loss_pct: 10.0
     max_drawdown_pct: 25.0
     stop_loss_required: true
-    max_concurrent_positions: 3
+    max_concurrent_positions: 6
+    max_positions_per_instrument: 2
     max_funding_cost_per_day_usdc: 20
     correlation_enabled: true
     max_net_directional_exposure_pct: 100.0
@@ -81,6 +82,7 @@ risk:
     max_drawdown_pct: 15.0
     stop_loss_required: true
     max_concurrent_positions: 3
+    max_positions_per_instrument: 2
     max_funding_cost_per_day_usdc: 100
     correlation_enabled: true
     max_net_directional_exposure_pct: 80.0
@@ -91,7 +93,7 @@ risk:
       trending_up: 5.0
       trending_down: 5.0
       ranging: 4.0
-      high_volatility: 2.0
+      high_volatility: 3.0
       low_volatility: 5.0
       squeeze: 3.0
     route_b:
@@ -105,7 +107,7 @@ risk:
   global:
     stale_data_halt_seconds: 30
     conviction_power: 1.0
-    min_expected_move_pct: 0.005
+    min_expected_move_pct: 0.003
 
 execution:
   default_order_type: "limit"
