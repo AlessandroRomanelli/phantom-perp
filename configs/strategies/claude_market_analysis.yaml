@@ -13,7 +13,7 @@ parameters:
   # Signals below this conviction are dropped before enqueueing
   min_conviction: 0.50
   # Floor for Portfolio A routing
-  route_a_min_conviction: 0.85
+  route_a_min_conviction: 0.55
   # Default time horizon when LLM does not specify one
   default_time_horizon_hours: 4.0
 
@@ -22,14 +22,14 @@ instruments:
     parameters:
       analysis_interval_seconds: 7200
       min_conviction: 0.45
-      route_a_min_conviction: 0.85
+      route_a_min_conviction: 0.55
       default_time_horizon_hours: 3.0
 
   BTC-PERP:
     parameters:
       analysis_interval_seconds: 7200
       min_conviction: 0.50
-      route_a_min_conviction: 0.85
+      route_a_min_conviction: 0.55
       default_time_horizon_hours: 4.0
 
   SOL-PERP:
@@ -37,5 +37,5 @@ instruments:
       # SOL moves fastest — 1h base cadence, reactive triggers cover the rest
       analysis_interval_seconds: 3600
       min_conviction: 0.45
-      route_a_min_conviction: 0.85
+      route_a_min_conviction: 0.55
       default_time_horizon_hours: 2.0

@@ -15,7 +15,7 @@ parameters:
   min_conviction: 0.35
   cooldown_bars: 12
   funding_rate_boost: 0.1
-  route_a_min_conviction: 0.7
+  route_a_min_conviction: 0.35
 instruments:
   ETH-PERP:
     parameters:

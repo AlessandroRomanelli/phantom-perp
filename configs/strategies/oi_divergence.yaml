@@ -14,7 +14,7 @@ parameters:
   min_conviction: 0.35
   cooldown_bars: 12
   max_holding_hours: 8
-  route_a_min_conviction: 0.7
+  route_a_min_conviction: 0.40
 instruments:
   ETH-PERP:
     divergence_lookback: 18

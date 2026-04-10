@@ -13,7 +13,7 @@ parameters:
   take_profit_atr_mult: 2.5
   min_conviction: 0.40
   cooldown_bars: 10
-  route_a_min_conviction: 0.85
+  route_a_min_conviction: 0.45
   lookback_bars: 60
   use_session_reset: true
   session_length_hours: 24
