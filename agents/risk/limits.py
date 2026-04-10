@@ -40,8 +40,8 @@ class RiskLimits:
     max_drawdown_pct: Decimal
     stop_loss_required: bool
     max_concurrent_positions: int
-    max_positions_per_instrument: int
     max_funding_cost_per_day_usdc: Decimal
+    max_positions_per_instrument: int = 1
     conviction_power: float = 2.0
     min_expected_move_pct: Decimal = Decimal("0.005")
     correlation_enabled: bool = True
@@ -104,7 +104,6 @@ def limits_for_route(
         max_drawdown_pct=min(cfg_drawdown, hard_drawdown),
         stop_loss_required=section.get("stop_loss_required", True),
         max_concurrent_positions=int(section.get("max_concurrent_positions", 3)),
-        max_positions_per_instrument=int(section.get("max_positions_per_instrument", 1)),
         max_funding_cost_per_day_usdc=_d(
             section.get("max_funding_cost_per_day_usdc"), "20"
         ),
@@ -117,4 +116,5 @@ def limits_for_route(
             section.get("max_net_directional_exposure_pct"), "100.0"
         ),
         hwm_drawdown_enabled=bool(section.get("hwm_drawdown_enabled", True)),
+        max_positions_per_instrument=int(section.get("max_positions_per_instrument", 1)),
     )

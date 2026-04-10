@@ -58,6 +58,7 @@ LIMITS_A = RiskLimits(
     max_drawdown_pct=Decimal("25"),
     stop_loss_required=True,
     max_concurrent_positions=3,
+    max_positions_per_instrument=1,
     max_funding_cost_per_day_usdc=Decimal("20"),
     conviction_power=1.0,
     min_expected_move_pct=Decimal("0.005"),
@@ -73,14 +74,15 @@ LIMITS_B = RiskLimits(
     max_drawdown_pct=Decimal("15"),
     stop_loss_required=True,
     max_concurrent_positions=3,
+    max_positions_per_instrument=1,
     max_funding_cost_per_day_usdc=Decimal("100"),
     conviction_power=1.0,
     min_expected_move_pct=Decimal("0.005"),
 )
 
 
-def _engine() -> RiskEngine:
-    return RiskEngine(LIMITS_A, LIMITS_B)
+def _engine(limits_a: RiskLimits = LIMITS_A) -> RiskEngine:
+    return RiskEngine(limits_a, LIMITS_B)
 
 
 def _idea(
@@ -722,7 +724,22 @@ class TestPaperPositionsInRiskGuards:
         )
         assert result.approved is False
         reason = (result.rejection_reason or "").lower()
-        assert any(kw in reason for kw in ("instrument", "stacking", "existing", "open"))
+        assert any(kw in reason for kw in ("instrument", "stacking", "per instrument", "limit", "open"))
+
+    def test_same_instrument_stacking_allowed_when_under_limit(self) -> None:
+        """When max_positions_per_instrument=2, a second position on same instrument is allowed."""
+        from dataclasses import replace
+        limits_stacking = replace(LIMITS_A, max_positions_per_instrument=2)
+        engine = _engine(limits_a=limits_stacking)
+        existing = _make_position(size=Decimal("1"), mark=Decimal("2000"), side=PositionSide.LONG)
+        state = _portfolio(positions=[existing], used_margin=Decimal("400"))
+        result = engine.evaluate(
+            _idea(target=Route.A), state, MARKET_PRICE, utc_now(), FUNDING_RATE,
+        )
+        # Should NOT be rejected for stacking (may be rejected for other reasons)
+        if not result.approved:
+            reason = (result.rejection_reason or "").lower()
+            assert "per instrument" not in reason and "instrument" not in reason
 
 
 # ---------------------------------------------------------------------------

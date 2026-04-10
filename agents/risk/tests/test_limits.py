@@ -135,6 +135,22 @@ class TestLimitsForRoute:
             f"SAFE-04: Route A leverage {limits.max_leverage} exceeds hard cap of 5.0"
         )
 
+    def test_max_positions_per_instrument_from_config(self) -> None:
+        """limits_for_route reads max_positions_per_instrument from config."""
+        import copy
+        config = copy.deepcopy(DEFAULT_CONFIG)
+        config["risk"]["route_a"]["max_positions_per_instrument"] = 2
+        limits = limits_for_route(Route.A, config)
+        assert limits.max_positions_per_instrument == 2
+
+    def test_max_positions_per_instrument_default(self) -> None:
+        """Default is 1 when max_positions_per_instrument is absent from config."""
+        import copy
+        config = copy.deepcopy(DEFAULT_CONFIG)
+        config["risk"]["route_a"].pop("max_positions_per_instrument", None)
+        limits = limits_for_route(Route.A, config)
+        assert limits.max_positions_per_instrument == 1
+
 
 class TestCorrelationLimits:
     """Tests for correlation_enabled and max_net_directional_exposure_pct fields."""
