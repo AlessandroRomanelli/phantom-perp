@@ -1,0 +1,161 @@
+# Regime-aware parameter overrides.
+# Applied at evaluate()-time based on current market regime classification.
+# Only params that change need to be listed. Values override base strategy params.
+# Regime takes priority over session overrides when both set the same param (D-02).
+
+strategies:
+  momentum:
+    trending_up:
+      min_conviction: 0.28
+      cooldown_bars: 3
+      adx_threshold: 18.0
+    trending_down:
+      min_conviction: 0.28
+      cooldown_bars: 3
+      adx_threshold: 18.0
+    ranging:
+      min_conviction: 0.38
+      cooldown_bars: 6
+      vol_min_ratio: 0.4
+    high_volatility:
+      min_conviction: 0.40
+      cooldown_bars: 5
+      vol_min_ratio: 0.5
+    low_volatility:
+      min_conviction: 0.30
+      cooldown_bars: 4
+      vol_min_ratio: 0.3
+    squeeze:
+      min_conviction: 0.35
+      cooldown_bars: 4
+      vol_min_ratio: 0.35
+
+  mean_reversion:
+    trending_up:
+      min_conviction: 0.40
+      cooldown_bars: 8
+    trending_down:
+      min_conviction: 0.40
+      cooldown_bars: 8
+    ranging:
+      min_conviction: 0.28
+      cooldown_bars: 4
+    high_volatility:
+      min_conviction: 0.38
+      cooldown_bars: 6
+    low_volatility:
+      min_conviction: 0.25
+      cooldown_bars: 3
+    squeeze:
+      min_conviction: 0.30
+      cooldown_bars: 5
+
+  liquidation_cascade:
+    trending_up:
+      min_conviction: 0.32
+      cooldown_bars: 3
+    trending_down:
+      min_conviction: 0.30
+      cooldown_bars: 3
+    ranging:
+      min_conviction: 0.35
+      cooldown_bars: 5
+    high_volatility:
+      min_conviction: 0.28
+      cooldown_bars: 2
+    low_volatility:
+      min_conviction: 0.40
+      cooldown_bars: 6
+    squeeze:
+      min_conviction: 0.30
+      cooldown_bars: 4
+
+  correlation:
+    trending_up:
+      min_conviction: 0.32
+      cooldown_bars: 6
+    trending_down:
+      min_conviction: 0.32
+      cooldown_bars: 6
+    ranging:
+      min_conviction: 0.35
+      cooldown_bars: 8
+    high_volatility:
+      min_conviction: 0.38
+      cooldown_bars: 7
+    low_volatility:
+      min_conviction: 0.28
+      cooldown_bars: 5
+    squeeze:
+      min_conviction: 0.33
+      cooldown_bars: 7
+
+  regime_trend:
+    trending_up:
+      min_conviction: 0.28
+      cooldown_bars: 4
+      adx_threshold: 18.0
+    trending_down:
+      min_conviction: 0.28
+      cooldown_bars: 4
+      adx_threshold: 18.0
+    ranging:
+      min_conviction: 0.42
+      cooldown_bars: 8
+      adx_threshold: 28.0
+    high_volatility:
+      min_conviction: 0.38
+      cooldown_bars: 6
+      adx_threshold: 22.0
+    low_volatility:
+      min_conviction: 0.32
+      cooldown_bars: 5
+      adx_threshold: 20.0
+    squeeze:
+      min_conviction: 0.30
+      cooldown_bars: 4
+      adx_threshold: 16.0
+
+  orderbook_imbalance:
+    trending_up:
+      min_conviction: 0.30
+      cooldown_bars: 2
+    trending_down:
+      min_conviction: 0.30
+      cooldown_bars: 2
+    ranging:
+      min_conviction: 0.35
+      cooldown_bars: 3
+      min_depth_ratio: 0.35
+    high_volatility:
+      min_conviction: 0.38
+      cooldown_bars: 3
+      min_depth_ratio: 0.40
+    low_volatility:
+      min_conviction: 0.28
+      cooldown_bars: 2
+      min_depth_ratio: 0.28
+    squeeze:
+      min_conviction: 0.32
+      cooldown_bars: 2
+      min_depth_ratio: 0.32
+
+  vwap:
+    trending_up:
+      min_conviction: 0.30
+      cooldown_bars: 3
+    trending_down:
+      min_conviction: 0.30
+      cooldown_bars: 3
+    ranging:
+      min_conviction: 0.28
+      cooldown_bars: 3
+    high_volatility:
+      min_conviction: 0.38
+      cooldown_bars: 5
+    low_volatility:
+      min_conviction: 0.28
+      cooldown_bars: 3
+    squeeze:
+      min_conviction: 0.30
+      cooldown_bars: 4

@@ -68,7 +68,7 @@ from libs.common.config import (
 )
 from libs.common.instruments import get_active_instrument_ids
 from libs.common.logging import setup_logging
-from libs.common.models.enums import Route, SignalSource
+from libs.common.models.enums import MarketRegime, Route, SignalSource
 from libs.common.models.market_snapshot import MarketSnapshot
 from libs.common.models.signal import StandardSignal  # noqa: TC001
 from libs.common.serialization import deserialize_snapshot, signal_to_dict
@@ -187,6 +187,41 @@ def load_session_config() -> dict[str, Any]:
         return {}
     with open(session_path) as f:
         return yaml.safe_load(f) or {}
+
+
+def load_regime_config() -> dict[str, Any]:
+    """Load regime-aware parameter overrides from configs/regimes.yaml.
+
+    Returns:
+        Parsed YAML dict with 'strategies' key, or empty dict if file not found.
+    """
+    regime_path = Path(__file__).resolve().parent.parent.parent / "configs" / "regimes.yaml"
+    if not regime_path.exists():
+        return {}
+    with open(regime_path) as f:
+        return yaml.safe_load(f) or {}
+
+
+def get_regime_overrides(
+    regime_config: dict[str, Any],
+    strategy_name: str,
+    regime: MarketRegime | None,
+) -> dict[str, Any]:
+    """Look up regime overrides for a strategy.
+
+    Args:
+        regime_config: Parsed regimes.yaml dict.
+        strategy_name: Strategy name (e.g. 'momentum').
+        regime: Current market regime, or None if not yet detected.
+
+    Returns:
+        Dict of parameter overrides, or empty dict if none apply.
+    """
+    if regime is None:
+        return {}
+    strategies = regime_config.get("strategies", {})
+    strategy_overrides = strategies.get(strategy_name, {})
+    return dict(strategy_overrides.get(regime.value, {}))
 
 
 def get_session_overrides(
