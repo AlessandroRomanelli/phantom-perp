@@ -224,8 +224,8 @@ Plans:
   4. The full test suite passes (`pytest`) with the anthropic package absent from the environment
 **Plans:** 2 plans
 Plans:
-- [ ] 28-01-PLAN.md — Remove anthropic dep, migrate tuner tests, update manual_tune.py
-- [ ] 28-02-PLAN.md — Migrate signal test files (test_claude_market_analysis, test_orch_client)
+- [x] 28-01-PLAN.md — Remove anthropic dep, migrate tuner tests, update manual_tune.py
+- [x] 28-02-PLAN.md — Migrate signal test files (test_claude_market_analysis, test_orch_client)
 
 ## Progress
 
@@ -246,4 +246,15 @@ Phases execute in numeric order: 16 -> 17 -> 18 -> 19 -> 20 -> 21 -> 22 -> 23 ->
 | 25. Paper Simulator Fidelity | v1.4 | 2/2 | Complete    | 2026-04-09 |
 | 26. JSON Extraction Foundation | v1.5 | 2/2 | Complete    | 2026-04-09 |
 | 27. CLI Call Site Migration | v1.5 | 2/2 | Complete    | 2026-04-09 |
-| 28. Dependency Cleanup & Test Migration | v1.5 | 0/2 | Not started | - |
+| 28. Dependency Cleanup & Test Migration | v1.5 | 2/2 | Complete    | 2026-04-11 |
+
+### Phase 29: Regime-aware strategy parameters
+
+**Goal:** Strategy parameters dynamically adapt to the current market regime — each of the 7 strategies has YAML-configurable overrides for all 6 regimes, applied at evaluate-time using the same pattern as session overrides
+**Requirements**: REG-01, REG-02, REG-03
+**Depends on:** Phase 28
+**Plans:** 2 plans
+
+Plans:
+- [ ] 29-01-PLAN.md — MarketSnapshot regime field, configs/regimes.yaml, load/lookup functions with tests
+- [ ] 29-02-PLAN.md — Wire regime detection and override application into signals main loop

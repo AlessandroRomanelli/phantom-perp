@@ -20,7 +20,7 @@
 - Used by: Signals agent (`ClaudeMarketAnalysisStrategy`) for continuous market regime analysis
 - Response format: JSON via tool_use (submit_market_analysis tool with LONG/SHORT/NO_SIGNAL)
 - Rate limiting: API-side; no client-side limiting implemented
-- Cost optimization: Anthropic API key loaded once; per-request cost minimized via structured output clamping
+- Cost optimization: Per-request cost minimized via structured JSON output clamping
 
 **Finnhub News API:**
 - Crypto news headlines for context-aware signal generation
@@ -174,9 +174,9 @@ All optional providers: Referenced in config template but no active pollers impl
 - Backoff: Exponential retry on 429 (rate limit) with max 2 retries
 - Scope: Per-client (route-scoped via `CoinbaseClientPool`)
 
-**Anthropic Claude API:**
+**Claude CLI (Market Analysis):**
 - Rate limiting: API-side (no client-side limiting)
-- Timeout: Standard httpx timeout in AsyncAnthropic
+- Timeout: Subprocess timeout configured per call site
 
 **Finnhub & ForexFactory:**
 - Rate limiting: API-side
@@ -199,7 +199,7 @@ All optional providers: Referenced in config template but no active pollers impl
 - Coinbase API: Critical (no trading without it)
 - Redis: Critical (message broker)
 - PostgreSQL: Critical (state persistence)
-- Claude API: Optional (market analysis feature, degrades gracefully)
+- Claude CLI: Optional (market analysis feature, degrades gracefully)
 - Telegram Bot: Required only for Route B (Route A trades autonomously)
 - Finnhub/ForexFactory: Optional (news context, degrades gracefully)
 
