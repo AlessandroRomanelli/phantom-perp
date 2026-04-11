@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 Phase: 21 — Safety Critical Fixes (not started)
 Plan: —
 Status: Roadmap created, ready for phase planning
-Last activity: 2026-04-10 - Completed quick task 260410-dcp: Fix position sizing bottlenecks
+Last activity: 2026-04-10 - Completed quick task 260410-md6: Set analysis_interval_seconds to 1800 for claude market analysis
 
 ```
 Progress: [                    ] 0/5 phases
@@ -98,6 +98,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260410-dcp | Fix position sizing bottlenecks: concurrent positions, instrument stacking, regime leverage, notional cap, fee filter | 2026-04-10 | 897c1de | [260410-dcp-fix-position-sizing-bottlenecks-concurre](./quick/260410-dcp-fix-position-sizing-bottlenecks-concurre/) |
+| 260410-md6 | Set analysis_interval_seconds to 1800 for claude market analysis | 2026-04-10 | e55cdbc | [260410-md6-set-analysis-interval-seconds-to-1800-fo](./quick/260410-md6-set-analysis-interval-seconds-to-1800-fo/) |
 
 ### Pending Todos
 
