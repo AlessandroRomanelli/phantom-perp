@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 
+from libs.common.models.enums import MarketRegime
+
 
 @dataclass(frozen=True, slots=True)
 class MarketSnapshot:
@@ -30,6 +32,7 @@ class MarketSnapshot:
     volatility_24h: float
     metadata: dict[str, object] = field(default_factory=dict)
     candle_volume_1m: Decimal = Decimal("0")  # Volume of most recent 1-min candle bar
+    regime: MarketRegime | None = None  # Populated by signals agent; None until detected
 
     @property
     def mid_price(self) -> Decimal:
