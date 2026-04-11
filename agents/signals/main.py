@@ -425,6 +425,14 @@ async def run_agent() -> None:
             strategies=list(session_config.get("strategies", {}).keys()),
         )
 
+    # Load regime config once at startup alongside session config
+    regime_config = load_regime_config()
+    if regime_config:
+        logger.info(
+            "regime_config_loaded",
+            strategies=list(regime_config.get("strategies", {}).keys()),
+        )
+
     consumer = RedisConsumer(redis_url=settings.infra.redis_url)
     publisher = RedisPublisher(redis_url=settings.infra.redis_url)
 
@@ -495,6 +503,8 @@ async def run_agent() -> None:
     # Shared mutable dicts updated in the main loop; scheduler reads from them.
     latest_snapshots: dict[str, MarketSnapshot] = {}
     regime_detector = RegimeDetector()
+    # Track previous regime per instrument to detect and log transitions
+    prev_regimes: dict[str, MarketRegime | None] = {}
 
     # Create one signal queue per instrument for Claude → strategy bridging.
     # Queue maxsize is per-instrument max_queue_size from strategy config.
@@ -676,6 +686,21 @@ async def run_agent() -> None:
                 latest_snapshots[instrument] = snapshot
                 regime_detector.update(snapshot)
 
+                # Attach current regime to snapshot before strategy evaluation
+                current_regime = regime_detector.regime_for(instrument)
+                snapshot = replace(snapshot, regime=current_regime)
+
+                # Log regime transitions at INFO level
+                prev_regime = prev_regimes.get(instrument)
+                if current_regime != prev_regime:
+                    logger.info(
+                        "regime_transition",
+                        instrument=instrument,
+                        from_regime=prev_regime.value if prev_regime else "none",
+                        to_regime=current_regime.value,
+                    )
+                    prev_regimes[instrument] = current_regime
+
                 # Run this instrument's strategies
                 for strategy in strategies_by_instrument.get(instrument, []):
                     is_fast = strategy.name in _FAST_STRATEGIES
@@ -695,10 +720,15 @@ async def run_agent() -> None:
                         continue  # strategy disabled by orchestrator for this instrument
 
                     # Apply session overrides temporarily
-                    overrides = get_session_overrides(
+                    session_overrides = get_session_overrides(
                         session_config, strategy.name, session_info.session_type, instrument,
                     )
-                    # Merge orchestrator param adjustments (ORCH-11) — orchestrator wins
+                    # Apply regime overrides — regime takes priority over session (D-02)
+                    regime_overrides = get_regime_overrides(
+                        regime_config, strategy.name, snapshot.regime,
+                    )
+                    overrides = {**session_overrides, **regime_overrides}
+                    # Merge orchestrator param adjustments (ORCH-11) — orchestrator wins over both
                     orch_adj = orchestrator_param_adj.get((instrument, strategy.name), {})
                     if orch_adj:
                         overrides = {**overrides, **orch_adj}
