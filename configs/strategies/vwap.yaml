@@ -9,8 +9,8 @@ parameters:
   min_session_progress: 0.2
   session_conviction_weight: 0.3
   atr_period: 14
-  stop_loss_atr_mult: 3.0
-  take_profit_atr_mult: 2.5
+  stop_loss_atr_mult: 2.0
+  take_profit_atr_mult: 3.5
   min_conviction: 0.40
   cooldown_bars: 10
   route_a_min_conviction: 0.45
@@ -21,24 +21,21 @@ parameters:
 instruments:
   ETH-PERP:
     deviation_threshold: 2.0
-    stop_loss_atr_mult: 3.0
-    take_profit_atr_mult: 2.5
+    stop_loss_atr_mult: 2.0
+    take_profit_atr_mult: 3.5
   BTC-PERP:
     deviation_threshold: 2.5
-    stop_loss_atr_mult: 2.5
-    take_profit_atr_mult: 2.0
+    stop_loss_atr_mult: 2.0
+    take_profit_atr_mult: 3.5
   SOL-PERP:
-    deviation_threshold: 1.8
-    min_conviction: 0.45
-    stop_loss_atr_mult: 3.5
-    take_profit_atr_mult: 3.0
+    enabled: false
   QQQ-PERP:
     session_reset_hour_utc: 14
     deviation_threshold: 2.0
-    stop_loss_atr_mult: 2.5
-    take_profit_atr_mult: 2.0
+    stop_loss_atr_mult: 2.0
+    take_profit_atr_mult: 3.5
   SPY-PERP:
     session_reset_hour_utc: 14
     deviation_threshold: 2.0
-    stop_loss_atr_mult: 2.5
-    take_profit_atr_mult: 2.0
+    stop_loss_atr_mult: 2.0
+    take_profit_atr_mult: 3.5

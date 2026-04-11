@@ -1,7 +1,7 @@
 strategy:
   name: momentum
   enabled: true
-  weight: 0.2
+  weight: 0.15
 parameters:
   fast_ema_period: 12
   slow_ema_period: 26
@@ -11,9 +11,9 @@ parameters:
   rsi_overbought: 70
   rsi_oversold: 30
   atr_period: 14
-  stop_loss_atr_mult: 3.0
+  stop_loss_atr_mult: 2.5
   take_profit_atr_mult: 4.5
-  min_conviction: 0.4
+  min_conviction: 0.35
   cooldown_bars: 5
   vol_lookback: 10
   vol_min_ratio: 0.5
@@ -26,7 +26,7 @@ parameters:
 instruments:
   ETH-PERP:
     parameters:
-      min_conviction: 0.35
+      min_conviction: 0.30
       cooldown_bars: 4
       vol_lookback: 10
       vol_min_ratio: 0.4
@@ -36,23 +36,23 @@ instruments:
       adx_threshold: 18.0
   BTC-PERP:
     parameters:
-      min_conviction: 0.35
-      cooldown_bars: 8
+      min_conviction: 0.30
+      cooldown_bars: 5
       vol_lookback: 15
-      vol_min_ratio: 0.6
-      swing_lookback: 30
-      swing_order: 4
+      vol_min_ratio: 0.5
+      swing_lookback: 25
+      swing_order: 3
       funding_rate_boost: 0.06
-      adx_threshold: 22.0
+      adx_threshold: 20.0
   SOL-PERP:
     parameters:
-      min_conviction: 0.3
-      cooldown_bars: 4
+      min_conviction: 0.28
+      cooldown_bars: 3
       vol_lookback: 8
       vol_min_ratio: 0.35
       swing_lookback: 15
       swing_order: 2
-      stop_loss_atr_mult: 3.5
+      stop_loss_atr_mult: 2.5
       take_profit_atr_mult: 5.0
       funding_rate_boost: 0.1
       adx_threshold: 18.0

@@ -1,7 +1,7 @@
 strategy:
   name: mean_reversion
   enabled: true
-  weight: 0.15
+  weight: 0.20
 parameters:
   bb_period: 20
   bb_std: 2.0
@@ -12,11 +12,11 @@ parameters:
   adx_max: 40.0
   atr_period: 14
   stop_loss_atr_mult: 2.5
-  min_conviction: 0.35
-  cooldown_bars: 8
+  min_conviction: 0.30
+  cooldown_bars: 6
   trend_reject_threshold: 0.6
   extended_deviation_threshold: 0.5
-  route_a_min_conviction: 0.65
+  route_a_min_conviction: 0.45
   vol_lookback: 10
   min_rr_floor: 1.2
 instruments:
@@ -26,8 +26,8 @@ instruments:
       rsi_oversold: 32
       rsi_overbought: 68
       adx_max: 35.0
-      min_conviction: 0.3
-      cooldown_bars: 6
+      min_conviction: 0.28
+      cooldown_bars: 5
       trend_reject_threshold: 0.6
       extended_deviation_threshold: 0.5
       funding_rate_boost: 0.08
@@ -38,12 +38,12 @@ instruments:
       rsi_oversold: 33
       rsi_overbought: 67
       adx_max: 35.0
-      min_conviction: 0.3
-      cooldown_bars: 12
+      min_conviction: 0.28
+      cooldown_bars: 8
       trend_reject_threshold: 0.7
       extended_deviation_threshold: 0.55
       funding_rate_boost: 0.06
-      stop_loss_atr_mult: 1.2
+      stop_loss_atr_mult: 2.0
       min_rr_floor: 1.3
   SOL-PERP:
     parameters:
@@ -52,8 +52,8 @@ instruments:
       rsi_overbought: 72
       adx_max: 45.0
       stop_loss_atr_mult: 3.0
-      min_conviction: 0.25
-      cooldown_bars: 5
+      min_conviction: 0.22
+      cooldown_bars: 4
       trend_reject_threshold: 0.55
       extended_deviation_threshold: 0.45
       funding_rate_boost: 0.1

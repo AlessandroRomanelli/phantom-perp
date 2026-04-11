@@ -9,17 +9,20 @@ parameters:
   accel_long_lookback: 20
   accel_threshold: 2.0
   atr_period: 14
-  stop_loss_atr_mult: 2.0
-  take_profit_atr_mult: 3.0
+  stop_loss_atr_mult: 2.5
+  take_profit_atr_mult: 3.5
   min_conviction: 0.35
-  cooldown_bars: 12
+  cooldown_bars: 10
   max_holding_hours: 8
   route_a_min_conviction: 0.40
 instruments:
   ETH-PERP:
     divergence_lookback: 18
-    div_threshold_pct: 1.5
-    cooldown_bars: 12
+    div_threshold_pct: 2.0
+    stop_loss_atr_mult: 3.0
+    take_profit_atr_mult: 4.0
+    min_conviction: 0.40
+    cooldown_bars: 15
   BTC-PERP:
     divergence_lookback: 24
     div_threshold_pct: 2.0
