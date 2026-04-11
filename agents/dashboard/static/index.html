@@ -424,7 +424,7 @@ function buildClaudeCard(id, s) {
   const regime = s.regime || '?';
   const trigger = s.trigger || '';
   const ts = s.timestamp ? agoFromISO(s.timestamp) : '--';
-  const vol = s.volatility_1h ? parseFloat(s.volatility_1h).toFixed(3) : '--';
+  const vol = s.volatility_1h ? (parseFloat(s.volatility_1h) * 100).toFixed(2) + '%' : '--';
   const reasoning = s.reasoning || '';
   const belowThreshold = s.below_threshold;
   const emitted = s.signal_emitted;
@@ -473,7 +473,7 @@ function buildClaudeCard(id, s) {
     <div class="flex items-center gap-3 text-xs font-mono mb-1">
       ${conviction > 0 ? `<div>${convBar}</div>` : ''}
       <span class="text-gray-500">regime <span class="text-gray-300">${regime}</span></span>
-      <span class="text-gray-500">vol <span class="text-gray-300">${vol}</span></span>
+      <span class="text-gray-500">volatility <span class="text-gray-300">${vol}</span></span>
       ${!expanded && trigger ? `<span class="text-gray-600">${trigger}</span>` : ''}
     </div>
     ${priceRow}
