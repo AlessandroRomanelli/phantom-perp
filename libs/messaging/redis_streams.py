@@ -166,6 +166,19 @@ class RedisConsumer(Consumer):
                         exc_info=True,
                     )
 
+    async def _recreate_group(self, channel: str) -> None:
+        """Recreate a consumer group after NOGROUP error (stream evicted by LRU)."""
+        try:
+            await self._redis.xgroup_create(channel, self._group, id="0", mkstream=True)
+            self._logger.warning(
+                "stream_group_recreated",
+                channel=channel,
+                group=self._group,
+            )
+        except aioredis.ResponseError as e:
+            if "BUSYGROUP" not in str(e):
+                raise
+
     async def _reclaim_channel(self, channel: str) -> None:
         """Reclaim idle messages from a single channel's PEL."""
         pending = await self._redis.xpending_range(
@@ -179,14 +192,20 @@ class RedisConsumer(Consumer):
         if not idle_map:
             return
 
-        result = await self._redis.xautoclaim(
-            name=channel,
-            groupname=self._group,
-            consumername=self._consumer_name,
-            min_idle_time=self._reclaim_idle_ms,
-            start_id="0-0",
-            count=self._reclaim_batch_size,
-        )
+        try:
+            result = await self._redis.xautoclaim(
+                name=channel,
+                groupname=self._group,
+                consumername=self._consumer_name,
+                min_idle_time=self._reclaim_idle_ms,
+                start_id="0-0",
+                count=self._reclaim_batch_size,
+            )
+        except aioredis.ResponseError as e:
+            if "NOGROUP" in str(e):
+                await self._recreate_group(channel)
+                return
+            raise
         claimed_entries = result[1]
 
         for msg_id_raw, fields in claimed_entries:
@@ -225,13 +244,21 @@ class RedisConsumer(Consumer):
                 except asyncio.QueueEmpty:
                     break
 
-            results: list[Any] = await self._redis.xreadgroup(
-                groupname=self._group,
-                consumername=self._consumer_name,
-                streams=streams,
-                count=self._batch_size,
-                block=self._block_ms,
-            )
+            try:
+                results: list[Any] = await self._redis.xreadgroup(
+                    groupname=self._group,
+                    consumername=self._consumer_name,
+                    streams=streams,
+                    count=self._batch_size,
+                    block=self._block_ms,
+                )
+            except aioredis.ResponseError as e:
+                if "NOGROUP" in str(e):
+                    # Stream was evicted by Redis LRU; recreate the group and retry.
+                    for channel in self._channels:
+                        await self._recreate_group(channel)
+                    continue
+                raise
 
             if not results:
                 continue
