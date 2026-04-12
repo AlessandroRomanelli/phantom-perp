@@ -374,3 +374,131 @@ async def test_consumer_close_without_subscribe(
     consumer = make_consumer()
     assert consumer._reclaim_task is None
     await consumer.close()
+
+
+# ── NOGROUP recovery tests ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_listen_recovers_from_nogroup(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+    make_consumer,
+) -> None:
+    """listen() recreates the consumer group when NOGROUP is raised by xreadgroup."""
+    import redis.exceptions
+    from unittest.mock import AsyncMock
+
+    consumer = make_consumer(reclaim_idle_ms=60000, block_ms=100)
+    consumer._redis = fake_redis
+    consumer._channels = [STREAM]
+    consumer._group = GROUP
+    consumer._consumer_name = "nogroup-test"
+
+    # Seed a real message so listen() eventually yields something after recovery
+    await fake_redis.xgroup_create(STREAM, GROUP, id="0", mkstream=True)
+    await fake_redis.xadd(STREAM, {"data": orjson.dumps({"recovered": True})})
+
+    # Simulate NOGROUP on the first xreadgroup call, then delegate to the real impl
+    original_xreadgroup = fake_redis.xreadgroup
+    call_count = 0
+
+    async def _xreadgroup_side_effect(**kwargs):  # type: ignore[no-untyped-def]
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise redis.exceptions.ResponseError("NOGROUP No such consumer group")
+        return await original_xreadgroup(**kwargs)
+
+    fake_redis.xreadgroup = _xreadgroup_side_effect  # type: ignore[method-assign]
+
+    async def _get_first():
+        async for channel, msg_id, data in consumer.listen():
+            return channel, msg_id, data
+
+    result = await asyncio.wait_for(_get_first(), timeout=5.0)
+    assert result is not None
+    _, _, data = result
+    assert data == {"recovered": True}
+    # xreadgroup was called twice: once raising NOGROUP, once succeeding
+    assert call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_listen_nogroup_logs_warning(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+    make_consumer,
+) -> None:
+    """listen() emits stream_group_recreated warning on NOGROUP recovery."""
+    import redis.exceptions
+
+    consumer = make_consumer(reclaim_idle_ms=60000, block_ms=100)
+    consumer._redis = fake_redis
+    consumer._channels = [STREAM]
+    consumer._group = GROUP
+    consumer._consumer_name = "nogroup-log-test"
+
+    await fake_redis.xgroup_create(STREAM, GROUP, id="0", mkstream=True)
+    await fake_redis.xadd(STREAM, {"data": orjson.dumps({"x": 1})})
+
+    original_xreadgroup = fake_redis.xreadgroup
+    call_count = 0
+
+    async def _xreadgroup_side_effect(**kwargs):  # type: ignore[no-untyped-def]
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise redis.exceptions.ResponseError("NOGROUP No such consumer group")
+        return await original_xreadgroup(**kwargs)
+
+    fake_redis.xreadgroup = _xreadgroup_side_effect  # type: ignore[method-assign]
+
+    async def _get_first():
+        async for channel, msg_id, data in consumer.listen():
+            return channel, msg_id, data
+
+    with capture_logs() as cap:
+        await asyncio.wait_for(_get_first(), timeout=5.0)
+
+    recreate_events = [e for e in cap if e.get("event") == "stream_group_recreated"]
+    assert len(recreate_events) == 1
+    assert recreate_events[0]["channel"] == STREAM
+    assert recreate_events[0]["group"] == GROUP
+
+
+@pytest.mark.asyncio
+async def test_reclaim_channel_recovers_from_nogroup(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+    make_consumer,
+) -> None:
+    """_reclaim_channel() recreates the group and returns gracefully on NOGROUP."""
+    import redis.exceptions
+
+    # Set up a crashed message so xpending_range returns entries (idle_map non-empty)
+    await _setup_crashed_message(fake_redis)
+
+    consumer = make_consumer(reclaim_idle_ms=0, reclaim_batch_size=10)
+    consumer._redis = fake_redis
+    consumer._channels = [STREAM]
+    consumer._group = GROUP
+    consumer._consumer_name = "reclaim-nogroup-test"
+
+    original_xautoclaim = fake_redis.xautoclaim
+
+    async def _xautoclaim_nogroup(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise redis.exceptions.ResponseError("NOGROUP No such consumer group")
+
+    fake_redis.xautoclaim = _xautoclaim_nogroup  # type: ignore[method-assign]
+
+    with capture_logs() as cap:
+        # Should not raise — NOGROUP is handled by recreating the group
+        await consumer._reclaim_channel(STREAM)
+
+    # The reclaim queue should be empty (cycle was skipped after recreation)
+    assert consumer._reclaim_queue.empty()
+
+    recreate_events = [e for e in cap if e.get("event") == "stream_group_recreated"]
+    assert len(recreate_events) == 1
+    assert recreate_events[0]["channel"] == STREAM
+
+    # Restore so teardown doesn't fail
+    fake_redis.xautoclaim = original_xautoclaim  # type: ignore[method-assign]

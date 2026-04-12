@@ -168,13 +168,13 @@ class RedisConsumer(Consumer):
 
     async def _recreate_group(self, channel: str) -> None:
         """Recreate a consumer group after NOGROUP error (stream evicted by LRU)."""
+        self._logger.warning(
+            "stream_group_recreated",
+            channel=channel,
+            group=self._group,
+        )
         try:
             await self._redis.xgroup_create(channel, self._group, id="0", mkstream=True)
-            self._logger.warning(
-                "stream_group_recreated",
-                channel=channel,
-                group=self._group,
-            )
         except aioredis.ResponseError as e:
             if "BUSYGROUP" not in str(e):
                 raise
